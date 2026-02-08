@@ -3,6 +3,7 @@ import BudgetHeuresTile from "@/components/BudgetHeuresTile";
 import LeavesTile from "@/components/LeavesTile";
 import TasksTile from "@/components/TasksTile";
 import WorkloadTile from "@/components/WorkloadTile";
+import StaffingTile from "@/components/StaffingTile";
 import MiddleTiles from "@/components/MiddleTiles";
 
 export default function Home() {
@@ -42,11 +43,9 @@ export default function Home() {
         </div>
 
 
-        {/* --- LIGNE 3 : PERFORMANCE (BAS) --- */}
-        {/* Suivi Objectifs / Heures */}
-        <div className="col-span-4 h-[350px]">
-          <WorkloadTile /> {/* On va le renommer en "Suivi Objectifs" */}
-        </div>
+       <div className="col-span-4 h-[350px]">
+  <StaffingTile />
+</div>
 
         {/* Tuile Libre 1 (Idée : Staffing / Équipe) */}
         <div className="col-span-4 h-[350px]">
