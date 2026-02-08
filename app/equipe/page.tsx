@@ -2,22 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  User, FileWarning, ShieldCheck, HeartPulse, 
-  Search, Plus, ArrowRight, CheckCircle2, Edit3, X
-} from 'lucide-react';
+import { User, FileWarning, Search, Plus, CheckCircle2, ChevronRight, X } from 'lucide-react';
 
 export default function EquipePage() {
-  const router = useRouter();
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('tous');
+  const [filter, setFilter] = useState('tous'); // 'tous' ou 'incomplet'
   const [search, setSearch] = useState('');
-
-  // État pour la Modal "Ajouter"
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [newEmp, setNewEmp] = useState({ nom: '', prenom: '', role: 'Ouvrier' });
 
   const fetchData = async () => {
@@ -29,98 +22,89 @@ export default function EquipePage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleAddEmployee = async () => {
+  const handleAdd = async () => {
+    if (!newEmp.nom) return;
     const { error } = await supabase.from('employes').insert([newEmp]);
-    if (!error) {
-      setIsAddModalOpen(false);
-      fetchData();
-    }
+    if (!error) { setIsModalOpen(false); fetchData(); }
   };
 
   const filteredStaff = staff.filter(e => {
-    const matchesSearch = e.nom?.toLowerCase().includes(search.toLowerCase()) || 
-                          e.prenom?.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = `${e.nom} ${e.prenom}`.toLowerCase().includes(search.toLowerCase());
     if (filter === 'incomplet') return matchesSearch && !e.dossier_complet;
     return matchesSearch;
   });
 
   return (
-    <div className="p-8 font-['Fredoka']">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-black uppercase text-gray-800 tracking-tighter">Effectifs</h1>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-[#d63031] text-white px-6 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2"
-        >
-          <Plus size={18} /> Ajouter un employé
+    <div className="p-8 font-['Fredoka'] max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-10">
+        <div>
+          <h1 className="text-4xl font-black uppercase text-gray-900 tracking-tighter">Effectifs</h1>
+          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Gestion Altrad Opérations</p>
+        </div>
+        <button onClick={() => setIsModalOpen(true)} className="bg-[#d63031] text-white px-6 py-4 rounded-2xl font-black uppercase text-xs shadow-xl shadow-red-100 flex items-center gap-2 hover:scale-105 transition-transform">
+          <Plus size={20} /> Ajouter un collaborateur
         </button>
       </div>
 
-      {/* FILTRES RAPIDES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <button onClick={() => setFilter('tous')} className={`p-6 rounded-[25px] border-2 text-left transition-all ${filter === 'tous' ? 'bg-black text-white border-black' : 'bg-white border-gray-100'}`}>
-          <p className="text-[10px] font-black uppercase opacity-50 mb-1">Total</p>
-          <p className="text-3xl font-black">{staff.length}</p>
-        </button>
-        <button onClick={() => setFilter('incomplet')} className={`p-6 rounded-[25px] border-2 text-left transition-all ${filter === 'incomplet' ? 'bg-red-500 text-white border-red-500' : 'bg-white border-gray-100'}`}>
-          <p className="text-[10px] font-black uppercase opacity-50 mb-1">Incomplets</p>
-          <p className="text-3xl font-black">{staff.filter(e => !e.dossier_complet).length}</p>
-        </button>
+      {/* Barre de recherche et Filtres */}
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input 
+            type="text" placeholder="Rechercher un nom ou prénom..." 
+            className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border-none shadow-sm font-bold focus:ring-2 focus:ring-black"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-gray-100">
+          <button onClick={() => setFilter('tous')} className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${filter === 'tous' ? 'bg-black text-white' : 'text-gray-400'}`}>Tous ({staff.length})</button>
+          <button onClick={() => setFilter('incomplet')} className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${filter === 'incomplet' ? 'bg-red-500 text-white' : 'text-gray-400'}`}>Dossiers Incomplets</button>
+        </div>
       </div>
 
-      {/* TABLEAU CLIQUABLE */}
-      <div className="bg-white rounded-[30px] shadow-sm overflow-hidden border border-gray-100">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
-              <th className="p-6">Nom / Prénom</th>
-              <th className="p-6">Rôle</th>
-              <th className="p-6">Dossier</th>
-              <th className="p-6 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStaff.map((e) => (
-              <tr 
-                key={e.id} 
-                onClick={() => router.push(`/equipe/${e.id}`)} // TOUTE LA LIGNE EST CLIQUABLE
-                className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-all group"
-              >
-                <td className="p-6 font-bold text-gray-800 uppercase">{e.nom} {e.prenom}</td>
-                <td className="p-6 text-xs font-bold text-blue-500 uppercase">{e.role}</td>
-                <td className="p-6 text-[10px] font-black">
-                  {e.dossier_complet ? <span className="text-green-500">OK ✅</span> : <span className="text-red-500 animate-pulse">À COMPLÉTER ❌</span>}
-                </td>
-                <td className="p-6 text-right">
-                  <div className="inline-flex bg-gray-100 p-2 rounded-xl group-hover:bg-black group-hover:text-white transition-all">
-                    <Edit3 size={16} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* MODAL AJOUTER */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[30px] p-8 w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black uppercase">Nouvel Employé</h2>
-              <button onClick={() => setIsAddModalOpen(false)}><X /></button>
+      {/* Liste des employés */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredStaff.map((e) => (
+          <Link href={`/equipe/${e.id}`} key={e.id} className="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden">
+            <div className="flex items-center gap-4 relative z-10">
+              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center font-black text-gray-400 text-xl group-hover:bg-[#d63031] group-hover:text-white transition-colors">
+                {e.nom[0]}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-black text-gray-800 uppercase leading-none mb-1 group-hover:text-[#d63031]">{e.nom} {e.prenom}</h3>
+                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{e.role}</p>
+              </div>
+              <ChevronRight className="text-gray-200 group-hover:text-black transition-colors" />
             </div>
+            
+            <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-50">
+              <div className={`flex items-center gap-1 text-[9px] font-black uppercase ${e.dossier_complet ? 'text-green-500' : 'text-red-500 animate-pulse'}`}>
+                {e.dossier_complet ? <><CheckCircle2 size={12}/> Dossier OK</> : <><FileWarning size={12}/> Dossier Incomplet</>}
+              </div>
+              <span className="text-[9px] font-black text-gray-300 uppercase">Voir la fiche</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Modal Ajout */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] p-10 w-full max-w-md shadow-2xl relative">
+            <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 text-gray-300 hover:text-black"><X size={24}/></button>
+            <h2 className="text-2xl font-black uppercase mb-8">Nouveau Profil</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="NOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e) => setNewEmp({...newEmp, nom: e.target.value})} />
-              <input type="text" placeholder="PRÉNOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e) => setNewEmp({...newEmp, prenom: e.target.value})} />
-              <select className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e) => setNewEmp({...newEmp, role: e.target.value})}>
+              <input type="text" placeholder="NOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, nom: e.target.value.toUpperCase()})} />
+              <input type="text" placeholder="PRÉNOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, prenom: e.target.value})} />
+              <select className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, role: e.target.value})}>
                 <option value="Ouvrier">Ouvrier</option>
                 <option value="Chef d'équipe">Chef d'équipe</option>
                 <option value="Chef de chantier">Chef de chantier</option>
                 <option value="OPERATEUR">OPERATEUR</option>
                 <option value="INTERIMAIRE">INTERIMAIRE</option>
               </select>
-              <button onClick={handleAddEmployee} className="w-full bg-black text-white py-4 rounded-2xl font-black uppercase tracking-widest mt-4">Créer la fiche</button>
+              <button onClick={handleAdd} className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs mt-4">Créer le dossier</button>
             </div>
           </div>
         </div>
