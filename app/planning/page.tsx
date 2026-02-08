@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, ChevronRight, Calendar, User, HardHat } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, User, HardHat, Plus } from 'lucide-react';
 
 export default function PlanningPage() {
   const [employes, setEmployes] = useState<any[]>([]);
