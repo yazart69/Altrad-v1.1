@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Users, MapPin, HardHat, Loader2, activity } from 'lucide-react';
+import { Users, MapPin, HardHat, Loader2, Activity } from 'lucide-react';
 
 interface StaffingTileProps {
   staffCount?: number;
