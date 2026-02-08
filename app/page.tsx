@@ -1,4 +1,4 @@
-import TeamTile from "@/components/TeamTile";
+import TeamTile from "@/components/TeamTile"; // On va l'utiliser pour une des tuiles vides
 import BudgetHeuresTile from "@/components/BudgetHeuresTile";
 import LeavesTile from "@/components/LeavesTile";
 import TasksTile from "@/components/TasksTile";
@@ -7,50 +7,58 @@ import MiddleTiles from "@/components/MiddleTiles";
 
 export default function Home() {
   return (
-    <div className="h-full w-full p-2">
+    <div className="h-full w-full p-2 font-['Fredoka']">
       
       {/* GRILLE PRINCIPALE (12 Colonnes) */}
       <div className="grid grid-cols-12 gap-6 h-full">
 
-        {/* --- COLONNE 1 : ÉQUIPES (Gauche - 3 cols) --- */}
-        <div className="col-span-12 xl:col-span-3 flex flex-col gap-6 h-full">
-          {/* Le Donut en haut */}
-          <div className="h-[35%] min-h-[200px]">
-            <TeamTile />
-          </div>
-          {/* La liste des absents en dessous */}
-          <div className="h-[65%] min-h-[300px]">
-            <LeavesTile />
-          </div>
+        {/* --- LIGNE 1 : ALERTES ET ACTIONS (HAUT) --- */}
+        {/* Congés / Absences (Gauche) */}
+        <div className="col-span-3 h-[300px]">
+          <LeavesTile />
+        </div>
+
+        {/* Matériels / Locations / Alertes (Milieu) */}
+        <div className="col-span-6 flex flex-col gap-4 h-[300px]">
+          <MiddleTiles /> {/* Ce composant contient déjà les 3 sous-tuiles horizontalement */}
+        </div>
+
+        {/* Actions Prioritaires (Droite) */}
+        <div className="col-span-3 h-[300px]">
+          <TasksTile />
         </div>
 
 
-        {/* --- COLONNE 2 : CENTRAL (Milieu - 6 cols) --- */}
-        <div className="col-span-12 xl:col-span-6 flex flex-col gap-6 h-full">
-            
-            {/* Zone Alertes (Météo/Stock/Notifs) */}
-            {/* On crée une sous-grille de 12 pour que MiddleTiles (qui utilise col-span-4) s'alignent parfaitement sur une ligne */}
-            <div className="grid grid-cols-12 gap-4 min-h-[180px]">
-                <MiddleTiles />
-            </div>
+        {/* --- LIGNE 2 : CŒUR DU CHANTIER (MILIEU) --- */}
+        {/* Chantiers avec barre d'avancement (Large) */}
+        <div className="col-span-9 h-[350px]">
+          <BudgetHeuresTile />
+        </div>
 
-            {/* La Grosse Liste des Chantiers */}
-            <div className="flex-1 min-h-[400px]">
-                <BudgetHeuresTile />
-            </div>
+        {/* Planning (Petit aperçu à droite) */}
+        <div className="col-span-3 bg-white rounded-[25px] p-6 shadow-sm flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-100">
+           <p className="font-bold">Planning Semaine</p>
+           <p className="text-xs uppercase font-black">En attente de données</p>
         </div>
 
 
-        {/* --- COLONNE 3 : ACTIONS & STATS (Droite - 3 cols) --- */}
-        <div className="col-span-12 xl:col-span-3 flex flex-col gap-6 h-full">
-          {/* Tâches prioritaires (Important donc en haut) */}
-          <div className="h-[60%] min-h-[300px]">
-             <TasksTile />
-          </div>
-          {/* Charge de travail en bas */}
-          <div className="h-[40%] min-h-[200px]">
-             <WorkloadTile />
-          </div>
+        {/* --- LIGNE 3 : PERFORMANCE (BAS) --- */}
+        {/* Suivi Objectifs / Heures */}
+        <div className="col-span-4 h-[350px]">
+          <WorkloadTile /> {/* On va le renommer en "Suivi Objectifs" */}
+        </div>
+
+        {/* Tuile Libre 1 (Idée : Staffing / Équipe) */}
+        <div className="col-span-4 h-[350px]">
+          <TeamTile />
+        </div>
+
+        {/* Tuile Libre 2 (Idée : News / Sécurité) */}
+        <div className="col-span-4 bg-[#2d3436] rounded-[25px] p-6 shadow-sm text-white">
+           <h2 className="text-xl font-black uppercase mb-4">Sécurité / Flash</h2>
+           <div className="bg-orange-500/20 p-4 rounded-xl border border-orange-500/30">
+              <p className="text-orange-400 font-bold">⚠️ Rappel : Port du casque obligatoire sur le chantier de Cannes.</p>
+           </div>
         </div>
 
       </div>
