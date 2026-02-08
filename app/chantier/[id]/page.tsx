@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye, AlertCircle } from 'lucide-react';
 import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye } from 'lucide-react';
 import Link from 'next/link';
 
