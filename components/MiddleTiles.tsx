@@ -2,143 +2,148 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShoppingCart, CalendarClock, MessageSquareWarning, AlertTriangle, Truck, MapPin } from 'lucide-react';
+import { 
+  ChevronLeft, ChevronRight, HardHat, Plus, 
+  Printer, AlertTriangle, Trash2, Activity, Check, 
+  Send, FileCheck, FileX, Clock
+} from 'lucide-react';
 
-interface MiddleTilesProps {
-  alertsCount?: number;
-}
+export default function PlanningPage() {
+  const [employes, setEmployes] = useState<any[]>([]);
+  const [chantiers, setChantiers] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState(new Date("2026-02-09")); 
 
-export default function MiddleTiles({ alertsCount = 0 }: MiddleTilesProps) {
-  const [besoins, setBesoins] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [conformite, setConformite] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<{empId: string, startDate: string, endDate: string} | null>(null);
+  const [selectedChantier, setSelectedChantier] = useState("");
+  const [assignType, setAssignType] = useState("chantier");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      // 1. Besoins Matériel + Nom du Chantier
-      const { data: dataBesoins } = await supabase
-        .from('material_requests')
-        .select('*, chantiers(nom)')
-        .eq('status', 'a_commander')
-        .limit(5);
-      if (dataBesoins) setBesoins(dataBesoins);
+  const fetchData = async () => {
+    setLoading(true);
+    const { data: emp } = await supabase.from('employes').select('*').order('nom');
+    const { data: chan } = await supabase.from('chantiers').select('id, nom').eq('statut', 'en_cours');
+    const { data: plan } = await supabase.from('planning').select('*, chantiers(nom)');
+    
+    setEmployes(emp || []);
+    setChantiers(chan || []);
+    setAssignments(plan || []);
+    setLoading(false);
+  };
 
-      // 2. Locations + Nom du Chantier
-      const { data: dataLocs } = await supabase
-        .from('rentals')
-        .select('*, chantiers(nom)')
-        .eq('status', 'actif')
-        .order('date_fin', { ascending: true })
-        .limit(5);
-      if (dataLocs) setLocations(dataLocs);
+  useEffect(() => { fetchData(); }, [currentDate]);
 
-      // 3. Alertes Conformité Spécifiques (ex: rapports non signés ou anomalies)
-      const { data: dataAnomalies } = await supabase
-        .from('site_reports')
-        .select('*, chantiers(nom)')
-        .eq('has_anomalies', true)
-        .limit(3);
-      if (dataAnomalies) setConformite(dataAnomalies);
-    };
+  // Fonction pour envoyer/valider l'ODM
+  const handleActionODM = async (id: string, field: string, value: boolean) => {
+    const { error } = await supabase.from('planning').update({ [field]: value }).eq('id', id);
+    if (!error) fetchData();
+  };
 
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const saveAssignment = async () => {
+    if (!selectedCell || (!selectedChantier && assignType === 'chantier')) return;
+    const start = new Date(selectedCell.startDate);
+    const end = new Date(selectedCell.endDate);
+    const inserts = [];
 
-  const getDaysRemaining = (dateStr: string) => {
-    const today = new Date();
-    const end = new Date(dateStr);
-    const diffTime = end.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== 0 && d.getDay() !== 6) {
+        inserts.push({
+          employe_id: selectedCell.empId,
+          chantier_id: assignType === 'chantier' ? selectedChantier : null,
+          date_debut: d.toISOString().split('T')[0],
+          date_fin: d.toISOString().split('T')[0],
+          type: assignType,
+          odm_envoye: false,
+          odm_signe: false
+        });
+      }
+    }
+    const { error } = await supabase.from('planning').insert(inserts);
+    if (!error) { setIsModalOpen(false); setSelectedChantier(""); fetchData(); }
+  };
+
+  const getWeekDays = () => {
+    const start = new Date(currentDate);
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+    start.setDate(diff);
+    return Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full font-['Fredoka']">
-      
-      {/* TUILE 1 : MATÉRIEL (BESOINS) */}
-      <div className="bg-[#0984e3] rounded-[25px] p-5 flex flex-col shadow-sm text-white relative overflow-hidden group">
-        <div className="flex justify-between items-start mb-4 z-10">
-          <div>
-            <h3 className="text-[16px] font-black uppercase leading-none tracking-tighter">Matériel</h3>
-            <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-widest">Demandes Achat</p>
-          </div>
-          <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md"><ShoppingCart size={18} /></div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto space-y-2 z-10 custom-scrollbar pr-1">
-          {besoins.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-40 italic text-[11px]">Aucune commande en attente</div>
-          ) : besoins.map((item, i) => (
-            <div key={i} className="bg-white/10 hover:bg-white/20 transition-all rounded-xl p-3 border border-white/5">
-              <div className="flex justify-between items-start mb-1">
-                <p className="font-black text-[12px] uppercase leading-none truncate pr-2">{item.item}</p>
-                <AlertTriangle size={12} className="text-yellow-300 shrink-0" />
-              </div>
-              <div className="flex items-center gap-1 text-[9px] font-bold text-blue-100">
-                <MapPin size={10} />
-                <span className="uppercase truncate italic">{item.chantiers?.nom || 'Dépôt'}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <Truck className="absolute -right-5 -bottom-5 opacity-10 w-24 h-24 rotate-12 group-hover:rotate-0 transition-transform duration-700" />
+    <div className="min-h-screen bg-[#f0f3f4] p-8 font-['Fredoka']">
+      <div className="flex justify-between items-end mb-8">
+        <h1 className="text-3xl font-black uppercase text-gray-800 tracking-tighter">Planning & ODM</h1>
+        {/* Navigation Semaine ici... */}
       </div>
 
-      {/* TUILE 2 : LOCATIONS (SUIVI) */}
-      <div className="bg-[#6c5ce7] rounded-[25px] p-5 flex flex-col shadow-sm text-white overflow-hidden group">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h3 className="text-[16px] font-black uppercase leading-none tracking-tighter">Locations</h3>
-            <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-widest">Fin de contrat</p>
-          </div>
-          <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md"><CalendarClock size={18} /></div>
-        </div>
+      <div className="bg-white rounded-[40px] shadow-sm overflow-hidden border border-gray-100">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-50/50">
+              <th className="p-6 text-left w-[240px] sticky left-0 bg-white z-10 font-black uppercase text-[10px] text-gray-400">Opérateurs</th>
+              {getWeekDays().map((day, i) => (
+                <th key={i} className="p-4 border-l border-gray-100 text-center">
+                  <p className="text-lg font-black text-gray-800">{day.getDate()}/{day.getMonth() + 1}</p>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {employes.map((emp) => (
+              <tr key={emp.id} className="group border-b border-gray-50">
+                <td className="p-4 sticky left-0 bg-white z-10 font-black text-xs uppercase">{emp.nom} {emp.prenom}</td>
+                {getWeekDays().map((day, i) => {
+                  const dateStr = day.toISOString().split('T')[0];
+                  const mission = assignments.find(a => a.employe_id === emp.id && dateStr === a.date_debut);
+                  
+                  return (
+                    <td key={i} className="p-1 border-l border-gray-100 h-28 relative">
+                      {mission && mission.type === 'chantier' ? (
+                        <div className="w-full h-full rounded-2xl p-3 text-white bg-[#0984e3] shadow-md flex flex-col justify-between group/item">
+                          <div className="flex justify-between items-start">
+                            <p className="text-[11px] font-black uppercase leading-tight truncate pr-4">{mission.chantiers?.nom}</p>
+                            
+                            {/* PASTILLE DE STATUT ODM */}
+                            <div 
+                              className={`w-3 h-3 rounded-full border-2 border-white shadow-sm shrink-0 ${
+                                mission.odm_signe ? 'bg-green-400' : 
+                                mission.odm_envoye ? 'bg-orange-400 animate-pulse' : 'bg-red-500'
+                              }`} 
+                              title={mission.odm_signe ? "Signé" : mission.odm_envoye ? "Envoyé" : "À envoyer"}
+                            />
+                          </div>
 
-        <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
-          {locations.map((loc, i) => {
-            const days = getDaysRemaining(loc.date_fin);
-            const isUrgent = days <= 2;
-            return (
-              <div key={i} className={`rounded-xl p-3 border transition-all ${isUrgent ? 'bg-red-500/80 border-white/20 animate-pulse' : 'bg-white/10 border-white/5 hover:bg-white/20'}`}>
-                <div className="flex justify-between items-start mb-1">
-                  <p className="font-black text-[12px] uppercase leading-none truncate pr-2">{loc.materiel}</p>
-                  <span className="text-[10px] font-black bg-black/20 px-2 py-0.5 rounded-md">{days}j</span>
-                </div>
-                <div className="flex items-center gap-1 text-[9px] font-bold text-purple-100">
-                  <MapPin size={10} />
-                  <span className="uppercase truncate italic">{loc.chantiers?.nom}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* TUILE 3 : CONFORMITÉ (ALERTES) */}
-      <div className={`rounded-[25px] p-5 flex flex-col shadow-sm text-white overflow-hidden transition-all ${alertsCount > 0 ? 'bg-[#d63031]' : 'bg-gray-800'}`}>
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h3 className="text-[16px] font-black uppercase leading-none tracking-tighter">Conformité</h3>
-            <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-widest">Alertes critiques</p>
-          </div>
-          <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md"><MessageSquareWarning size={18} /></div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
-          {/* On affiche en priorité le chiffre global */}
-          <div className="flex items-center justify-center py-2 bg-black/10 rounded-2xl mb-3">
-             <p className="text-4xl font-black">{alertsCount}</p>
-          </div>
-          
-          {/* Détail des anomalies terrain si elles existent */}
-          {conformite.map((conf, i) => (
-            <div key={i} className="bg-white/5 rounded-lg p-2 border border-white/5">
-               <p className="text-[9px] font-black uppercase leading-none mb-1 text-red-200">Anomalie signalée</p>
-               <p className="text-[10px] font-bold italic truncate text-white/80">{conf.chantiers?.nom}</p>
-            </div>
-          ))}
-        </div>
+                          <div className="flex justify-between items-end">
+                            <div className="flex gap-1">
+                               {!mission.odm_envoye ? (
+                                 <button onClick={() => handleActionODM(mission.id, 'odm_envoye', true)} className="p-1 bg-white/20 rounded hover:bg-white/40 transition-colors">
+                                   <Send size={10} />
+                                 </button>
+                               ) : !mission.odm_signe ? (
+                                 <button onClick={() => handleActionODM(mission.id, 'odm_signe', true)} className="p-1 bg-white/20 rounded hover:bg-white/40 transition-colors">
+                                   <Check size={10} />
+                                 </button>
+                               ) : <FileCheck size={14} className="text-green-200" />}
+                            </div>
+                            <HardHat size={14} className="opacity-20" />
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => openAssignmentModal(emp.id, day)} className="w-full h-full flex items-center justify-center text-gray-200 hover:text-blue-300 transition-all">+</button>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
