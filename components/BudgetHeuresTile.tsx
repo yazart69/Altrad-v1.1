@@ -19,13 +19,16 @@ export default function BudgetHeuresTile() {
 
   return (
     <div className="h-full w-full bg-[#ff9f43] rounded-[25px] flex flex-col shadow-sm overflow-hidden p-6 font-['Fredoka'] text-white">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-[28px] font-black uppercase tracking-tight leading-none">Chantiers</h2>
-        {/* Bouton pour ajouter un futur chantier */}
-        <button className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors">
-            <Plus size={24} />
-        </button>
-      </div>
+     <div className="flex justify-between items-center mb-4">
+  <h2 className="text-[28px] font-black uppercase tracking-tight leading-none">Chantiers</h2>
+  
+  {/* LE BOUTON AJOUTER EST MAINTENANT UN LIEN */}
+  <Link href="/chantier/nouveau">
+    <button className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors cursor-pointer">
+        <Plus size={24} />
+    </button>
+  </Link>
+ </div>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
         {chantiers.map((chantier, i) => (
