@@ -1,89 +1,152 @@
 "use client";
 
-import React from 'react';
-import { ShoppingCart, Truck, MessageSquareWarning } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { ShoppingCart, CalendarClock, MessageSquareWarning, AlertTriangle, Truck } from 'lucide-react';
+import Link from 'next/link';
 
 export default function MiddleTiles() {
-  const tiles = [
-    {
-      label: "Commandes",
-      sub: "Matériel en attente",
-      count: 3,
-      icon: ShoppingCart,
-      color: "#ffffff", // Icône blanche pour ressortir sur le fond coloré
-      bgColor: "#b8e994" // Vert Clair
-    },
-    {
-      label: "Locations",
-      sub: "Suivi Équipements",
-      count: 1,
-      icon: Truck,
-      color: "#ffffff",
-      bgColor: "#74b9ff" // Bleu Clair
-    },
-    {
-      label: "Notes Chantier",
-      sub: "Incidents signalés",
-      count: 5,
-      icon: MessageSquareWarning,
-      color: "#ffffff",
-      bgColor: "#fd79a8" // Rose
-    }
-  ];
+  const [besoins, setBesoins] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      // 1. Récupérer les besoins "A commander" (Urgent)
+      const { data: dataBesoins } = await supabase
+        .from('material_requests')
+        .select('*, chantiers(nom)')
+        .eq('status', 'a_commander')
+        .limit(5); // On affiche les 5 derniers
+      if (dataBesoins) setBesoins(dataBesoins);
+
+      // 2. Récupérer les locations qui finissent bientôt (dans les 7 prochains jours)
+      // Note: Pour simplifier la requête SQL côté client, on prend tout ce qui est actif et on filtre en JS
+      const { data: dataLocs } = await supabase
+        .from('rentals')
+        .select('*, chantiers(nom)')
+        .eq('status', 'actif')
+        .order('date_fin', { ascending: true })
+        .limit(5);
+      if (dataLocs) setLocations(dataLocs);
+
+      // 3. Récupérer les notes récentes
+      const { data: dataReports } = await supabase
+        .from('site_reports')
+        .select('*, chantiers(nom)')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (dataReports) setReports(dataReports);
+    };
+
+    fetchData();
+    
+    // Rafraîchir toutes les 30 secondes pour voir les demandes des opérateurs en temps réel
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Utilitaire pour calculer les jours restants
+  const getDaysRemaining = (dateStr: string) => {
+    const today = new Date();
+    const end = new Date(dateStr);
+    const diffTime = end.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  };
 
   return (
     <>
-      {tiles.map((tile, i) => (
-        <div 
-          key={i} 
-          className="col-span-4 rounded-[25px] relative shadow-sm flex flex-col p-[25px] h-full transition-all hover:shadow-md cursor-pointer overflow-visible border-none"
-          style={{ backgroundColor: tile.bgColor }}
-        >
-          {/* TEXTE BLANC (pour contraster avec les fonds colorés) */}
-          <div className="flex flex-col z-10">
-            <span className="text-white font-[800] text-[18px] uppercase leading-none shadow-sm">
-              {tile.label}
-            </span>
-            <span className="text-white/80 font-[700] text-[11px] uppercase tracking-wider mt-1">
-              {tile.sub}
-            </span>
+      {/* TUILE 1 : BESOINS & COMMANDES (Bleu/Cyan) */}
+      <div className="col-span-4 bg-[#0984e3] rounded-[25px] p-5 flex flex-col shadow-sm text-white font-['Fredoka'] overflow-hidden relative group">
+        <div className="flex justify-between items-start mb-3 z-10">
+          <div>
+            <h3 className="text-[18px] font-black uppercase leading-none">Matériel</h3>
+            <p className="text-[11px] opacity-80 mt-1">Demandes terrain</p>
           </div>
-
-          {/* NOTIFICATION */}
-          {tile.count > 0 && (
-            <div 
-              style={{ 
-                position: 'absolute',
-                top: '15px', 
-                right: '15px',
-                width: '40px',
-                height: '40px',
-                backgroundColor: '#ff3b30', // Rouge vif pour l'alerte
-                border: '3px solid white',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-                zIndex: 20
-              }}
-            >
-              <span className="text-white text-[18px] font-[900]">
-                {tile.count}
-              </span>
-            </div>
-          )}
-
-          {/* ICONE */}
-          <div className="mt-auto flex justify-end">
-            <div 
-              className="w-12 h-12 rounded-[18px] flex items-center justify-center shadow-sm bg-white/20"
-            >
-              <tile.icon size={24} strokeWidth={2.5} color={tile.color} />
-            </div>
-          </div>
+          <div className="bg-white/20 p-2 rounded-xl"><ShoppingCart size={20} /></div>
         </div>
-      ))}
+        
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 z-10">
+          {besoins.length === 0 ? (
+            <div className="text-center opacity-60 text-sm mt-4">R.A.S. Stock OK</div>
+          ) : (
+            besoins.map((item, i) => (
+              <div key={i} className="bg-white/10 rounded-lg p-2 flex items-center justify-between">
+                <div className="overflow-hidden">
+                  <p className="font-bold text-[13px] truncate">{item.item}</p>
+                  <p className="text-[10px] opacity-80 truncate">{item.chantiers?.nom || 'Chantier inconnu'}</p>
+                </div>
+                <AlertTriangle size={16} className="text-yellow-300 shrink-0 ml-2" />
+              </div>
+            ))
+          )}
+        </div>
+        {/* Effet déco */}
+        <Truck className="absolute -right-5 -bottom-5 opacity-10 w-24 h-24 rotate-12" />
+      </div>
+
+
+      {/* TUILE 2 : LOCATIONS (Violet/Rose) */}
+      <div className="col-span-4 bg-[#6c5ce7] rounded-[25px] p-5 flex flex-col shadow-sm text-white font-['Fredoka'] overflow-hidden">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-[18px] font-black uppercase leading-none">Locations</h3>
+            <p className="text-[11px] opacity-80 mt-1">Retours à prévoir</p>
+          </div>
+          <div className="bg-white/20 p-2 rounded-xl"><CalendarClock size={20} /></div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+           {locations.length === 0 ? (
+            <div className="text-center opacity-60 text-sm mt-4">Aucune location active</div>
+          ) : (
+            locations.map((loc, i) => {
+              const days = getDaysRemaining(loc.date_fin);
+              const isUrgent = days <= 2;
+              return (
+                <div key={i} className={`rounded-lg p-2 flex justify-between items-center ${isUrgent ? 'bg-red-500/80' : 'bg-white/10'}`}>
+                  <div className="overflow-hidden">
+                     <p className="font-bold text-[13px] truncate">{loc.materiel}</p>
+                     <p className="text-[10px] opacity-80 truncate">{loc.chantiers?.nom}</p>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <p className="text-[14px] font-black">{days}j</p>
+                    <p className="text-[9px] uppercase">restants</p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+
+      {/* TUILE 3 : NOTES CHANTIER (Rouge/Orange) */}
+      <div className="col-span-4 bg-[#d63031] rounded-[25px] p-5 flex flex-col shadow-sm text-white font-['Fredoka'] overflow-hidden">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-[18px] font-black uppercase leading-none">Alertes</h3>
+            <p className="text-[11px] opacity-80 mt-1">Difficultés signalées</p>
+          </div>
+          <div className="bg-white/20 p-2 rounded-xl"><MessageSquareWarning size={20} /></div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+          {reports.length === 0 ? (
+            <div className="text-center opacity-60 text-sm mt-4">Aucun problème signalé</div>
+          ) : (
+            reports.map((report, i) => (
+              <div key={i} className="bg-black/20 rounded-lg p-2 border-l-4 border-yellow-400">
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="font-bold text-[11px] uppercase bg-white/20 px-1 rounded">{report.auteur}</span>
+                  <span className="text-[9px] opacity-70">{report.chantiers?.nom?.substring(0, 10)}...</span>
+                </div>
+                <p className="text-[12px] font-medium leading-tight italic">"{report.message}"</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </>
   );
 }
