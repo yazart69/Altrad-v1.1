@@ -159,37 +159,63 @@ export default function ChantierDetail() {
 
         {/* --- CONTENU --- */}
 
-        {/* 1. INFOS */}
-        {activeTab === 'infos' && (
-            <div className="bg-white rounded-[25px] p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                 <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase">Nom du Chantier</label>
-                    <input value={chantier.nom} onChange={(e) => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
+        {/* 1. INFOS & TÂCHES */}
+{activeTab === 'infos' && (
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+        
+        {/* A. Formulaire Infos Générales (Déjà existant) */}
+        <div className="bg-white rounded-[25px] p-6 shadow-sm space-y-4">
+            <h3 className="font-black text-gray-800 uppercase mb-2">Informations Générales</h3>
+            <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Nom du Chantier</label>
+                <input value={chantier.nom} onChange={(e) => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
+            </div>
+            <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Adresse</label>
+                <input value={chantier.adresse || ''} onChange={(e) => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase">Statut</label>
+                    <select value={chantier.statut} onChange={(e) => setChantier({...chantier, statut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none">
+                        <option value="en_cours">🟢 En Cours</option>
+                        <option value="planifie">🔵 Planifié</option>
+                        <option value="termine">🔴 Terminé</option>
+                    </select>
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase">Adresse</label>
-                    <input value={chantier.adresse || ''} onChange={(e) => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase">Statut</label>
-                        <select value={chantier.statut} onChange={(e) => setChantier({...chantier, statut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none">
-                            <option value="en_cours">🟢 En Cours</option>
-                            <option value="planifie">🔵 Planifié</option>
-                            <option value="termine">🔴 Terminé</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase">Budget H</label>
-                        <input type="number" value={chantier.heures_budget || 0} onChange={(e) => setChantier({...chantier, heures_budget: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none" />
-                    </div>
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase">Notes Fixes</label>
-                    <textarea rows={3} value={chantier.notes || ''} onChange={(e) => setChantier({...chantier, notes: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 outline-none" />
+                    <label className="text-xs font-bold text-gray-400 uppercase">Budget H</label>
+                    <input type="number" value={chantier.heures_budget || 0} onChange={(e) => setChantier({...chantier, heures_budget: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none" />
                 </div>
             </div>
-        )}
+        </div>
+
+        {/* B. NOUVEAU : Gestion des Tâches du chantier */}
+        <div className="bg-[#2d3436] rounded-[25px] p-6 shadow-sm text-white">
+            <h3 className="font-black uppercase mb-4 flex items-center gap-2">
+                <AlertCircle size={20} className="text-[#00b894]"/> Tâches à faire
+            </h3>
+            
+            {/* Input Ajout Tâche */}
+            <div className="flex gap-2 mb-4">
+                <input 
+                    placeholder="Nouvelle tâche (ex: Valider plan)..." 
+                    onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                            const val = e.currentTarget.value;
+                            if(!val) return;
+                            await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: val }]);
+                            e.currentTarget.value = "";
+                            alert("Tâche ajoutée !"); // Feedback simple
+                        }
+                    }}
+                    className="flex-1 bg-white/10 text-white placeholder-white/50 p-3 rounded-xl outline-none font-bold focus:bg-white/20 transition-colors"
+                />
+            </div>
+            <p className="text-xs text-white/40 italic">Appuyez sur Entrée pour ajouter. Ces tâches apparaîtront sur l'accueil.</p>
+        </div>
+    </div>
+)}
 
         {/* 2. MATÉRIEL */}
         {activeTab === 'materiel' && (
