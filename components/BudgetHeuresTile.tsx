@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Plus, MapPin, clock } from 'lucide-react';
+import { Plus, MapPin, Clock } from 'lucide-react';
 
 export default function BudgetHeuresTile() {
   const [chantiers, setChantiers] = useState<any[]>([]);
