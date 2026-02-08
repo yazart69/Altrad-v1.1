@@ -1,36 +1,41 @@
-"use client";
-
-import Sidebar from '@/components/Sidebar';
-import TasksTile from '@/components/TasksTile';
-import WorkloadTile from '@/components/WorkloadTile';
-import TeamTile from '@/components/TeamTile';
-import CalendarTile from '@/components/CalendarTile';
-import MiddleTiles from '@/components/MiddleTiles';
-import LeavesTile from '@/components/LeavesTile';
-import BudgetHeuresTile from '@/components/BudgetHeuresTile';
+import TeamTile from "@/components/TeamTile";
+import BudgetHeuresTile from "@/components/BudgetHeuresTile";
+import LeavesTile from "@/components/LeavesTile";
+import TasksTile from "@/components/TasksTile";
+import WorkloadTile from "@/components/WorkloadTile";
+import MiddleTiles from "@/components/MiddleTiles";
 
 export default function Home() {
   return (
-    <div className="flex h-screen w-full bg-[#f0f3f4] overflow-hidden font-['Fredoka']">
-      <Sidebar />
-      <div className="flex-1 h-full flex flex-col p-[20px] pb-6 pr-8 overflow-hidden">
-        <main className="flex flex-col h-full w-full">
-          <div className="flex-[35] w-full flex min-h-0 gap-2">
-            <div className="flex-1 h-full overflow-hidden"><TasksTile /></div>
-            <div className="flex-1 h-full overflow-hidden"><WorkloadTile /></div>
-            <div className="flex-1 h-full overflow-hidden"><TeamTile /></div>
-          </div>
-          <div className="h-[12px] w-full bg-transparent my-1 shrink-0"></div>
-          <div className="flex-[15] w-full grid grid-cols-12 gap-4 min-h-0">
-             <MiddleTiles />
-          </div>
-          <div className="h-[12px] w-full bg-transparent my-1 shrink-0"></div>
-          <div className="flex-[50] w-full flex min-h-0 gap-2">
-            <div className="w-[25%] h-full overflow-hidden"><BudgetHeuresTile /></div>
-            <div className="flex-1 h-full overflow-hidden"><CalendarTile /></div>
-            <div className="w-[25%] h-full overflow-hidden"><LeavesTile /></div>
-          </div>
-        </main>
+    <div className="h-full w-full">
+      
+      {/* Grille principale du Dashboard */}
+      <div className="grid grid-cols-12 grid-rows-12 gap-6 h-full p-2">
+        
+        {/* LIGNE 1 : KPI & ALERTES */}
+        <div className="col-span-12 lg:col-span-3 row-span-4">
+          <TeamTile />
+        </div>
+        <div className="col-span-12 lg:col-span-6 row-span-2 grid grid-cols-12 gap-6">
+           <MiddleTiles />
+        </div>
+        <div className="col-span-12 lg:col-span-3 row-span-4">
+          <LeavesTile />
+        </div>
+
+        {/* LIGNE 2 : SUIVI CHANTIERS */}
+        <div className="col-span-12 lg:col-span-6 row-span-5">
+          <BudgetHeuresTile />
+        </div>
+
+        {/* LIGNE 3 : TÂCHES & CHARGE */}
+        <div className="col-span-12 lg:col-span-3 row-span-5">
+           <TasksTile />
+        </div>
+        <div className="col-span-12 lg:col-span-3 row-span-5">
+           <WorkloadTile />
+        </div>
+
       </div>
     </div>
   );
