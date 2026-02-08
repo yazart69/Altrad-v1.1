@@ -1,70 +1,39 @@
+@import "tailwindcss";
+
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700;800;900&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 :root {
-  /* Palette Principale */
-  --color-red: #ff6b6b;
-  --color-green: #00b894;
-  --color-orange: #ff8a75;
-  --color-blue: #3d6674;
-  
-  /* Backgrounds */
-  --bg-main: #f0f3f4;
-  --bg-tile: #ffffff;
-
-  /* Dimensions Standard */
-  --tile-padding: 25px;
-  --tile-radius: 25px;
+  --background: #f0f3f4;
+  --foreground: #171717;
 }
 
-html, body {
-  height: 100%;
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Fredoka', sans-serif;
   margin: 0;
   padding: 0;
-  background-color: var(--bg-main);
   overflow: hidden;
-  font-family: 'Fredoka', sans-serif;
+  height: 100vh;
 }
 
 @layer components {
-  /* Classe utilitaire pour toutes les tuiles */
   .tile-base {
-    @apply h-full w-full rounded-[25px] flex flex-col shadow-sm overflow-hidden border-none;
+    height: 100%;
+    width: 100%;
+    border-radius: 25px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: none;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
 
-  /* Header standard des tuiles */
-  .tile-header {
-    @apply p-[25px] pb-4 flex justify-between items-start shrink-0;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
   }
-
-  /* Titre principal des tuiles */
-  .tile-title {
-    @apply font-[800] text-[22px] uppercase leading-[1.1] mt-2;
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
   }
-
-  /* Sous-titre / Catégorie */
-  .tile-subtitle {
-    @apply text-[11px] font-[700] uppercase tracking-[0.15em] leading-none;
-  }
-}
-
-/* Scrollbar personnalisée */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
