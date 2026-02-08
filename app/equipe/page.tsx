@@ -98,12 +98,13 @@ export default function EquipePage() {
               <input type="text" placeholder="NOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, nom: e.target.value.toUpperCase()})} />
               <input type="text" placeholder="PRÉNOM" className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, prenom: e.target.value})} />
               <select className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" onChange={(e)=>setNewEmp({...newEmp, role: e.target.value})}>
-                <option value="Ouvrier">Ouvrier</option>
-                <option value="Chef d'équipe">Chef d'équipe</option>
-                <option value="Chef de chantier">Chef de chantier</option>
-                <option value="OPERATEUR">OPERATEUR</option>
-                <option value="INTERIMAIRE">INTERIMAIRE</option>
-              </select>
+              <select name="role" className="...">
+  <option value="interne">Interne (Altrad)</option>
+  <option value="interim">Intérimaire</option>
+  <option value="sous-traitant">Sous-traitant</option>
+  <option value="altrad_autres">Altrad (Prêt inter-filiale)</option>
+  {/* On peut garder "Chef" ou "Responsable" en sous-catégorie si besoin */}
+</select>
               <button onClick={handleAdd} className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs mt-4">Créer le dossier</button>
             </div>
           </div>
