@@ -1,63 +1,84 @@
 "use client";
 
-import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Calendar, ChevronRight, MapPin, Clock } from 'lucide-react';
+import Link from 'next/link';
 
 export default function CalendarTile() {
-  const [date] = useState(new Date());
-  const monthName = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-  const today = new Date().getDate();
-  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  let startDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  startDay = startDay === 0 ? 6 : startDay - 1; 
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const [upcoming, setUpcoming] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchUpcoming() {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('planning')
+        .select(`
+          id,
+          date_debut,
+          type,
+          chantiers (nom),
+          employes (nom, prenom)
+        `)
+        .gte('date_debut', today)
+        .order('date_debut', { ascending: true })
+        .limit(3);
+
+      if (data) setUpcoming(data);
+      setLoading(false);
+    }
+    fetchUpcoming();
+  }, []);
 
   return (
-    <div className="h-full w-full bg-[#feca57] rounded-[25px] flex flex-col shadow-sm overflow-hidden border-none font-['Fredoka'] text-slate-900">
-      
-      {/* HEADER COMPACT */}
-      <div className="px-[25px] pt-3 pb-0 flex justify-between items-center shrink-0">
-        <h2 className="font-[900] text-[20px] uppercase tracking-tight text-slate-900">{monthName}</h2>
-        <div className="flex gap-1 bg-black/5 p-0.5 rounded-lg">
-          <button className="p-0.5 hover:bg-white rounded-md transition-colors"><ChevronLeft size={18} strokeWidth={3} /></button>
-          <button className="p-0.5 hover:bg-white rounded-md transition-colors"><ChevronRight size={18} strokeWidth={3} /></button>
+    <div className="h-full w-full bg-white rounded-[25px] p-6 shadow-sm border border-gray-100 flex flex-col font-['Fredoka']">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+            <Calendar size={20} />
+          </div>
+          <h2 className="text-xl font-black uppercase text-gray-800 tracking-tighter">Agenda</h2>
         </div>
+        <Link href="/planning" className="text-gray-300 hover:text-black transition-colors">
+          <ChevronRight size={24} />
+        </Link>
       </div>
 
-      <div className="flex-1 px-[15px] pb-1 flex flex-col min-h-0">
-        {/* JOURS SEMAINE - TRÈS SERRÉS */}
-        <div className="grid grid-cols-7 mb-0.5 text-center">
-          {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((day, i) => (
-            <span key={i} className={`text-[11px] font-[900] uppercase ${i >= 5 ? 'text-white' : 'text-slate-800/40'}`}>
-              {day}
-            </span>
-          ))}
-        </div>
-
-        {/* GRILLE SANS GAP ET HAUTEUR RÉDUITE */}
-        <div className="grid grid-cols-7 gap-0 text-center flex-1 items-stretch">
-          {Array.from({ length: startDay }).map((_, i) => <div key={`empty-${i}`}></div>)}
-          
-          {daysArray.map((day) => {
-            const isToday = day === today;
-            return (
-              <div 
-                key={day} 
-                className={`flex items-center justify-center cursor-pointer transition-all relative
-                  ${isToday ? 'bg-white text-[#feca57] shadow-sm font-black rounded-lg scale-90' : 'hover:bg-white/20 text-slate-900 font-bold rounded-md'}
-                `}
-                style={{ height: '100%', minHeight: '24px' }}
-              >
-                <span className="text-[14px] leading-none">{day}</span>
-                
-                {[2, 6, 15, 24].includes(day) && !isToday && (
-                  <div className="absolute bottom-0.5 w-1 h-1 rounded-full bg-white"></div>
-                )}
+      <div className="flex-1 space-y-4">
+        {loading ? (
+          <div className="h-full flex items-center justify-center text-gray-300 animate-pulse text-xs font-bold uppercase">Chargement...</div>
+        ) : upcoming.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-300 text-xs font-bold uppercase italic text-center">Aucune mission <br/> programmée</div>
+        ) : (
+          upcoming.map((item, i) => (
+            <div key={i} className="group flex items-center gap-4 p-3 rounded-2xl bg-gray-50 hover:bg-blue-50 transition-all cursor-pointer">
+              <div className="flex flex-col items-center justify-center bg-white shadow-sm rounded-xl px-3 py-2 min-w-[50px] border border-gray-100">
+                <span className="text-[10px] font-black text-blue-500 uppercase">
+                  {new Date(item.date_debut).toLocaleDateString('fr-FR', { weekday: 'short' })}
+                </span>
+                <span className="text-lg font-black text-gray-800 leading-none">
+                  {new Date(item.date_debut).getDate()}
+                </span>
               </div>
-            );
-          })}
-        </div>
+              
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-black text-gray-800 uppercase truncate">
+                  {item.chantiers?.nom || item.type}
+                </p>
+                <div className="flex items-center gap-1 text-gray-400">
+                  <Clock size={10} />
+                  <span className="text-[9px] font-bold uppercase">{item.employes?.prenom} {item.employes?.nom}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
+
+      <Link href="/planning" className="mt-4 w-full py-3 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-center hover:bg-blue-600 transition-colors">
+        Voir tout le planning
+      </Link>
     </div>
   );
 }
