@@ -3,8 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, Save, Share2, Bell, HardHat, GraduationCap, 
-  Plus, Trash2, Car, CheckCircle2, FileUp, X 
+  ArrowLeft, Save, Bell, HardHat, GraduationCap, 
+  Plus, Trash2, Car, FileUp, CheckCircle2, Loader2 
 } from 'lucide-react';
 
 export default function FicheEmploye() {
@@ -12,15 +12,12 @@ export default function FicheEmploye() {
   const router = useRouter();
   const [emp, setEmp] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  
-  // États pour les entrées rapides
   const [newHabil, setNewHabil] = useState("");
   const [newForma, setNewForma] = useState("");
 
   useEffect(() => {
     async function fetchEmp() {
       const { data } = await supabase.from('employes').select('*').eq('id', id).single();
-      // On s'assure que les listes sont des tableaux
       if (data) {
         data.habilitations_json = data.habilitations_json || [];
         data.formations_json = data.formations_json || [];
@@ -31,137 +28,131 @@ export default function FicheEmploye() {
     fetchEmp();
   }, [id]);
 
-  const handleSave = async () => {
-    const { error } = await supabase.from('employes').update(emp).eq('id', id);
-    if (!error) alert("Dossier mis à jour !");
+  // LOGIQUE UPLOAD
+  const handleUpload = async (e: any, type: 'habil' | 'forma', idx: number) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const path = `${emp.id}/${type}_${idx}_${Date.now()}`;
+    const { data, error } = await supabase.storage.from('documents_employes').upload(path, file);
+    if (!error) {
+      const { data: url } = supabase.storage.from('documents_employes').getPublicUrl(path);
+      const copy = type === 'habil' ? [...emp.habilitations_json] : [...emp.formations_json];
+      copy[idx].doc_url = url.publicUrl;
+      setEmp({ ...emp, [type === 'habil' ? 'habilitations_json' : 'formations_json']: copy });
+      alert("Document enregistré !");
+    }
   };
 
-  // AJOUT DYNAMIQUE (Touche Entrée)
   const addItem = (type: 'habil' | 'forma') => {
     if (type === 'habil' && newHabil) {
-      const updated = [...emp.habilitations_json, { label: newHabil, ok: false, exp: "" }];
-      setEmp({...emp, habilitations_json: updated});
+      setEmp({...emp, habilitations_json: [...emp.habilitations_json, { label: newHabil, ok: false, exp: "" }]});
       setNewHabil("");
     } else if (type === 'forma' && newForma) {
-      const updated = [...emp.formations_json, { label: newForma, prevu: "", exp: "" }];
-      setEmp({...emp, formations_json: updated});
+      setEmp({...emp, formations_json: [...emp.formations_json, { label: newForma, prevu: "", exp: "" }]});
       setNewForma("");
     }
   };
 
-  if (loading) return <div className="p-10 font-black uppercase">Chargement du passeport sécurité...</div>;
+  const handleSave = async () => {
+    const { error } = await supabase.from('employes').update(emp).eq('id', id);
+    if (!error) alert("Dossier sauvegardé !");
+  };
+
+  if (loading) return <div className="h-screen flex items-center justify-center font-black uppercase text-gray-400"><Loader2 className="animate-spin mr-2"/> Accès au coffre-fort RH...</div>;
 
   return (
-    <div className="p-4 md:p-8 font-['Fredoka'] max-w-6xl mx-auto pb-20">
+    <div className="p-4 md:p-10 font-['Fredoka'] max-w-6xl mx-auto">
       
-      {/* HEADER ACTIONS */}
-      <div className="flex justify-between items-center mb-8 print:hidden">
+      {/* Navbar de la fiche */}
+      <div className="flex justify-between items-center mb-10">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-400 font-bold hover:text-black">
-          <ArrowLeft size={20} /> Retour
+          <ArrowLeft size={20} /> Retour aux effectifs
         </button>
-        <div className="flex gap-3">
-          <button onClick={handleSave} className="bg-[#d63031] text-white px-8 py-4 rounded-2xl font-black uppercase text-xs shadow-xl flex items-center gap-2">
-            <Save size={18} /> Enregistrer les modifs
-          </button>
-        </div>
+        <button onClick={handleSave} className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs shadow-xl flex items-center gap-2">
+          <Save size={18} /> Enregistrer le dossier
+        </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-12 gap-8">
         
-        {/* --- BLOC GAUCHE : IDENTITÉ & CONVOCATIONS --- */}
+        {/* COLONNE GAUCHE : INFOS & CONVOCATIONS */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm">
-            <h1 className="text-3xl font-black uppercase text-gray-800">{emp.nom} {emp.prenom}</h1>
-            <p className="text-blue-500 font-bold uppercase text-sm">{emp.role}</p>
+          <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+            <h2 className="text-3xl font-black uppercase text-gray-900 leading-tight mb-1">{emp.nom} {emp.prenom}</h2>
+            <p className="text-blue-500 font-bold uppercase text-xs tracking-widest">{emp.role}</p>
             
             <div className="mt-8 pt-8 border-t border-gray-50 space-y-4">
-              <div className="flex items-center gap-3">
-                <Car className="text-gray-400" size={20} />
-                <select 
-                  value={emp.vehicule_type || 'perso'} 
-                  onChange={(e) => setEmp({...emp, vehicule_type: e.target.value})}
-                  className="bg-gray-50 border-none rounded-xl font-bold text-sm flex-1"
-                >
-                  <option value="perso">Véhicule Perso</option>
-                  <option value="PZO">Véhicule PZO (Société)</option>
-                </select>
+              <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Véhicule de service</label>
+              <div className="flex gap-2 bg-gray-50 p-1 rounded-xl">
+                <button onClick={()=>setEmp({...emp, vehicule_type:'perso'})} className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${emp.vehicule_type === 'perso' ? 'bg-white shadow-sm' : 'text-gray-400'}`}>Perso</button>
+                <button onClick={()=>setEmp({...emp, vehicule_type:'PZO'})} className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${emp.vehicule_type === 'PZO' ? 'bg-white shadow-sm' : 'text-gray-400'}`}>PZO</button>
               </div>
               {emp.vehicule_type === 'PZO' && (
                 <input 
-                  type="text" 
-                  placeholder="Immatriculation..." 
-                  value={emp.vehicule_immat || ''} 
-                  onChange={(e) => setEmp({...emp, vehicule_immat: e.target.value})}
-                  className="w-full bg-gray-50 border-none rounded-xl p-3 text-sm font-bold"
+                  type="text" placeholder="Immatriculation..." 
+                  className="w-full bg-gray-50 border-none rounded-xl p-3 text-sm font-bold uppercase"
+                  value={emp.vehicule_immat || ''} onChange={(e)=>setEmp({...emp, vehicule_immat: e.target.value})}
                 />
               )}
             </div>
           </div>
 
-          <div className="bg-black p-6 rounded-[30px] text-white">
+          <div className="bg-[#2d3436] p-8 rounded-[40px] text-white shadow-xl">
             <div className="flex items-center gap-2 mb-4 text-[#ff9f43]">
               <Bell size={18} />
-              <h3 className="font-black uppercase text-xs italic">Convocation / Bureau / Santé</h3>
+              <h3 className="font-black uppercase text-xs">Convocations / Bureau / Santé</h3>
             </div>
             <textarea 
               value={emp.convocations_notes || ''} 
-              onChange={(e) => setEmp({...emp, convocations_notes: e.target.value})}
-              placeholder="Entrez ici les dates de RDV, visites médicales ou convocations bureau..."
-              className="w-full bg-white/10 border-none rounded-2xl p-4 text-xs h-32 focus:ring-1 focus:ring-orange-500"
+              onChange={(e)=>setEmp({...emp, convocations_notes: e.target.value})}
+              placeholder="Ex: RDV Médecine du travail le 12/03..."
+              className="w-full bg-white/10 border-none rounded-2xl p-4 text-xs h-40 focus:ring-1 focus:ring-orange-500 placeholder:text-white/20"
             />
           </div>
         </div>
 
-        {/* --- BLOC DROIT : HABILITATIONS & FORMATIONS --- */}
+        {/* COLONNE DROITE : HABILITATIONS & FORMATIONS */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
           
           {/* SECTION HABILITATIONS */}
-          <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black uppercase flex items-center gap-2"><HardHat /> Habilitations</h2>
+          <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-black uppercase text-gray-800 flex items-center gap-2"><HardHat size={20}/> Habilitations</h3>
               <div className="flex gap-2">
                 <input 
-                  type="text" 
-                  placeholder="Ajouter (ex: H0B0)..." 
-                  value={newHabil}
-                  onKeyDown={(e) => e.key === 'Enter' && addItem('habil')}
-                  onChange={(e) => setNewHabil(e.target.value)}
+                  type="text" placeholder="Ajouter habilitation..." 
                   className="bg-gray-50 border-none rounded-xl px-4 py-2 text-xs font-bold w-48"
+                  value={newHabil} onChange={(e)=>setNewHabil(e.target.value)}
+                  onKeyDown={(e)=>e.key === 'Enter' && addItem('habil')}
                 />
-                <button onClick={() => addItem('habil')} className="bg-gray-100 p-2 rounded-xl"><Plus size={18}/></button>
+                <button onClick={()=>addItem('habil')} className="bg-black text-white p-2 rounded-xl"><Plus size={18}/></button>
               </div>
             </div>
 
             <div className="space-y-3">
-              {emp.habilitations_json.map((h: any, idx: number) => (
-                <div key={idx} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl group">
+              {emp.habilitations_json.map((h:any, idx:number)=>(
+                <div key={idx} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl group transition-all hover:bg-gray-100">
                   <input 
-                    type="checkbox" 
-                    checked={h.ok} 
-                    onChange={(e) => {
-                      const copy = [...emp.habilitations_json];
-                      copy[idx].ok = e.target.checked;
-                      setEmp({...emp, habilitations_json: copy});
+                    type="checkbox" checked={h.ok} 
+                    onChange={(e)=>{
+                      const c = [...emp.habilitations_json]; c[idx].ok = e.target.checked; setEmp({...emp, habilitations_json:c});
                     }}
-                    className="w-5 h-5 rounded-md border-gray-300 text-green-600 focus:ring-green-500" 
+                    className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
                   />
                   <span className="flex-1 font-bold text-sm uppercase">{h.label}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-gray-400 uppercase">Validité:</span>
-                    <input 
-                      type="date" 
-                      value={h.exp} 
-                      onChange={(e) => {
-                        const copy = [...emp.habilitations_json];
-                        copy[idx].exp = e.target.value;
-                        setEmp({...emp, habilitations_json: copy});
-                      }}
-                      className="bg-transparent border-none text-xs font-bold p-0 w-28" 
-                    />
-                  </div>
-                  <button onClick={() => {
-                    const copy = emp.habilitations_json.filter((_:any, i:number) => i !== idx);
-                    setEmp({...emp, habilitations_json: copy});
+                  <input 
+                    type="date" value={h.exp} 
+                    onChange={(e)=>{
+                      const c = [...emp.habilitations_json]; c[idx].exp = e.target.value; setEmp({...emp, habilitations_json:c});
+                    }}
+                    className="bg-transparent border-none text-[10px] font-black p-0 w-24 uppercase"
+                  />
+                  <label className="cursor-pointer">
+                    <input type="file" className="hidden" onChange={(e)=>handleUpload(e, 'habil', idx)} />
+                    <FileUp size={16} className={h.doc_url ? "text-green-500" : "text-gray-300"} />
+                  </label>
+                  <button onClick={()=>{
+                    const c = emp.habilitations_json.filter((_:any,i:number)=>i!==idx); setEmp({...emp, habilitations_json:c});
                   }} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               ))}
@@ -169,47 +160,43 @@ export default function FicheEmploye() {
           </div>
 
           {/* SECTION FORMATIONS */}
-          <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black uppercase flex items-center gap-2"><GraduationCap /> Formations & Recyclages</h2>
+          <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-black uppercase text-gray-800 flex items-center gap-2"><GraduationCap size={20}/> Formations</h3>
               <div className="flex gap-2">
                 <input 
-                  type="text" 
-                  placeholder="Formation à prévoir..." 
-                  value={newForma}
-                  onKeyDown={(e) => e.key === 'Enter' && addItem('forma')}
-                  onChange={(e) => setNewForma(e.target.value)}
+                  type="text" placeholder="Ajouter formation..." 
                   className="bg-gray-50 border-none rounded-xl px-4 py-2 text-xs font-bold w-48"
+                  value={newForma} onChange={(e)=>setNewForma(e.target.value)}
+                  onKeyDown={(e)=>e.key === 'Enter' && addItem('forma')}
                 />
-                <button onClick={() => addItem('forma')} className="bg-gray-100 p-2 rounded-xl"><Plus size={18}/></button>
+                <button onClick={()=>addItem('forma')} className="bg-black text-white p-2 rounded-xl"><Plus size={18}/></button>
               </div>
             </div>
 
             <div className="space-y-3">
-              {emp.formations_json.map((f: any, idx: number) => (
-                <div key={idx} className="grid grid-cols-12 gap-4 items-center bg-gray-50 p-4 rounded-2xl">
+              {emp.formations_json.map((f:any, idx:number)=>(
+                <div key={idx} className="grid grid-cols-12 gap-4 items-center bg-gray-50 p-4 rounded-2xl group transition-all hover:bg-gray-100">
                   <div className="col-span-4 font-bold text-sm uppercase">{f.label}</div>
                   <div className="col-span-3 flex flex-col">
-                    <span className="text-[9px] font-black text-gray-400 uppercase">Prévue le</span>
-                    <input type="date" value={f.prevu} onChange={(e) => {
-                      const copy = [...emp.formations_json];
-                      copy[idx].prevu = e.target.value;
-                      setEmp({...emp, formations_json: copy});
-                    }} className="bg-transparent border-none text-xs font-bold p-0" />
+                    <span className="text-[8px] font-black text-gray-400 uppercase">Prévue</span>
+                    <input type="date" value={f.prevu} onChange={(e)=>{
+                      const c = [...emp.formations_json]; c[idx].prevu = e.target.value; setEmp({...emp, formations_json:c});
+                    }} className="bg-transparent border-none text-[10px] font-black p-0 uppercase" />
                   </div>
                   <div className="col-span-3 flex flex-col">
-                    <span className="text-[9px] font-black text-gray-400 uppercase">Fin Validité</span>
-                    <input type="date" value={f.exp} onChange={(e) => {
-                      const copy = [...emp.formations_json];
-                      copy[idx].exp = e.target.value;
-                      setEmp({...emp, formations_json: copy});
-                    }} className="bg-transparent border-none text-xs font-bold p-0" />
+                    <span className="text-[8px] font-black text-gray-400 uppercase">Fin Validité</span>
+                    <input type="date" value={f.exp} onChange={(e)=>{
+                      const c = [...emp.formations_json]; c[idx].exp = e.target.value; setEmp({...emp, formations_json:c});
+                    }} className="bg-transparent border-none text-[10px] font-black p-0 uppercase" />
                   </div>
-                  <div className="col-span-2 flex justify-end gap-2">
-                    <button className="text-blue-500 hover:bg-blue-100 p-2 rounded-lg"><FileUp size={16}/></button>
-                    <button onClick={() => {
-                      const copy = emp.formations_json.filter((_:any, i:number) => i !== idx);
-                      setEmp({...emp, formations_json: copy});
+                  <div className="col-span-2 flex justify-end gap-3">
+                    <label className="cursor-pointer">
+                      <input type="file" className="hidden" onChange={(e)=>handleUpload(e, 'forma', idx)} />
+                      <FileUp size={16} className={f.doc_url ? "text-green-500" : "text-gray-300"} />
+                    </label>
+                    <button onClick={()=>{
+                      const c = emp.formations_json.filter((_:any,i:number)=>i!==idx); setEmp({...emp, formations_json:c});
                     }} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                   </div>
                 </div>
