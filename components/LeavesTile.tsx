@@ -1,66 +1,48 @@
 "use client";
 
-import React from 'react';
-import { Plane, Check, GraduationCap, Pill, Briefcase, Baby, Coffee } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export default function LeavesTile() {
-  const demandes = [
-    { nom: "Jean Dupont", dates: "12 - 15 Fév.", type: "Congés", icon: Plane, color: "text-[#a55eea]", bg: "bg-white" },
-    { nom: "Lucas Martin", dates: "18 Fév.", type: "Formation", icon: GraduationCap, color: "text-[#fd79a8]", bg: "bg-white" },
-    { nom: "Hervé Renard", dates: "Jusqu'au 20 Fév.", type: "Arrêt Maladie", icon: Pill, color: "text-[#ff6b6b]", bg: "bg-white" },
-    { nom: "Thomas Bernard", dates: "10 - 24 Fév.", type: "Paternité", icon: Baby, color: "text-[#74b9ff]", bg: "bg-white" },
-    { nom: "Sophie Petit", dates: "15 Fév.", type: "RTT", icon: Coffee, color: "text-[#b8e994]", bg: "bg-white" },
-    { nom: "Julie Durand", dates: "22 - 26 Fév.", type: "Formation", icon: GraduationCap, color: "text-[#fd79a8]", bg: "bg-white" },
-    { nom: "Nicolas Roux", dates: "Jusqu'au 14 Fév.", type: "Arrêt Maladie", icon: Pill, color: "text-[#ff6b6b]", bg: "bg-white" },
-  ];
+  const [absents, setAbsents] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchAbsents() {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .neq('statut_actuel', 'disponible'); // On prend tout sauf les disponibles
+      if (data) setAbsents(data);
+    }
+    fetchAbsents();
+  }, []);
 
   return (
-    // FOND VIOLET #a55eea, SANS BORDURE, TEXTE BLANC
-    <div className="h-full w-full bg-[#a55eea] rounded-[25px] flex flex-col shadow-sm overflow-hidden border-none font-['Fredoka'] text-white">
-      
-      {/* HEADER */}
-      <div className="p-[25px] pb-4 flex justify-between items-start shrink-0">
-        <div className="flex flex-col">
-          <span className="text-white/80 text-[11px] font-[700] uppercase tracking-[0.15em] leading-none">
-            Ressources Humaines
-          </span>
-          <h2 className="font-[800] text-[22px] uppercase leading-[1.1] mt-2">
-            Absences <br/> & Congés
-          </h2>
-        </div>
-        <div className="bg-white/20 px-3 py-1 rounded-xl font-[900] text-[18px] shadow-sm border border-white/10">
-          {demandes.length}
-        </div>
-      </div>
-
-      {/* LISTE SCROLLABLE */}
-      <div className="flex-1 px-[20px] overflow-y-auto custom-scrollbar space-y-2 pb-4">
-        {demandes.map((demande, idx) => (
-          // Fond des items en blanc translucide (white/20) pour se fondre dans le violet
-          <div key={idx} className="bg-white/20 p-3 rounded-[20px] flex items-center justify-between group hover:bg-white/30 transition-all shadow-sm border border-white/5">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className={`p-2.5 rounded-xl ${demande.bg} ${demande.color} shrink-0`}>
-                <demande.icon size={20} />
-              </div>
-              
-              <div className="flex flex-col min-w-0">
-                <span className="font-[800] text-[15px] truncate text-white">{demande.nom}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-white/70 font-bold text-[11px] uppercase truncate">{demande.dates}</span>
-                  <span className="text-[10px] font-[800] uppercase text-white/90">{demande.type}</span>
+    <div className="h-full w-full bg-[#a55eea] rounded-[25px] flex flex-col shadow-sm overflow-hidden p-6 font-['Fredoka'] text-white">
+      <h2 className="text-[28px] font-black uppercase mb-4 tracking-tight leading-none">
+        Congés & Absences
+      </h2>
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-3">
+          {absents.map((person, i) => (
+            <div key={i} className="bg-white/20 backdrop-blur-md rounded-xl p-3 border border-white/10">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold text-[18px] leading-tight">{person.prenom} {person.nom}</p>
+                  <p className="text-[14px] text-white/80 uppercase font-medium">{person.role}</p>
                 </div>
+                <span className={`px-2 py-1 rounded-md text-[11px] font-black uppercase ${
+                  person.statut_actuel === 'maladie' ? 'bg-red-500' : 
+                  person.statut_actuel === 'formation' ? 'bg-blue-500' : 'bg-orange-500'
+                }`}>
+                  {person.statut_actuel}
+                </span>
               </div>
+              <p className="text-[13px] mt-1 font-medium italic opacity-90">{person.commentaire_statut}</p>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* FOOTER */}
-      <div className="px-[25px] py-4 bg-black/10 mt-auto flex justify-between items-center">
-        <span className="text-[11px] font-[800] text-white/80 uppercase">Total : 05</span>
-        <button className="text-[10px] font-[900] bg-white text-[#a55eea] px-4 py-2 rounded-lg hover:bg-white/90 transition-colors uppercase tracking-wide">
-          Gérer
-        </button>
+          ))}
+          {absents.length === 0 && <p className="text-center opacity-70">Tout le monde est disponible.</p>}
+        </div>
       </div>
     </div>
   );
