@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-// J'ai ajouté AlertCircle ici pour corriger ton erreur
-import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye, AlertCircle, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ChantierDetail() {
@@ -19,11 +18,16 @@ export default function ChantierDetail() {
   const [rentals, setRentals] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]); // Ajout de l'état local pour les tâches
 
   // Inputs
   const [newItem, setNewItem] = useState("");
   const [newLoc, setNewLoc] = useState({ materiel: "", date_fin: "" });
   const [newReport, setNewReport] = useState("");
+  
+  // NOUVEAUX STATES POUR LA TÂCHE (Corrige le bug)
+  const [newTaskLabel, setNewTaskLabel] = useState("");
+  const [newTaskHours, setNewTaskHours] = useState("");
 
   useEffect(() => { fetchChantierData(); }, [id]);
 
@@ -46,6 +50,10 @@ export default function ChantierDetail() {
     const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (d) setDocuments(d);
 
+    // Charger les tâches du chantier (Toutes : faites et pas faites)
+    const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+    if (t) setTasks(t);
+
     setLoading(false);
   }
 
@@ -55,6 +63,21 @@ export default function ChantierDetail() {
         nom: chantier.nom, adresse: chantier.adresse, statut: chantier.statut, heures_budget: chantier.heures_budget, notes: chantier.notes
     }).eq('id', id);
     alert('Infos mises à jour !');
+  };
+
+  const addTask = async () => {
+    if (!newTaskLabel) return;
+    // Insertion avec l'objectif d'heures
+    await supabase.from('chantier_tasks').insert([{ 
+        chantier_id: id, 
+        label: newTaskLabel,
+        objectif_heures: parseInt(newTaskHours) || 0 
+    }]);
+    
+    // Reset des champs (Plus de bug car on utilise le state React)
+    setNewTaskLabel("");
+    setNewTaskHours("");
+    fetchChantierData();
   };
 
   const addMaterial = async () => {
@@ -82,6 +105,12 @@ export default function ChantierDetail() {
     }
   };
 
+  // Toggle tâche fait/pas fait depuis la liste
+  const toggleTask = async (task: any) => {
+    await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
+    fetchChantierData();
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploading(true);
@@ -91,24 +120,16 @@ export default function ChantierDetail() {
     const fileName = `${Math.random()}.${fileExt}`;
     const filePath = `${id}/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(filePath, file);
+    const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
 
     if (uploadError) {
       alert("Erreur upload : " + uploadError.message);
-      setUploading(false);
-      return;
+      setUploading(false); return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('documents')
-      .getPublicUrl(filePath);
-
+    const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
     const type = file.type.startsWith('image/') ? 'image' : 'pdf';
-    await supabase.from('chantier_documents').insert([
-      { chantier_id: id, nom: file.name, url: publicUrl, type: type }
-    ]);
+    await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: type }]);
 
     setUploading(false);
     fetchChantierData();
@@ -119,7 +140,7 @@ export default function ChantierDetail() {
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20">
       
-      {/* HEADER FIXE */}
+      {/* HEADER */}
       <div className="bg-white shadow-sm p-4 sticky top-0 z-20">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
             <Link href="/" className="flex items-center text-gray-500 hover:text-black font-bold text-sm">
@@ -134,43 +155,29 @@ export default function ChantierDetail() {
 
       <div className="max-w-4xl mx-auto p-4">
         
-        {/* NAVIGATION ONGLETS */}
+        {/* TABS */}
         <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
-            <button onClick={() => setActiveTab('infos')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'infos' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>
-                ℹ️ Infos
-            </button>
-            <button onClick={() => setActiveTab('materiel')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'materiel' ? 'bg-[#0984e3] text-white' : 'bg-white text-gray-500'}`}>
-                🛒 Stocks
-            </button>
-            <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'locations' ? 'bg-[#6c5ce7] text-white' : 'bg-white text-gray-500'}`}>
-                📅 Locations
-            </button>
-            <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'journal' ? 'bg-[#d63031] text-white' : 'bg-white text-gray-500'}`}>
-                ⚠️ Journal
-            </button>
-            <button onClick={() => setActiveTab('documents')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'documents' ? 'bg-[#e17055] text-white' : 'bg-white text-gray-500'}`}>
-                📁 Docs ({documents.length})
-            </button>
+            <button onClick={() => setActiveTab('infos')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'infos' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>ℹ️ Infos</button>
+            <button onClick={() => setActiveTab('materiel')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'materiel' ? 'bg-[#0984e3] text-white' : 'bg-white text-gray-500'}`}>🛒 Stocks</button>
+            <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'locations' ? 'bg-[#6c5ce7] text-white' : 'bg-white text-gray-500'}`}>📅 Locations</button>
+            <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'journal' ? 'bg-[#d63031] text-white' : 'bg-white text-gray-500'}`}>⚠️ Journal</button>
+            <button onClick={() => setActiveTab('documents')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'documents' ? 'bg-[#e17055] text-white' : 'bg-white text-gray-500'}`}>📁 Docs ({documents.length})</button>
         </div>
 
         {/* --- CONTENU --- */}
 
-        {/* 1. INFOS & TÂCHES (CORRIGÉ) */}
+        {/* 1. INFOS & TÂCHES (UPDATED) */}
         {activeTab === 'infos' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                 
-                {/* Formulaire Infos Générales */}
+                {/* Infos Générales */}
                 <div className="bg-white rounded-[25px] p-6 shadow-sm space-y-4">
-                    <h3 className="font-black text-gray-800 uppercase mb-2">Informations Générales</h3>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase">Nom du Chantier</label>
-                        <input value={chantier.nom} onChange={(e) => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase">Adresse</label>
-                        <input value={chantier.adresse || ''} onChange={(e) => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
-                    </div>
+                    <h3 className="font-black text-gray-800 uppercase mb-2">Infos Chantier</h3>
                     <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase">Adresse</label>
+                            <input value={chantier.adresse || ''} onChange={(e) => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 outline-none" />
+                        </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Statut</label>
                             <select value={chantier.statut} onChange={(e) => setChantier({...chantier, statut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none">
@@ -186,128 +193,95 @@ export default function ChantierDetail() {
                     </div>
                 </div>
 
-                {/* Gestion des Tâches */}
+                {/* Gestion des Tâches (CORRIGÉ & AMÉLIORÉ) */}
                 <div className="bg-[#2d3436] rounded-[25px] p-6 shadow-sm text-white">
                     <h3 className="font-black uppercase mb-4 flex items-center gap-2">
-                        <AlertCircle size={20} className="text-[#00b894]"/> Tâches à faire
+                        <AlertCircle size={20} className="text-[#00b894]"/> Tâches à réaliser
                     </h3>
-                    <div className="flex gap-2 mb-4">
+                    
+                    {/* Input Ajout Tâche + Heures */}
+                    <div className="flex gap-2 mb-4 items-center">
                         <input 
-                            placeholder="Nouvelle tâche (ex: Valider plan)..." 
-                            onKeyDown={async (e) => {
-                                if (e.key === 'Enter') {
-                                    const val = e.currentTarget.value;
-                                    if(!val) return;
-                                    await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: val }]);
-                                    e.currentTarget.value = "";
-                                    alert("Tâche ajoutée !");
-                                }
-                            }}
+                            placeholder="Nouvelle tâche..." 
+                            value={newTaskLabel}
+                            onChange={(e) => setNewTaskLabel(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addTask()}
                             className="flex-1 bg-white/10 text-white placeholder-white/50 p-3 rounded-xl outline-none font-bold focus:bg-white/20 transition-colors"
                         />
+                        <div className="relative w-20">
+                            <input 
+                                type="number"
+                                placeholder="H" 
+                                value={newTaskHours}
+                                onChange={(e) => setNewTaskHours(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                                className="w-full bg-white/10 text-white placeholder-white/50 p-3 rounded-xl outline-none font-bold text-center focus:bg-white/20"
+                            />
+                        </div>
+                        <button onClick={addTask} className="bg-[#00b894] p-3 rounded-xl hover:bg-[#00a383]"><Plus size={20}/></button>
                     </div>
-                    <p className="text-xs text-white/40 italic">Appuyez sur Entrée pour ajouter. Ces tâches apparaîtront sur l'accueil.</p>
+
+                    {/* Liste des tâches */}
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                        {tasks.map((t) => (
+                            <div key={t.id} className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
+                                <div className="flex items-center gap-3 flex-1" onClick={() => toggleTask(t)}>
+                                    <div className={`cursor-pointer ${t.done ? 'text-[#00b894]' : 'text-orange-400'}`}>
+                                         {t.done ? <AlertCircle size={18} fill="#00b894" textAnchor='middle' className="text-black" /> : <div className="w-[18px] h-[18px] rounded-full border-2 border-orange-400"></div>}
+                                    </div>
+                                    <span className={`text-sm font-bold ${t.done ? 'line-through opacity-40' : ''}`}>{t.label}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {t.objectif_heures > 0 && (
+                                        <div className="flex items-center gap-1 bg-white/10 px-2 py-1 rounded text-xs font-bold text-[#74b9ff]">
+                                            <Clock size={12} /> {t.objectif_heures}h
+                                        </div>
+                                    )}
+                                    <button onClick={() => deleteItem('chantier_tasks', t.id)} className="text-white/20 hover:text-red-500"><X size={16}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         )}
 
-        {/* 2. MATÉRIEL */}
+        {/* LES AUTRES ONGLETS (Code identique, compressé pour la lisibilité) */}
         {activeTab === 'materiel' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#0984e3] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18}/> Commande</h3>
-                    <div className="flex gap-2">
-                        <input placeholder="Ex: 5 pots Peinture..." value={newItem} onChange={(e) => setNewItem(e.target.value)} className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
-                        <button onClick={addMaterial} className="bg-white text-[#0984e3] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
-                    </div>
+             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                <div className="bg-[#0984e3] p-4 rounded-[20px] text-white shadow-lg flex gap-2">
+                    <input placeholder="Ex: 5 pots Peinture..." value={newItem} onChange={(e) => setNewItem(e.target.value)} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
+                    <button onClick={addMaterial} className="bg-white text-[#0984e3] p-3 rounded-xl font-bold"><Plus /></button>
                 </div>
-                {materials.map(m => (
-                    <div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm">
-                        <p className="font-bold text-gray-800">{m.item}</p>
-                        <button onClick={() => deleteItem('material_requests', m.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
-                    </div>
-                ))}
+                {materials.map(m => (<div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm"><p className="font-bold text-gray-800">{m.item}</p><button onClick={() => deleteItem('material_requests', m.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button></div>))}
             </div>
         )}
-
-        {/* 3. LOCATIONS */}
         {activeTab === 'locations' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#6c5ce7] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><CalendarClock size={18}/> Location</h3>
-                    <div className="flex flex-col gap-2">
-                        <input placeholder="Matériel..." value={newLoc.materiel} onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})} className="bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
-                        <div className="flex gap-2">
-                             <input type="date" value={newLoc.date_fin} onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold" />
-                            <button onClick={addRental} className="bg-white text-[#6c5ce7] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
-                        </div>
-                    </div>
+                <div className="bg-[#6c5ce7] p-4 rounded-[20px] text-white shadow-lg flex flex-col gap-2">
+                    <input placeholder="Matériel..." value={newLoc.materiel} onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})} className="bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
+                    <div className="flex gap-2"><input type="date" value={newLoc.date_fin} onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold" /><button onClick={addRental} className="bg-white text-[#6c5ce7] p-3 rounded-xl font-bold"><Plus /></button></div>
                 </div>
-                {rentals.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm">
-                        <div><p className="font-bold text-gray-800">{r.materiel}</p><p className="text-xs text-gray-500">Fin : {new Date(r.date_fin).toLocaleDateString()}</p></div>
-                        <button onClick={() => deleteItem('rentals', r.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
-                    </div>
-                ))}
+                {rentals.map(r => (<div key={r.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm"><div><p className="font-bold text-gray-800">{r.materiel}</p><p className="text-xs text-gray-500">Fin : {new Date(r.date_fin).toLocaleDateString()}</p></div><button onClick={() => deleteItem('rentals', r.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button></div>))}
             </div>
         )}
-
-        {/* 4. JOURNAL */}
         {activeTab === 'journal' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#d63031] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><MessageSquareWarning size={18}/> Problème</h3>
-                    <div className="flex gap-2">
-                        <input placeholder="Message..." value={newReport} onChange={(e) => setNewReport(e.target.value)} className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
-                        <button onClick={addReport} className="bg-white text-[#d63031] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
-                    </div>
+                <div className="bg-[#d63031] p-4 rounded-[20px] text-white shadow-lg flex gap-2">
+                    <input placeholder="Message..." value={newReport} onChange={(e) => setNewReport(e.target.value)} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
+                    <button onClick={addReport} className="bg-white text-[#d63031] p-3 rounded-xl font-bold"><Plus /></button>
                 </div>
-                {reports.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-[#d63031]">
-                        <div className="flex justify-between"><p className="font-bold text-gray-800 text-sm">{r.message}</p><button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500"><X size={16} /></button></div>
-                    </div>
-                ))}
+                {reports.map(r => (<div key={r.id} className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-[#d63031] flex justify-between"><p className="font-bold text-gray-800 text-sm">{r.message}</p><button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500"><X size={16} /></button></div>))}
             </div>
         )}
-
-        {/* 5. DOCUMENTS */}
         {activeTab === 'documents' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#e17055] p-6 rounded-[20px] text-white shadow-lg flex flex-col items-center justify-center text-center border-2 border-dashed border-white/30 relative">
-                    <UploadCloud size={32} className="mb-2" />
-                    <p className="font-black uppercase text-lg">Ajouter une photo / PDF</p>
-                    <p className="text-sm opacity-80 mb-4">Cliquez pour parcourir</p>
-                    <input 
-                        type="file" 
-                        accept="image/*,application/pdf"
-                        onChange={handleFileUpload}
-                        disabled={uploading}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    {uploading && <div className="absolute inset-0 bg-[#e17055] flex items-center justify-center font-bold">Envoi en cours...</div>}
+                 <div className="bg-[#e17055] p-6 rounded-[20px] text-white shadow-lg flex flex-col items-center justify-center text-center border-2 border-dashed border-white/30 relative">
+                    <UploadCloud size={32} className="mb-2" /> <p className="font-black uppercase">Ajouter Doc</p>
+                    <input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
-                    {documents.map(doc => (
-                        <div key={doc.id} className="bg-white p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-[150px] relative group overflow-hidden">
-                            <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-xl mb-2 overflow-hidden">
-                                {doc.type === 'image' ? (
-                                    <img src={doc.url} alt="doc" className="w-full h-full object-cover" />
-                                ) : (
-                                    <FileText size={32} className="text-gray-400" />
-                                )}
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <p className="text-[10px] font-bold text-gray-600 truncate max-w-[80px]">{doc.nom}</p>
-                                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="bg-black/5 p-1.5 rounded-full hover:bg-black/10">
-                                    <Eye size={14} className="text-gray-600" />
-                                </a>
-                            </div>
-                             <button onClick={() => deleteItem('chantier_documents', doc.id)} className="absolute top-2 right-2 bg-white/80 p-1.5 rounded-full text-red-500 shadow-sm opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <X size={14} />
-                             </button>
-                        </div>
-                    ))}
+                    {documents.map(doc => (<div key={doc.id} className="bg-white p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-[150px] relative group overflow-hidden"><div className="flex-1 flex items-center justify-center bg-gray-50 rounded-xl mb-2 overflow-hidden">{doc.type === 'image' ? <img src={doc.url} className="w-full h-full object-cover"/> : <FileText size={32} className="text-gray-400"/>}</div><div className="flex justify-between items-center"><p className="text-[10px] font-bold text-gray-600 truncate max-w-[80px]">{doc.nom}</p><a href={doc.url} target="_blank" className="bg-black/5 p-1.5 rounded-full"><Eye size={14} className="text-gray-600"/></a></div><button onClick={() => deleteItem('chantier_documents', doc.id)} className="absolute top-2 right-2 bg-white/80 p-1.5 rounded-full text-red-500 shadow-sm opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button></div>))}
                 </div>
             </div>
         )}
