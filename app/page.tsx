@@ -2,7 +2,6 @@ import TeamTile from "@/components/TeamTile"; // On va l'utiliser pour une des t
 import BudgetHeuresTile from "@/components/BudgetHeuresTile";
 import LeavesTile from "@/components/LeavesTile";
 import TasksTile from "@/components/TasksTile";
-import WorkloadTile from "@/components/WorkloadTile";
 import StaffingTile from "@/components/StaffingTile";
 import MiddleTiles from "@/components/MiddleTiles";
 
