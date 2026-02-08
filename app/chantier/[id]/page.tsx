@@ -1,61 +1,55 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, Trash2, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ChantierDetail() {
   const { id } = useParams();
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('infos'); // 'infos', 'materiel', 'locations', 'journal'
+  const [activeTab, setActiveTab] = useState('infos');
+  const [uploading, setUploading] = useState(false);
 
-  // Données du chantier principal
+  // Données
   const [chantier, setChantier] = useState<any>({});
-  
-  // Données des listes
   const [materials, setMaterials] = useState<any[]>([]);
   const [rentals, setRentals] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]); // NOUVEAU
 
-  // Inputs pour les nouveaux ajouts
+  // Inputs
   const [newItem, setNewItem] = useState("");
   const [newLoc, setNewLoc] = useState({ materiel: "", date_fin: "" });
   const [newReport, setNewReport] = useState("");
 
-  // CHARGEMENT INITIAL
-  useEffect(() => {
-    fetchChantierData();
-  }, [id]);
+  useEffect(() => { fetchChantierData(); }, [id]);
 
   async function fetchChantierData() {
     if (!id) return;
     setLoading(true);
 
-    // 1. Infos Chantier
     const { data: c } = await supabase.from('chantiers').select('*').eq('id', id).single();
     if (c) setChantier(c);
 
-    // 2. Matériel
     const { data: m } = await supabase.from('material_requests').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (m) setMaterials(m);
 
-    // 3. Locations
     const { data: l } = await supabase.from('rentals').select('*').eq('chantier_id', id).order('date_fin', { ascending: true });
     if (l) setRentals(l);
 
-    // 4. Journal
     const { data: r } = await supabase.from('site_reports').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (r) setReports(r);
+
+    // Charger les documents
+    const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+    if (d) setDocuments(d);
 
     setLoading(false);
   }
 
-  // --- ACTIONS ---
-
-  // Sauvegarder Infos Générales
+  // --- ACTIONS EXISTANTES ---
   const handleSaveInfo = async () => {
     await supabase.from('chantiers').update({
         nom: chantier.nom, adresse: chantier.adresse, statut: chantier.statut, heures_budget: chantier.heures_budget, notes: chantier.notes
@@ -63,38 +57,66 @@ export default function ChantierDetail() {
     alert('Infos mises à jour !');
   };
 
-  // Ajouter Matériel
   const addMaterial = async () => {
     if (!newItem) return;
     await supabase.from('material_requests').insert([{ chantier_id: id, item: newItem, status: 'a_commander' }]);
-    setNewItem("");
-    fetchChantierData(); // Rafraichir la liste
+    setNewItem(""); fetchChantierData();
   };
 
-  // Ajouter Location
   const addRental = async () => {
     if (!newLoc.materiel || !newLoc.date_fin) return;
     await supabase.from('rentals').insert([{ chantier_id: id, materiel: newLoc.materiel, date_fin: newLoc.date_fin, status: 'actif' }]);
-    setNewLoc({ materiel: "", date_fin: "" });
-    fetchChantierData();
+    setNewLoc({ materiel: "", date_fin: "" }); fetchChantierData();
   };
 
-  // Ajouter Note/Problème
   const addReport = async () => {
     if (!newReport) return;
-    // On met "Chef d'équipe" par défaut comme auteur pour l'instant
     await supabase.from('site_reports').insert([{ chantier_id: id, message: newReport, auteur: "Chef d'équipe" }]);
-    setNewReport("");
-    fetchChantierData();
+    setNewReport(""); fetchChantierData();
   };
 
-  // Supprimer un élément (générique)
   const deleteItem = async (table: string, itemId: string) => {
     if(confirm('Supprimer cet élément ?')) {
         await supabase.from(table).delete().eq('id', itemId);
         fetchChantierData();
     }
-  }
+  };
+
+  // --- NOUVELLE ACTION : UPLOAD FICHIER ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setUploading(true);
+
+    const file = e.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `${id}/${fileName}`; // On range par ID de chantier
+
+    // 1. Upload vers Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      alert("Erreur upload : " + uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    // 2. Récupérer l'URL publique
+    const { data: { publicUrl } } = supabase.storage
+      .from('documents')
+      .getPublicUrl(filePath);
+
+    // 3. Sauver la référence dans la table SQL
+    const type = file.type.startsWith('image/') ? 'image' : 'pdf';
+    await supabase.from('chantier_documents').insert([
+      { chantier_id: id, nom: file.name, url: publicUrl, type: type }
+    ]);
+
+    setUploading(false);
+    fetchChantierData();
+  };
 
   if (loading) return <div className="p-10 font-['Fredoka'] text-center">Chargement...</div>;
 
@@ -122,22 +144,25 @@ export default function ChantierDetail() {
                 ℹ️ Infos
             </button>
             <button onClick={() => setActiveTab('materiel')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'materiel' ? 'bg-[#0984e3] text-white' : 'bg-white text-gray-500'}`}>
-                🛒 Commandes ({materials.length})
+                🛒 Stocks
             </button>
             <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'locations' ? 'bg-[#6c5ce7] text-white' : 'bg-white text-gray-500'}`}>
-                📅 Locations ({rentals.length})
+                📅 Locations
             </button>
             <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'journal' ? 'bg-[#d63031] text-white' : 'bg-white text-gray-500'}`}>
-                ⚠️ Journal ({reports.length})
+                ⚠️ Journal
+            </button>
+            <button onClick={() => setActiveTab('documents')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'documents' ? 'bg-[#e17055] text-white' : 'bg-white text-gray-500'}`}>
+                📁 Docs ({documents.length})
             </button>
         </div>
 
-        {/* --- CONTENU DES ONGLETS --- */}
+        {/* --- CONTENU --- */}
 
-        {/* 1. INFOS GÉNÉRALES */}
+        {/* 1. INFOS */}
         {activeTab === 'infos' && (
             <div className="bg-white rounded-[25px] p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div>
+                 <div>
                     <label className="text-xs font-bold text-gray-400 uppercase">Nom du Chantier</label>
                     <input value={chantier.nom} onChange={(e) => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-gray-200 outline-none" />
                 </div>
@@ -166,35 +191,22 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* 2. MATÉRIEL (Commandes) */}
+        {/* 2. MATÉRIEL */}
         {activeTab === 'materiel' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                {/* Formulaire Ajout */}
                 <div className="bg-[#0984e3] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18}/> Nouvelle Commande</h3>
+                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18}/> Commande</h3>
                     <div className="flex gap-2">
-                        <input 
-                            placeholder="Ex: 5 pots Peinture Blanche..." 
-                            value={newItem}
-                            onChange={(e) => setNewItem(e.target.value)}
-                            className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold"
-                        />
+                        <input placeholder="Ex: 5 pots Peinture..." value={newItem} onChange={(e) => setNewItem(e.target.value)} className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
                         <button onClick={addMaterial} className="bg-white text-[#0984e3] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
                     </div>
                 </div>
-                {/* Liste */}
-                <div className="space-y-2">
-                    {materials.map(m => (
-                        <div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm border border-gray-100">
-                            <div>
-                                <p className="font-bold text-gray-800">{m.item}</p>
-                                <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded uppercase font-bold">{m.status.replace('_', ' ')}</span>
-                            </div>
-                            <button onClick={() => deleteItem('material_requests', m.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
-                        </div>
-                    ))}
-                    {materials.length === 0 && <p className="text-center text-gray-400 text-sm mt-8">Aucune commande en cours</p>}
-                </div>
+                {materials.map(m => (
+                    <div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm">
+                        <p className="font-bold text-gray-800">{m.item}</p>
+                        <button onClick={() => deleteItem('material_requests', m.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
+                    </div>
+                ))}
             </div>
         )}
 
@@ -202,65 +214,93 @@ export default function ChantierDetail() {
         {activeTab === 'locations' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-[#6c5ce7] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><CalendarClock size={18}/> Nouvelle Location</h3>
+                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><CalendarClock size={18}/> Location</h3>
                     <div className="flex flex-col gap-2">
-                        <input 
-                            placeholder="Matériel (ex: Nacelle 12m)" 
-                            value={newLoc.materiel}
-                            onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})}
-                            className="bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold"
-                        />
+                        <input placeholder="Matériel..." value={newLoc.materiel} onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})} className="bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
                         <div className="flex gap-2">
-                             <input 
-                                type="date"
-                                value={newLoc.date_fin}
-                                onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})}
-                                className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold"
-                            />
+                             <input type="date" value={newLoc.date_fin} onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold" />
                             <button onClick={addRental} className="bg-white text-[#6c5ce7] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
                         </div>
                     </div>
                 </div>
-                <div className="space-y-2">
-                    {rentals.map(r => (
-                        <div key={r.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm border border-gray-100">
-                            <div>
-                                <p className="font-bold text-gray-800">{r.materiel}</p>
-                                <p className="text-xs text-gray-500">Fin le : {new Date(r.date_fin).toLocaleDateString()}</p>
-                            </div>
-                            <button onClick={() => deleteItem('rentals', r.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
-                        </div>
-                    ))}
-                </div>
+                {rentals.map(r => (
+                    <div key={r.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm">
+                        <div><p className="font-bold text-gray-800">{r.materiel}</p><p className="text-xs text-gray-500">Fin : {new Date(r.date_fin).toLocaleDateString()}</p></div>
+                        <button onClick={() => deleteItem('rentals', r.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button>
+                    </div>
+                ))}
             </div>
         )}
 
-        {/* 4. JOURNAL (Problèmes) */}
+        {/* 4. JOURNAL */}
         {activeTab === 'journal' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-[#d63031] p-4 rounded-[20px] text-white shadow-lg">
-                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><MessageSquareWarning size={18}/> Signaler Problème</h3>
+                    <h3 className="font-black uppercase mb-2 flex items-center gap-2"><MessageSquareWarning size={18}/> Problème</h3>
                     <div className="flex gap-2">
-                        <input 
-                            placeholder="Message (ex: Client absent...)" 
-                            value={newReport}
-                            onChange={(e) => setNewReport(e.target.value)}
-                            className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold"
-                        />
+                        <input placeholder="Message..." value={newReport} onChange={(e) => setNewReport(e.target.value)} className="flex-1 bg-white/20 placeholder-white/60 text-white p-3 rounded-xl outline-none font-bold" />
                         <button onClick={addReport} className="bg-white text-[#d63031] p-3 rounded-xl font-bold hover:bg-gray-100"><Plus /></button>
                     </div>
                 </div>
-                <div className="space-y-2">
-                    {reports.map(r => (
-                        <div key={r.id} className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-[#d63031]">
-                            <div className="flex justify-between items-start">
-                                <p className="font-bold text-gray-800 text-sm">{r.message}</p>
-                                <button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500"><X size={16} /></button>
+                {reports.map(r => (
+                    <div key={r.id} className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-[#d63031]">
+                        <div className="flex justify-between"><p className="font-bold text-gray-800 text-sm">{r.message}</p><button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500"><X size={16} /></button></div>
+                    </div>
+                ))}
+            </div>
+        )}
+
+        {/* 5. DOCUMENTS (NOUVEAU TAB) */}
+        {activeTab === 'documents' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                {/* Zone d'upload */}
+                <div className="bg-[#e17055] p-6 rounded-[20px] text-white shadow-lg flex flex-col items-center justify-center text-center border-2 border-dashed border-white/30 relative">
+                    <UploadCloud size={32} className="mb-2" />
+                    <p className="font-black uppercase text-lg">Ajouter une photo / PDF</p>
+                    <p className="text-sm opacity-80 mb-4">Cliquez pour parcourir</p>
+                    <input 
+                        type="file" 
+                        accept="image/*,application/pdf"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    {uploading && <div className="absolute inset-0 bg-[#e17055] flex items-center justify-center font-bold">Envoi en cours...</div>}
+                </div>
+
+                {/* Grille des fichiers */}
+                <div className="grid grid-cols-2 gap-3">
+                    {documents.map(doc => (
+                        <div key={doc.id} className="bg-white p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-[150px] relative group overflow-hidden">
+                            
+                            {/* Aperçu */}
+                            <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-xl mb-2 overflow-hidden">
+                                {doc.type === 'image' ? (
+                                    <img src={doc.url} alt="doc" className="w-full h-full object-cover" />
+                                ) : (
+                                    <FileText size={32} className="text-gray-400" />
+                                )}
                             </div>
-                            <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold">{r.auteur} - {new Date(r.created_at).toLocaleDateString()}</p>
+
+                            {/* Infos */}
+                            <div className="flex justify-between items-center">
+                                <p className="text-[10px] font-bold text-gray-600 truncate max-w-[80px]">{doc.nom}</p>
+                                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="bg-black/5 p-1.5 rounded-full hover:bg-black/10">
+                                    <Eye size={14} className="text-gray-600" />
+                                </a>
+                            </div>
+
+                             {/* Bouton Supprimer (Apparaît au survol) */}
+                             <button 
+                                onClick={() => deleteItem('chantier_documents', doc.id)}
+                                className="absolute top-2 right-2 bg-white/80 p-1.5 rounded-full text-red-500 shadow-sm opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"
+                             >
+                                <X size={14} />
+                             </button>
                         </div>
                     ))}
                 </div>
+                 {documents.length === 0 && <p className="text-center text-gray-400 text-sm mt-8">Aucun document</p>}
             </div>
         )}
 
