@@ -54,7 +54,11 @@ export default function PlanningPage() {
   };
 
   useEffect(() => { fetchData(); }, [currentDate]);
-
+// FONCTION : Ouvrir la modal d'affectation
+  const openAssignmentModal = (empId: string, date: Date) => {
+    setSelectedCell({ empId, date: date.toISOString().split('T')[0] });
+    setIsModalOpen(true);
+  };
   const saveAssignment = async () => {
     if (!selectedCell || (!selectedChantier && assignType === 'chantier')) return;
     const { error } = await supabase.from('planning').insert([{
