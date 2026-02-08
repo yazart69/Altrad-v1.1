@@ -115,31 +115,56 @@ export default function PlanningPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {employes.map((emp) => (
-                  <tr key={emp.id} className="group hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4 md:p-6 border-b border-gray-100 sticky left-0 bg-white z-10">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-[#d63031] text-sm border-2 border-white shadow-sm uppercase">
-                          {emp.nom.substring(0, 2)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-800 text-[14px] leading-none mb-1">{emp.nom} {emp.prenom}</p>
-                          <p className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">{emp.role || 'Ouvrier'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    {weekDays.map((day, i) => (
-                      <td key={i} className="p-2 border-b border-l border-gray-100 h-24 group/cell">
-                        <div className="w-full h-full rounded-2xl border-2 border-dashed border-transparent group-hover/cell:border-[#d63031]/20 flex flex-col items-center justify-center transition-all cursor-pointer bg-gray-50/30 hover:bg-white">
-                           <Plus size={16} className="text-gray-300 opacity-0 group-hover/cell:opacity-100 mb-1" />
-                           <span className="text-[9px] font-black text-gray-300 uppercase opacity-0 group-hover/cell:opacity-100">Affecter</span>
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
+<tbody>
+  {employes.map((emp) => (
+    <tr key={emp.id} className="group hover:bg-gray-50/50 transition-colors">
+      <td className="p-4 md:p-6 border-b border-gray-100 sticky left-0 bg-white z-10 shadow-[4px_0_8px_rgba(0,0,0,0.02)]">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-[#d63031] text-sm border-2 border-white shadow-sm uppercase">
+            {emp.nom.substring(0, 2)}
+          </div>
+          <div>
+            <p className="font-bold text-gray-800 text-[14px] leading-none mb-1">{emp.nom} {emp.prenom}</p>
+            <p className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">{emp.role || 'Ouvrier'}</p>
+          </div>
+        </div>
+      </td>
+      
+      {weekDays.map((day, i) => {
+        // LOGIQUE DE RECHERCHE D'ASSIGNATION
+        const dateStr = day.toISOString().split('T')[0];
+        const mission = assignments.find(a => 
+          a.employe_id === emp.id && 
+          dateStr >= a.date_debut && 
+          dateStr <= a.date_fin
+        );
+
+        return (
+          <td key={i} className="p-2 border-b border-l border-gray-100 h-24 group/cell">
+            {mission ? (
+              // SI UNE MISSION EXISTE
+              <div className="w-full h-full rounded-xl bg-blue-500 p-2 shadow-sm flex flex-col justify-between border-b-4 border-blue-700 hover:scale-[1.02] transition-transform cursor-pointer">
+                <p className="text-[10px] font-black text-white uppercase leading-tight truncate">
+                  {mission.chantiers?.nom || 'Chantier'}
+                </p>
+                <div className="flex justify-between items-end">
+                  <HardHat size={12} className="text-white/50" />
+                  <span className="text-[8px] font-bold text-white/80 uppercase">8h - 17h</span>
+                </div>
+              </div>
+            ) : (
+              // SI VIDE
+              <div className="w-full h-full rounded-2xl border-2 border-dashed border-transparent group-hover/cell:border-[#d63031]/20 flex flex-col items-center justify-center transition-all cursor-pointer bg-gray-50/30 hover:bg-white text-gray-300">
+                <Plus size={16} className="opacity-0 group-hover/cell:opacity-100 mb-1" />
+                <span className="text-[8px] font-black uppercase opacity-0 group-hover/cell:opacity-100">Affecter</span>
+              </div>
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  ))}
+</tbody>
             </table>
           </div>
         )}
