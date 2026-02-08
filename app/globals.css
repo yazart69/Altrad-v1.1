@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700;800;900&display=swap');
-
 :root {
   --background: #f0f3f4;
   --foreground: #171717;
@@ -10,7 +8,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Fredoka', sans-serif;
+  /* Ici on utilise la variable injectée par layout.tsx */
+  font-family: var(--font-fredoka), sans-serif;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -29,8 +28,12 @@ body {
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
 
+  /* Scrollbar personnalisée */
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.1);
