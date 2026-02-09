@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Users, MapPin, HardHat, Loader2, Activity } from 'lucide-react';
+import { Users, MapPin, HardHat, Loader2, Activity, ArrowUpRight, Map } from 'lucide-react';
+import Link from 'next/link';
 
 interface StaffingTileProps {
   staffCount?: number;
@@ -59,45 +60,51 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
   }, []);
 
   return (
-    <div className="h-full w-full bg-white rounded-[25px] flex flex-col shadow-sm overflow-hidden p-6 font-['Fredoka'] border border-gray-100">
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-[22px] font-black uppercase tracking-tight leading-none text-gray-800 italic">
-            Staffing <span className="text-[#0984e3]">Terrain</span>
-          </h2>
-          <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            En direct • {staffCount} Total Effectif
-          </p>
-        </div>
-        <div className="bg-blue-50 p-3 rounded-2xl text-[#0984e3] shadow-inner">
-          <Users size={24} />
-        </div>
+    <div className="h-full w-full bg-[#e17055] rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.01] transition-transform duration-300">
+      
+      {/* HEADER HARMONISÉ */}
+      <div className="flex justify-between items-start mb-6 z-10">
+        <Link href="/planning" className="group/title">
+            <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
+            Staffing <span className="text-orange-900 opacity-40">Terrain</span>
+            </h2>
+            <div className="flex items-center gap-2 mt-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                </span>
+                <p className="text-[10px] text-orange-50 font-bold uppercase tracking-widest opacity-80">
+                En direct • {staffCount} Actifs
+                </p>
+            </div>
+        </Link>
+        <Link href="/planning" className="bg-white/20 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-white">
+           <ArrowUpRight size={20} />
+        </Link>
       </div>
 
       {/* LISTE DES CHANTIERS ACTIFS */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5 pr-1">
+      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 z-10">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
-            <Loader2 className="animate-spin text-blue-500" size={30} />
-            <p className="text-[10px] font-black text-gray-300 uppercase italic">Scan des positions...</p>
+            <Loader2 className="animate-spin text-white" size={30} />
+            <p className="text-[10px] font-black text-white/50 uppercase italic">Scan des positions...</p>
           </div>
         ) : staffing.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-30 grayscale py-10">
-            <HardHat size={50} className="mb-3 text-gray-400" />
-            <p className="text-xs font-black uppercase tracking-tighter text-gray-500 text-center">
+          <div className="h-full flex flex-col items-center justify-center opacity-40 py-10">
+            <HardHat size={50} className="mb-3 text-white" />
+            <p className="text-xs font-black uppercase tracking-tighter text-white text-center">
               Aucune affectation <br/> planifiée aujourd'hui
             </p>
           </div>
         ) : (
           staffing.map((site, idx) => (
-            <div key={idx} className="bg-gray-50/50 rounded-[20px] p-4 border border-gray-100 hover:bg-white hover:shadow-md transition-all group">
+            <div key={idx} className="bg-white/10 rounded-[20px] p-4 border border-white/5 hover:bg-white/20 hover:shadow-md transition-all group/site backdrop-blur-sm">
               <div className="flex items-center gap-2 mb-3">
-                <div className="p-1.5 bg-white rounded-lg shadow-sm text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                <div className="p-1.5 bg-white/20 rounded-lg shadow-sm text-white group-hover/site:bg-white group-hover/site:text-[#e17055] transition-colors">
                   <MapPin size={14} />
                 </div>
-                <h3 className="font-black text-gray-800 text-[13px] truncate uppercase tracking-tighter">
+                <h3 className="font-black text-white text-[13px] truncate uppercase tracking-tighter">
                   {site.nom}
                 </h3>
               </div>
@@ -106,11 +113,11 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                 {site.equipe.map((emp: any) => (
                   <div 
                     key={emp.id} 
-                    className="bg-white px-3 py-1.5 rounded-xl flex items-center gap-2 border border-gray-100 shadow-sm"
+                    className="bg-black/20 px-2.5 py-1 rounded-xl flex items-center gap-2 border border-white/5 shadow-sm hover:bg-black/30 transition-colors cursor-default"
                     title={emp.role}
                   >
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                    <span className="text-[11px] font-bold text-gray-700 uppercase tracking-tighter">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_5px_rgba(74,222,128,0.8)]"></div>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-tighter">
                       {emp.nom} {emp.prenom.substring(0,1)}.
                     </span>
                   </div>
@@ -121,19 +128,22 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         )}
       </div>
 
-      {/* FOOTER STATS RAPIDES */}
+      {/* FOOTER STATS RAPIDES (HARMONISÉ) */}
       {staffing.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
-          <p className="text-[9px] font-black text-gray-300 uppercase italic">
-            {staffing.length} Site(s) en activité
+        <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center z-10">
+          <p className="text-[9px] font-black text-white/50 uppercase italic flex items-center gap-1">
+             <Map size={12} /> {staffing.length} Site(s) en activité
           </p>
-          <div className="flex -space-x-2">
+          <div className="flex -space-x-2 opacity-80">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="w-5 h-5 rounded-full bg-gray-200 border-2 border-white"></div>
+              <div key={i} className="w-5 h-5 rounded-full bg-white/30 border-2 border-[#e17055]"></div>
             ))}
           </div>
         </div>
       )}
+
+      {/* DÉCORATION FOND */}
+      <HardHat size={160} className="absolute -right-6 -bottom-8 opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-700 pointer-events-none text-orange-900" />
     </div>
   );
 }
