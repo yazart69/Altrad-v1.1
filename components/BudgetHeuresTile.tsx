@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Plus, MapPin, Clock } from 'lucide-react';
+import { Plus, MapPin, ArrowUpRight } from 'lucide-react';
 
 export default function BudgetHeuresTile() {
   const [chantiers, setChantiers] = useState<any[]>([]);
@@ -11,7 +11,7 @@ export default function BudgetHeuresTile() {
 
   useEffect(() => {
     async function fetchChantiers() {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('chantiers')
         .select('*')
         .order('created_at', { ascending: false });
@@ -23,18 +23,23 @@ export default function BudgetHeuresTile() {
   }, []);
 
   return (
-    <div className="h-full w-full bg-white rounded-[25px] flex flex-col shadow-sm overflow-hidden p-6 font-['Fredoka'] border border-gray-100">
+    <div className="h-full w-full bg-white rounded-[25px] flex flex-col shadow-sm overflow-hidden p-6 font-['Fredoka'] border border-gray-100 relative group">
       
       {/* En-tête de la tuile */}
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-gray-800">
-            Chantiers <span className="text-[#ff9f43]">en cours</span>
-          </h2>
-          <p className="text-xs text-gray-400 font-bold mt-1 uppercase tracking-widest">Suivi de l'avancement</p>
-        </div>
+        <Link href="/planning-charge" className="group/title flex items-center gap-2">
+          <div>
+            <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-gray-800 group-hover/title:text-[#ff9f43] transition-colors">
+              Chantiers <span className="text-[#ff9f43]">en cours</span>
+            </h2>
+            <p className="text-xs text-gray-400 font-bold mt-1 uppercase tracking-widest">Suivi de l'avancement</p>
+          </div>
+          <div className="opacity-0 group-hover/title:opacity-100 transition-opacity bg-gray-50 p-1.5 rounded-full">
+             <ArrowUpRight size={16} className="text-[#ff9f43]" />
+          </div>
+        </Link>
         <Link href="/chantier/nouveau">
-          <button className="bg-[#ff9f43] hover:bg-[#ee8f32] text-white p-2.5 rounded-xl transition-all shadow-lg shadow-orange-100 cursor-pointer">
+          <button className="bg-[#ff9f43] hover:bg-[#ee8f32] text-white p-2.5 rounded-xl transition-all shadow-lg shadow-orange-100 cursor-pointer hover:scale-105 active:scale-95">
             <Plus size={24} />
           </button>
         </Link>
@@ -67,11 +72,11 @@ export default function BudgetHeuresTile() {
               <Link 
                 href={`/chantier/${chantier.id}`} 
                 key={chantier.id} 
-                className="block p-4 rounded-[20px] bg-gray-50 hover:bg-gray-100 transition-all border border-transparent hover:border-orange-100 group"
+                className="block p-4 rounded-[20px] bg-gray-50 hover:bg-gray-100 transition-all border border-transparent hover:border-orange-100 group/item hover:shadow-sm"
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex-1 mr-4">
-                    <h3 className="font-bold text-gray-800 text-[16px] leading-tight group-hover:text-[#ff9f43] transition-colors">
+                    <h3 className="font-bold text-gray-800 text-[16px] leading-tight group-hover/item:text-[#ff9f43] transition-colors">
                       {chantier.nom}
                     </h3>
                     <div className="flex items-center gap-1 text-gray-400 mt-1">
@@ -96,13 +101,13 @@ export default function BudgetHeuresTile() {
                 {/* Barre d'avancement graphique */}
                 <div className="relative pt-2">
                   <div className="flex mb-1 items-center justify-between">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                       <div 
                         className={`h-2.5 rounded-full transition-all duration-1000 ${barColor}`} 
                         style={{ width: `${percentage}%` }}
                       ></div>
                     </div>
-                    <span className="ml-3 text-[11px] font-black text-gray-600 w-8">{percentage}%</span>
+                    <span className="ml-3 text-[11px] font-black text-gray-600 w-8 text-right">{percentage}%</span>
                   </div>
                 </div>
               </Link>
