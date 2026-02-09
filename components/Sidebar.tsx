@@ -5,121 +5,114 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
-  Users, 
   HardHat, 
-  ClipboardList, 
-  CalendarRange,
-  CalendarDays, // Nouvel icône pour le planning hebdo
-  ShieldCheck, 
-  Factory, 
+  CalendarDays, 
+  ClipboardCheck, 
+  Users, 
   Settings, 
+  LogOut, 
   ChevronLeft, 
   ChevronRight,
-  LogOut
+  Menu
 } from 'lucide-react';
 
 export default function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
   const menuItems = [
-    { name: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
-    { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' }, // Ajout du module Planning Hebdo
-    { name: 'Planning de charge', icon: CalendarRange, path: '/planning-charge' },
-    { name: 'Chantiers', icon: Factory, path: '/chantiers' },
-    { name: 'Équipes & RH', icon: Users, path: '/equipe' },
-    { name: 'Matériel & Logistique', icon: HardHat, path: '/materiel' },
-    { name: 'HSE & Sécurité', icon: ShieldCheck, path: '/hse' },
-    { name: 'Rapports', icon: ClipboardList, path: '/rapports' },
-  ];
-
-  const bottomItems = [
-    { name: 'Paramètres', icon: Settings, path: '/parametres' },
+    { icon: LayoutDashboard, label: 'Tableau de bord', href: '/' },
+    { icon: HardHat, label: 'Chantiers', href: '/chantiers' }, // LIEN MIS À JOUR
+    { icon: CalendarDays, label: 'Planning', href: '/planning-charge' }, // Vers la vue globale
+    { icon: Users, label: 'Équipes', href: '/equipe' },
+    { icon: ClipboardCheck, label: 'HSE / Qualité', href: '/hse' },
+    { icon: Settings, label: 'Paramètres', href: '/parametres' },
   ];
 
   return (
-    <div 
-      className={`h-screen bg-white border-r border-gray-100 flex flex-col justify-between transition-all duration-300 ${
-        isCollapsed ? 'w-20' : 'w-72'
-      } sticky top-0 left-0 z-50`}
-    >
-      {/* HEADER / LOGO */}
-      <div className="p-6 flex items-center justify-between">
-        {!isCollapsed && (
-          <div className="animate-in fade-in duration-300">
-            <h1 className="font-['Fredoka'] text-2xl font-black uppercase tracking-tighter text-gray-900">
-              Altrad<span className="text-blue-600">.OS</span>
-            </h1>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Pilotage Industriel</p>
-          </div>
-        )}
-        <button 
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 rounded-xl hover:bg-gray-50 text-gray-400 hover:text-black transition-colors"
-        >
-          {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-        </button>
-      </div>
+    <>
+      {/* MOBILE TRIGGER */}
+      <button 
+        className="md:hidden fixed top-4 left-4 z-50 bg-[#2d3436] text-white p-2 rounded-lg shadow-lg"
+        onClick={() => setMobileOpen(!mobileOpen)}
+      >
+        <Menu size={24} />
+      </button>
 
-      {/* NAVIGATION PRINCIPALE */}
-      <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.path;
-          return (
-            <Link 
-              key={item.path} 
-              href={item.path}
-              className={`flex items-center gap-4 p-4 rounded-2xl transition-all group relative ${
-                isActive 
-                  ? 'bg-black text-white shadow-lg shadow-black/20' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-black'
-              }`}
-            >
-              <item.icon size={22} className={`shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-black'}`} />
-              
-              {!isCollapsed && (
-                <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide whitespace-nowrap animate-in fade-in duration-200">
-                  {item.name}
-                </span>
-              )}
-
-              {/* Tooltip si réduit */}
-              {isCollapsed && (
-                <div className="absolute left-full ml-4 px-3 py-2 bg-black text-white text-xs font-bold uppercase rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
-                  {item.name}
-                </div>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* FOOTER / USER */}
-      <div className="p-4 border-t border-gray-100 space-y-2">
-        {bottomItems.map((item) => (
-          <Link 
-            key={item.path} 
-            href={item.path}
-            className="flex items-center gap-4 p-4 rounded-2xl text-gray-400 hover:bg-gray-50 hover:text-black transition-all group relative"
-          >
-            <item.icon size={22} />
-            {!isCollapsed && (
-              <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide">
-                {item.name}
-              </span>
-            )}
-          </Link>
-        ))}
+      {/* SIDEBAR CONTAINER */}
+      <div className={`
+        fixed inset-y-0 left-0 z-40 bg-[#2d3436] text-white transition-all duration-300 ease-in-out flex flex-col font-['Fredoka']
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${collapsed ? 'w-20' : 'w-64'}
+      `}>
         
-        <button className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">
-          <LogOut size={22} />
-          {!isCollapsed && (
-            <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide">
-              Déconnexion
-            </span>
-          )}
-        </button>
+        {/* HEADER */}
+        <div className="h-20 flex items-center justify-center border-b border-gray-700 relative">
+          <h1 className={`font-black text-2xl tracking-tighter text-[#00b894] transition-opacity duration-200 ${collapsed ? 'opacity-0 hidden' : 'opacity-100'}`}>
+            BTP<span className="text-white">MANAGER</span>
+          </h1>
+          {collapsed && <span className="font-black text-2xl text-[#00b894]">B</span>}
+          
+          <button 
+            onClick={() => setCollapsed(!collapsed)}
+            className="absolute -right-3 top-8 bg-[#00b894] rounded-full p-1 text-white shadow-md hidden md:block hover:scale-110 transition-transform"
+          >
+            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+        </div>
+
+        {/* MENU */}
+        <nav className="flex-1 py-6 space-y-2 px-3 overflow-y-auto custom-scrollbar">
+          {menuItems.map((item, index) => {
+            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            return (
+              <Link 
+                key={index} 
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={`
+                  flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group
+                  ${isActive 
+                    ? 'bg-[#00b894] text-white shadow-lg shadow-emerald-900/20' 
+                    : 'text-gray-400 hover:bg-white/10 hover:text-white'}
+                `}
+              >
+                <item.icon size={22} className={`shrink-0 ${isActive ? 'animate-pulse' : ''}`} />
+                {!collapsed && (
+                  <span className="font-bold text-sm tracking-wide">{item.label}</span>
+                )}
+                
+                {/* TOOLTIP ON COLLAPSE */}
+                {collapsed && (
+                  <div className="absolute left-16 bg-black/80 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                    {item.label}
+                  </div>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* FOOTER */}
+        <div className="p-4 border-t border-gray-700">
+          <button className={`
+            flex items-center gap-3 w-full p-3 rounded-xl text-red-400 hover:bg-red-400/10 transition-colors
+            ${collapsed ? 'justify-center' : ''}
+          `}>
+            <LogOut size={20} />
+            {!collapsed && <span className="font-bold text-sm">Déconnexion</span>}
+          </button>
+        </div>
       </div>
-    </div>
+
+      {/* OVERLAY MOBILE */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+    </>
   );
 }
