@@ -13,7 +13,7 @@ import Link from 'next/link';
 
 // LISTES PRÉDÉFINIES
 const RISK_OPTIONS = ['Amiante', 'Plomb', 'Silice', 'ATEX', 'Hauteur'];
-const EPI_OPTIONS = ['Casque', 'Harnais', 'ARI', 'Combinaison', 'Gants', 'Lunettes'];
+const EPI_OPTIONS = ['Casque', 'Harnais', 'chaussures de sécurité', 'Combinaison', 'protections des voies respiratoires', 'Gants', 'protections pour les oreilles', 'Lunettes'];
 const TYPE_CHANTIER_OPTIONS = ['Industriel', 'Parking', 'Ouvrage d\'art', 'Autre'];
 
 export default function ChantierDetail() {
