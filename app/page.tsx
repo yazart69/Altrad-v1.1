@@ -73,9 +73,23 @@ export default function Home() {
             <StaffingTile staffCount={stats.staff} />
           </div>
 
-          {/* Effectif Répartition (2 cols) */}
-          <div className="col-span-12 xl:col-span-2 h-[350px]">
-            <TeamTile isCompact={true} />
+          {/* ZONE MODIFIÉE : Effectif Répartition (2 cols) DIVISÉE EN 2 */}
+          <div className="col-span-12 xl:col-span-2 h-[350px] flex flex-col gap-4">
+            
+            {/* TUILE 1 : Répartition (Haut - 50%) */}
+            <div className="flex-1 overflow-hidden">
+               <TeamTile isCompact={true} />
+            </div>
+
+            {/* TUILE 2 : Placeholder Future (Bas - 50%) */}
+            <div className="flex-1 bg-white rounded-[25px] shadow-sm border border-gray-100 flex items-center justify-center relative overflow-hidden group hover:shadow-md transition-all">
+                <div className="absolute inset-0 bg-gray-50/50 flex items-center justify-center">
+                    <span className="text-[10px] font-black uppercase text-gray-300 tracking-widest group-hover:text-blue-400 transition-colors">
+                        Module à venir
+                    </span>
+                </div>
+            </div>
+
           </div>
 
           {/* HSE / Démarrage (6 cols) */}
