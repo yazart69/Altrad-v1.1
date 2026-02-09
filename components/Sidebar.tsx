@@ -9,7 +9,7 @@ import {
   HardHat, 
   ClipboardList, 
   CalendarRange,
-  CalendarDays, // Nouvel icône pour le planning hebdo
+  CalendarDays,
   ShieldCheck, 
   Factory, 
   Settings, 
@@ -24,9 +24,9 @@ export default function Sidebar() {
 
   const menuItems = [
     { name: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
-    { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' }, // Ajout du module Planning Hebdo
+    { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' },
     { name: 'Planning de charge', icon: CalendarRange, path: '/planning-charge' },
-    { name: 'Chantiers', icon: Factory, path: '/chantiers' },
+    { name: 'Chantiers', icon: Factory, path: '/chantiers' }, // Pointe vers la liste (Annuaire)
     { name: 'Équipes & RH', icon: Users, path: '/equipe' },
     { name: 'Matériel & Logistique', icon: HardHat, path: '/materiel' },
     { name: 'HSE & Sécurité', icon: ShieldCheck, path: '/hse' },
@@ -41,13 +41,13 @@ export default function Sidebar() {
     <div 
       className={`h-screen bg-white border-r border-gray-100 flex flex-col justify-between transition-all duration-300 ${
         isCollapsed ? 'w-20' : 'w-72'
-      } sticky top-0 left-0 z-50`}
+      } sticky top-0 left-0 z-50 font-['Fredoka']`}
     >
       {/* HEADER / LOGO */}
       <div className="p-6 flex items-center justify-between">
         {!isCollapsed && (
           <div className="animate-in fade-in duration-300">
-            <h1 className="font-['Fredoka'] text-2xl font-black uppercase tracking-tighter text-gray-900">
+            <h1 className="text-2xl font-black uppercase tracking-tighter text-gray-900">
               Altrad<span className="text-blue-600">.OS</span>
             </h1>
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Pilotage Industriel</p>
@@ -64,7 +64,7 @@ export default function Sidebar() {
       {/* NAVIGATION PRINCIPALE */}
       <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
         {menuItems.map((item) => {
-          const isActive = pathname === item.path;
+          const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
           return (
             <Link 
               key={item.path} 
@@ -78,7 +78,7 @@ export default function Sidebar() {
               <item.icon size={22} className={`shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-black'}`} />
               
               {!isCollapsed && (
-                <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide whitespace-nowrap animate-in fade-in duration-200">
+                <span className="font-bold text-sm uppercase tracking-wide whitespace-nowrap animate-in fade-in duration-200">
                   {item.name}
                 </span>
               )}
@@ -104,7 +104,7 @@ export default function Sidebar() {
           >
             <item.icon size={22} />
             {!isCollapsed && (
-              <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide">
+              <span className="font-bold text-sm uppercase tracking-wide">
                 {item.name}
               </span>
             )}
@@ -114,7 +114,7 @@ export default function Sidebar() {
         <button className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">
           <LogOut size={22} />
           {!isCollapsed && (
-            <span className="font-['Fredoka'] font-bold text-sm uppercase tracking-wide">
+            <span className="font-bold text-sm uppercase tracking-wide">
               Déconnexion
             </span>
           )}
