@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import Sidebar from '@/components/Sidebar';
 import TeamTile from "@/components/TeamTile";
 import BudgetHeuresTile from "@/components/BudgetHeuresTile";
 import LeavesTile from "@/components/LeavesTile";
@@ -20,7 +19,6 @@ export default function Home() {
       const { data: sites } = await supabase.from('chantiers').select('*').eq('statut', 'en_cours');
       
       const alerts = staff?.filter((e: any) => {
-        // Logique simplifiée, à connecter aux règles métiers futures
         return e.statut_actuel !== 'disponible';
       }).length || 0;
 
@@ -35,13 +33,11 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#f0f3f4] font-['Fredoka'] overflow-hidden">
-      {/* SIDEBAR INTÉGRÉE (PHASE 4) */}
-      <Sidebar />
-
+      
       {/* ZONE DE CONTENU PRINCIPALE */}
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
         
-        {/* GRILLE 12 COLONNES HARMONISÉE (PHASE 3) */}
+        {/* GRILLE 12 COLONNES HARMONISÉE */}
         <div className="grid grid-cols-12 gap-6 pb-10">
 
           {/* --- LIGNE 1 : SYNTHÈSE RH & LOGISTIQUE --- */}
@@ -51,7 +47,7 @@ export default function Home() {
             <LeavesTile />
           </div>
 
-          {/* Logistique & Matériel (Agrandissement -> 9 cols) */}
+          {/* Logistique & Matériel (9 cols) */}
           <div className="col-span-12 xl:col-span-9 h-[320px]">
             <MiddleTiles alertsCount={stats.alerts} /> 
           </div>
@@ -64,7 +60,7 @@ export default function Home() {
             <BudgetHeuresTile />
           </div>
 
-          {/* Actions Prioritaires (4 cols) - Remplace Semaine en cours */}
+          {/* Actions Prioritaires (4 cols) */}
           <div className="col-span-12 xl:col-span-4 h-[400px]">
             <TasksTile />
           </div>
@@ -72,17 +68,17 @@ export default function Home() {
 
           {/* --- LIGNE 3 : OPÉRATIONS TERRAIN --- */}
 
-          {/* Staffing Terrain (4 cols) - Interactif */}
+          {/* Staffing Terrain (4 cols) */}
           <div className="col-span-12 xl:col-span-4 h-[350px]">
             <StaffingTile staffCount={stats.staff} />
           </div>
 
-          {/* Effectif Répartition (Réduit -> 2 cols) */}
+          {/* Effectif Répartition (2 cols) */}
           <div className="col-span-12 xl:col-span-2 h-[350px]">
             <TeamTile isCompact={true} />
           </div>
 
-          {/* HSE / Démarrage (Agrandissement -> 6 cols) */}
+          {/* HSE / Démarrage (6 cols) */}
           <div className="col-span-12 xl:col-span-6 h-[350px]">
             <HSETile />
           </div>
