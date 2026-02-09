@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye, AlertCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Save, ShoppingCart, CalendarClock, MessageSquareWarning, Plus, X, FileText, Image as ImageIcon, UploadCloud, Eye, AlertCircle, Clock, CheckCircle2, Circle, MapPin, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ChantierDetail() {
@@ -18,14 +18,14 @@ export default function ChantierDetail() {
   const [rentals, setRentals] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]); // Ajout de l'état local pour les tâches
+  const [tasks, setTasks] = useState<any[]>([]);
 
   // Inputs
   const [newItem, setNewItem] = useState("");
   const [newLoc, setNewLoc] = useState({ materiel: "", date_fin: "" });
   const [newReport, setNewReport] = useState("");
   
-  // NOUVEAUX STATES POUR LA TÂCHE (Corrige le bug)
+  // Tâches
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [newTaskHours, setNewTaskHours] = useState("");
 
@@ -50,7 +50,6 @@ export default function ChantierDetail() {
     const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (d) setDocuments(d);
 
-    // Charger les tâches du chantier (Toutes : faites et pas faites)
     const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (t) setTasks(t);
 
@@ -67,14 +66,12 @@ export default function ChantierDetail() {
 
   const addTask = async () => {
     if (!newTaskLabel) return;
-    // Insertion avec l'objectif d'heures
     await supabase.from('chantier_tasks').insert([{ 
         chantier_id: id, 
         label: newTaskLabel,
         objectif_heures: parseInt(newTaskHours) || 0 
     }]);
     
-    // Reset des champs (Plus de bug car on utilise le state React)
     setNewTaskLabel("");
     setNewTaskHours("");
     fetchChantierData();
@@ -105,7 +102,6 @@ export default function ChantierDetail() {
     }
   };
 
-  // Toggle tâche fait/pas fait depuis la liste
   const toggleTask = async (task: any) => {
     await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
     fetchChantierData();
@@ -135,153 +131,367 @@ export default function ChantierDetail() {
     fetchChantierData();
   };
 
-  if (loading) return <div className="p-10 font-['Fredoka'] text-center">Chargement...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold">Chargement du chantier...</div>;
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20">
+    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800">
       
       {/* HEADER */}
-      <div className="bg-white shadow-sm p-4 sticky top-0 z-20">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <Link href="/" className="flex items-center text-gray-500 hover:text-black font-bold text-sm">
-                <ArrowLeft size={18} className="mr-1" /> Retour
+      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+            <Link href="/" className="flex items-center text-gray-400 hover:text-[#34495e] transition-colors font-bold text-sm gap-2">
+                <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100"><ArrowLeft size={18} /></div>
+                <span className="hidden sm:inline">Retour Dashboard</span>
             </Link>
-            <h1 className="text-xl font-black uppercase truncate max-w-[200px]">{chantier.nom}</h1>
-            <button onClick={handleSaveInfo} className="bg-[#00b894] text-white p-2 rounded-lg shadow-md">
+            
+            <div className="text-center">
+                <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
+                <div className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    <span className={`w-2 h-2 rounded-full ${chantier.statut === 'en_cours' ? 'bg-[#00b894]' : 'bg-gray-300'}`}></span>
+                    {chantier.statut?.replace('_', ' ')}
+                </div>
+            </div>
+
+            <button onClick={handleSaveInfo} className="bg-[#00b894] hover:bg-[#00a383] text-white p-2.5 rounded-xl shadow-lg shadow-emerald-200 transition-all hover:scale-105 active:scale-95">
                 <Save size={20} />
             </button>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
         
-        {/* TABS */}
-        <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
-            <button onClick={() => setActiveTab('infos')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'infos' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>ℹ️ Infos</button>
-            <button onClick={() => setActiveTab('materiel')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'materiel' ? 'bg-[#0984e3] text-white' : 'bg-white text-gray-500'}`}>🛒 Stocks</button>
-            <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'locations' ? 'bg-[#6c5ce7] text-white' : 'bg-white text-gray-500'}`}>📅 Locations</button>
-            <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'journal' ? 'bg-[#d63031] text-white' : 'bg-white text-gray-500'}`}>⚠️ Journal</button>
-            <button onClick={() => setActiveTab('documents')} className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeTab === 'documents' ? 'bg-[#e17055] text-white' : 'bg-white text-gray-500'}`}>📁 Docs ({documents.length})</button>
+        {/* TABS NAVIGATION */}
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            {[
+                { id: 'infos', label: 'Infos & Tâches', icon: 'ℹ️', color: 'bg-[#34495e]' },
+                { id: 'materiel', label: 'Matériel', icon: '🛒', color: 'bg-[#0984e3]' },
+                { id: 'locations', label: 'Locations', icon: '📅', color: 'bg-[#6c5ce7]' },
+                { id: 'journal', label: 'Journal', icon: '⚠️', color: 'bg-[#d63031]' },
+                { id: 'documents', label: `Documents (${documents.length})`, icon: '📁', color: 'bg-[#e17055]' },
+            ].map(tab => (
+                <button 
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)} 
+                    className={`px-5 py-2.5 rounded-2xl font-bold text-sm whitespace-nowrap transition-all duration-300 shadow-sm border ${
+                        activeTab === tab.id 
+                        ? `${tab.color} text-white border-transparent shadow-lg scale-105` 
+                        : 'bg-white text-gray-400 border-gray-100 hover:bg-gray-50'
+                    }`}
+                >
+                    <span className="mr-2">{tab.icon}</span> {tab.label}
+                </button>
+            ))}
         </div>
 
         {/* --- CONTENU --- */}
 
-        {/* 1. INFOS & TÂCHES (UPDATED) */}
+        {/* 1. INFOS & TÂCHES */}
         {activeTab === 'infos' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* Infos Générales */}
-                <div className="bg-white rounded-[25px] p-6 shadow-sm space-y-4">
-                    <h3 className="font-black text-gray-800 uppercase mb-2">Infos Chantier</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase">Adresse</label>
-                            <input value={chantier.adresse || ''} onChange={(e) => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-medium text-gray-800 outline-none" />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase">Statut</label>
-                            <select value={chantier.statut} onChange={(e) => setChantier({...chantier, statut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none">
-                                <option value="en_cours">🟢 En Cours</option>
-                                <option value="planifie">🔵 Planifié</option>
-                                <option value="termine">🔴 Terminé</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase">Budget H</label>
-                            <input type="number" value={chantier.heures_budget || 0} onChange={(e) => setChantier({...chantier, heures_budget: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-gray-800 outline-none" />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Gestion des Tâches (CORRIGÉ & AMÉLIORÉ) */}
-                <div className="bg-[#2d3436] rounded-[25px] p-6 shadow-sm text-white">
-                    <h3 className="font-black uppercase mb-4 flex items-center gap-2">
-                        <AlertCircle size={20} className="text-[#00b894]"/> Tâches à réaliser
-                    </h3>
-                    
-                    {/* Input Ajout Tâche + Heures */}
-                    <div className="flex gap-2 mb-4 items-center">
-                        <input 
-                            placeholder="Nouvelle tâche..." 
-                            value={newTaskLabel}
-                            onChange={(e) => setNewTaskLabel(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                            className="flex-1 bg-white/10 text-white placeholder-white/50 p-3 rounded-xl outline-none font-bold focus:bg-white/20 transition-colors"
-                        />
-                        <div className="relative w-20">
-                            <input 
-                                type="number"
-                                placeholder="H" 
-                                value={newTaskHours}
-                                onChange={(e) => setNewTaskHours(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                                className="w-full bg-white/10 text-white placeholder-white/50 p-3 rounded-xl outline-none font-bold text-center focus:bg-white/20"
-                            />
-                        </div>
-                        <button onClick={addTask} className="bg-[#00b894] p-3 rounded-xl hover:bg-[#00a383]"><Plus size={20}/></button>
-                    </div>
-
-                    {/* Liste des tâches */}
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
-                        {tasks.map((t) => (
-                            <div key={t.id} className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
-                                <div className="flex items-center gap-3 flex-1" onClick={() => toggleTask(t)}>
-                                    <div className={`cursor-pointer ${t.done ? 'text-[#00b894]' : 'text-orange-400'}`}>
-                                         {t.done ? <AlertCircle size={18} fill="#00b894" textAnchor='middle' className="text-black" /> : <div className="w-[18px] h-[18px] rounded-full border-2 border-orange-400"></div>}
-                                    </div>
-                                    <span className={`text-sm font-bold ${t.done ? 'line-through opacity-40' : ''}`}>{t.label}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    {t.objectif_heures > 0 && (
-                                        <div className="flex items-center gap-1 bg-white/10 px-2 py-1 rounded text-xs font-bold text-[#74b9ff]">
-                                            <Clock size={12} /> {t.objectif_heures}h
-                                        </div>
-                                    )}
-                                    <button onClick={() => deleteItem('chantier_tasks', t.id)} className="text-white/20 hover:text-red-500"><X size={16}/></button>
+                {/* BLOC INFOS (Vert Menthe) */}
+                <div className="bg-[#00b894] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <h3 className="font-black uppercase text-xl mb-6 flex items-center gap-2">
+                            <div className="bg-white/20 p-2 rounded-full"><FileText size={20}/></div>
+                            Détails Chantier
+                        </h3>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest ml-1">Adresse</label>
+                                <div className="flex items-center bg-white/20 rounded-2xl p-1 focus-within:bg-white/30 transition-colors">
+                                    <MapPin className="ml-3 text-emerald-100" size={18} />
+                                    <input 
+                                        value={chantier.adresse || ''} 
+                                        onChange={(e) => setChantier({...chantier, adresse: e.target.value})} 
+                                        className="w-full bg-transparent p-3 font-bold text-white placeholder-emerald-100/50 outline-none" 
+                                    />
                                 </div>
                             </div>
-                        ))}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest ml-1">Statut</label>
+                                    <div className="bg-white/20 rounded-2xl p-1 px-2">
+                                        <select 
+                                            value={chantier.statut} 
+                                            onChange={(e) => setChantier({...chantier, statut: e.target.value})} 
+                                            className="w-full bg-transparent p-3 font-bold text-white outline-none [&>option]:text-black cursor-pointer"
+                                        >
+                                            <option value="en_cours">En Cours</option>
+                                            <option value="planifie">Planifié</option>
+                                            <option value="termine">Terminé</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest ml-1">Budget Heures</label>
+                                    <div className="flex items-center bg-white/20 rounded-2xl p-1">
+                                        <Clock className="ml-3 text-emerald-100" size={18} />
+                                        <input 
+                                            type="number" 
+                                            value={chantier.heures_budget || 0} 
+                                            onChange={(e) => setChantier({...chantier, heures_budget: e.target.value})} 
+                                            className="w-full bg-transparent p-3 font-bold text-white outline-none text-right pr-4" 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <FileText size={200} className="absolute -right-10 -bottom-20 text-emerald-900 opacity-10 rotate-12 pointer-events-none" />
+                </div>
+
+                {/* BLOC TÂCHES (Bleu Nuit) */}
+                <div className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col h-full">
+                    <div className="relative z-10 flex flex-col h-full">
+                        <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2">
+                            <div className="bg-[#ff9f43] p-2 rounded-full text-white shadow-lg shadow-orange-500/30"><AlertCircle size={20}/></div>
+                            Tâches & Objectifs
+                        </h3>
+                        
+                        {/* Input Ajout */}
+                        <div className="flex gap-2 mb-4">
+                            <div className="flex-1 bg-white/10 rounded-xl flex items-center p-1 focus-within:bg-white/20 transition-colors border border-white/5">
+                                <input 
+                                    placeholder="Nouvelle tâche..." 
+                                    value={newTaskLabel}
+                                    onChange={(e) => setNewTaskLabel(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                                    className="w-full bg-transparent p-2 pl-3 text-sm font-bold text-white placeholder-white/40 outline-none"
+                                />
+                            </div>
+                            <div className="w-20 bg-white/10 rounded-xl flex items-center p-1 border border-white/5">
+                                <input 
+                                    type="number"
+                                    placeholder="H" 
+                                    value={newTaskHours}
+                                    onChange={(e) => setNewTaskHours(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                                    className="w-full bg-transparent p-2 text-sm font-bold text-white text-center placeholder-white/40 outline-none"
+                                />
+                            </div>
+                            <button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] transition-colors shadow-lg shadow-orange-500/20">
+                                <Plus size={20}/>
+                            </button>
+                        </div>
+
+                        {/* Liste */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2 max-h-[400px]">
+                             {tasks.length === 0 ? (
+                                <div className="text-center py-10 opacity-30">
+                                    <CheckCircle2 size={40} className="mx-auto mb-2"/>
+                                    <p className="text-sm font-bold">Aucune tâche</p>
+                                </div>
+                             ) : (
+                                tasks.map((t) => (
+                                    <div key={t.id} className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-colors group/task">
+                                        <div className="flex items-center gap-3 flex-1 cursor-pointer select-none" onClick={() => toggleTask(t)}>
+                                            <div className={`transition-colors ${t.done ? 'text-[#00b894]' : 'text-[#ff9f43]'}`}>
+                                                 {t.done ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+                                            </div>
+                                            <span className={`text-sm font-bold transition-opacity ${t.done ? 'line-through opacity-40' : 'text-white'}`}>{t.label}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {t.objectif_heures > 0 && (
+                                                <span className="text-[10px] bg-[#0984e3] px-2 py-1 rounded-lg text-white font-bold flex items-center gap-1 shadow-sm">
+                                                    <Clock size={10} /> {t.objectif_heures}h
+                                                </span>
+                                            )}
+                                            <button onClick={() => deleteItem('chantier_tasks', t.id)} className="text-white/20 hover:text-red-400 p-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
+                                                <X size={16}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                             )}
+                        </div>
                     </div>
                 </div>
             </div>
         )}
 
-        {/* LES AUTRES ONGLETS (Code identique, compressé pour la lisibilité) */}
+        {/* 2. MATÉRIEL (Bleu) */}
         {activeTab === 'materiel' && (
-             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#0984e3] p-4 rounded-[20px] text-white shadow-lg flex gap-2">
-                    <input placeholder="Ex: 5 pots Peinture..." value={newItem} onChange={(e) => setNewItem(e.target.value)} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
-                    <button onClick={addMaterial} className="bg-white text-[#0984e3] p-3 rounded-xl font-bold"><Plus /></button>
+             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-[#0984e3] p-6 rounded-[30px] text-white shadow-xl mb-6 flex flex-col md:flex-row gap-4 items-end md:items-center">
+                    <div className="flex-1 w-full">
+                        <label className="text-[10px] font-bold text-blue-100 uppercase tracking-widest ml-1 mb-1 block">Ajouter un besoin</label>
+                        <div className="bg-white/20 p-1.5 rounded-2xl flex items-center focus-within:bg-white/30 transition-colors">
+                            <ShoppingCart className="ml-3 text-blue-100" size={20} />
+                            <input 
+                                placeholder="Ex: 5 pots Peinture, 2 Échelles..." 
+                                value={newItem} 
+                                onChange={(e) => setNewItem(e.target.value)} 
+                                onKeyDown={(e) => e.key === 'Enter' && addMaterial()}
+                                className="w-full bg-transparent p-3 font-bold text-white placeholder-blue-100/50 outline-none" 
+                            />
+                        </div>
+                    </div>
+                    <button onClick={addMaterial} className="bg-white text-[#0984e3] px-6 py-4 rounded-xl font-black uppercase tracking-wider text-sm hover:scale-105 active:scale-95 transition-transform shadow-lg w-full md:w-auto">
+                        Ajouter
+                    </button>
                 </div>
-                {materials.map(m => (<div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm"><p className="font-bold text-gray-800">{m.item}</p><button onClick={() => deleteItem('material_requests', m.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button></div>))}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {materials.map(m => (
+                        <div key={m.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-50 p-2.5 rounded-xl text-[#0984e3]">
+                                    <ShoppingCart size={20} />
+                                </div>
+                                <p className="font-bold text-gray-700">{m.item}</p>
+                            </div>
+                            <button onClick={() => deleteItem('material_requests', m.id)} className="bg-gray-50 p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
+                    ))}
+                    {materials.length === 0 && (
+                        <div className="col-span-full text-center py-10 opacity-40">
+                            <ShoppingCart size={40} className="mx-auto mb-2 text-gray-400" />
+                            <p className="font-bold text-gray-500">Aucun matériel demandé</p>
+                        </div>
+                    )}
+                </div>
             </div>
         )}
+
+        {/* 3. LOCATIONS (Violet) */}
         {activeTab === 'locations' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#6c5ce7] p-4 rounded-[20px] text-white shadow-lg flex flex-col gap-2">
-                    <input placeholder="Matériel..." value={newLoc.materiel} onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})} className="bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
-                    <div className="flex gap-2"><input type="date" value={newLoc.date_fin} onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold" /><button onClick={addRental} className="bg-white text-[#6c5ce7] p-3 rounded-xl font-bold"><Plus /></button></div>
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-[#6c5ce7] p-6 rounded-[30px] text-white shadow-xl mb-6">
+                    <h3 className="font-black uppercase text-lg mb-4 flex items-center gap-2"><CalendarClock/> Nouvelle Location</h3>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1 bg-white/20 rounded-2xl p-1.5 px-4 flex items-center">
+                            <input 
+                                placeholder="Matériel (ex: Nacelle 12m)" 
+                                value={newLoc.materiel} 
+                                onChange={(e) => setNewLoc({...newLoc, materiel: e.target.value})} 
+                                className="w-full bg-transparent p-2 font-bold text-white placeholder-indigo-200 outline-none" 
+                            />
+                        </div>
+                        <div className="flex-1 bg-white/20 rounded-2xl p-1.5 px-4 flex items-center">
+                            <span className="text-xs font-bold text-indigo-200 mr-2 uppercase">Fin :</span>
+                            <input 
+                                type="date" 
+                                value={newLoc.date_fin} 
+                                onChange={(e) => setNewLoc({...newLoc, date_fin: e.target.value})} 
+                                className="w-full bg-transparent p-2 font-bold text-white outline-none cursor-pointer" 
+                            />
+                        </div>
+                        <button onClick={addRental} className="bg-white text-[#6c5ce7] px-8 py-3 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">
+                            Valider
+                        </button>
+                    </div>
                 </div>
-                {rentals.map(r => (<div key={r.id} className="bg-white p-4 rounded-[20px] flex justify-between items-center shadow-sm"><div><p className="font-bold text-gray-800">{r.materiel}</p><p className="text-xs text-gray-500">Fin : {new Date(r.date_fin).toLocaleDateString()}</p></div><button onClick={() => deleteItem('rentals', r.id)} className="text-gray-300 hover:text-red-500"><X size={18} /></button></div>))}
+
+                <div className="space-y-3">
+                    {rentals.map(r => (
+                        <div key={r.id} className="bg-white p-4 rounded-[25px] flex justify-between items-center shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-indigo-50 p-3 rounded-2xl text-[#6c5ce7]">
+                                    <CalendarClock size={24} />
+                                </div>
+                                <div>
+                                    <p className="font-black text-gray-800 text-lg">{r.materiel}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded uppercase">Actif</span>
+                                        <p className="text-xs text-gray-400 font-bold">Fin le {new Date(r.date_fin).toLocaleDateString()}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => deleteItem('rentals', r.id)} className="p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                                <Trash2 size={20} />
+                            </button>
+                        </div>
+                    ))}
+                    {rentals.length === 0 && (
+                        <div className="text-center py-10 opacity-40">
+                             <p className="font-bold text-gray-500">Aucune location en cours</p>
+                        </div>
+                    )}
+                </div>
             </div>
         )}
+
+        {/* 4. JOURNAL (Rouge) */}
         {activeTab === 'journal' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#d63031] p-4 rounded-[20px] text-white shadow-lg flex gap-2">
-                    <input placeholder="Message..." value={newReport} onChange={(e) => setNewReport(e.target.value)} className="flex-1 bg-white/20 text-white p-3 rounded-xl outline-none font-bold placeholder-white/60" />
-                    <button onClick={addReport} className="bg-white text-[#d63031] p-3 rounded-xl font-bold"><Plus /></button>
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-[#d63031] p-4 rounded-[25px] text-white shadow-xl mb-6 flex gap-3 items-center">
+                    <div className="bg-white/20 p-3 rounded-xl"><MessageSquareWarning size={24}/></div>
+                    <input 
+                        placeholder="Signaler un incident, une remarque..." 
+                        value={newReport} 
+                        onChange={(e) => setNewReport(e.target.value)} 
+                        onKeyDown={(e) => e.key === 'Enter' && addReport()}
+                        className="flex-1 bg-transparent text-white placeholder-red-200 font-bold outline-none text-lg" 
+                    />
+                    <button onClick={addReport} className="bg-white text-[#d63031] p-3 rounded-xl hover:scale-110 transition-transform shadow-md">
+                        <Plus size={24} />
+                    </button>
                 </div>
-                {reports.map(r => (<div key={r.id} className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-[#d63031] flex justify-between"><p className="font-bold text-gray-800 text-sm">{r.message}</p><button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500"><X size={16} /></button></div>))}
+
+                <div className="space-y-4">
+                    {reports.map(r => (
+                        <div key={r.id} className="bg-white p-5 rounded-[25px] shadow-sm border-l-8 border-[#d63031] flex justify-between group">
+                            <div>
+                                <p className="font-bold text-gray-800 text-base">{r.message}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">
+                                    {new Date(r.created_at).toLocaleDateString()} • {r.auteur}
+                                </p>
+                            </div>
+                            <button onClick={() => deleteItem('site_reports', r.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <X size={20} />
+                            </button>
+                        </div>
+                    ))}
+                     {reports.length === 0 && (
+                        <div className="text-center py-10 opacity-40">
+                             <p className="font-bold text-gray-500">R.A.S (Rien à signaler)</p>
+                        </div>
+                    )}
+                </div>
             </div>
         )}
+
+        {/* 5. DOCUMENTS (Orange) */}
         {activeTab === 'documents' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                 <div className="bg-[#e17055] p-6 rounded-[20px] text-white shadow-lg flex flex-col items-center justify-center text-center border-2 border-dashed border-white/30 relative">
-                    <UploadCloud size={32} className="mb-2" /> <p className="font-black uppercase">Ajouter Doc</p>
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 <div className="bg-[#e17055] p-8 rounded-[30px] text-white shadow-xl flex flex-col items-center justify-center text-center border-4 border-dashed border-white/20 relative overflow-hidden group mb-6 transition-colors hover:bg-[#d35400] hover:border-white/40 cursor-pointer">
+                    <div className="bg-white/20 p-4 rounded-full mb-3 group-hover:scale-110 transition-transform">
+                        <UploadCloud size={40} />
+                    </div>
+                    <p className="font-black uppercase text-xl">Glisser-déposer ou cliquer</p>
+                    <p className="text-sm font-bold text-orange-100 mt-1">PDF, JPG, PNG acceptés</p>
                     <input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    {uploading && <div className="absolute inset-0 bg-[#e17055] flex items-center justify-center font-bold animate-pulse">Upload en cours...</div>}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                    {documents.map(doc => (<div key={doc.id} className="bg-white p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-[150px] relative group overflow-hidden"><div className="flex-1 flex items-center justify-center bg-gray-50 rounded-xl mb-2 overflow-hidden">{doc.type === 'image' ? <img src={doc.url} className="w-full h-full object-cover"/> : <FileText size={32} className="text-gray-400"/>}</div><div className="flex justify-between items-center"><p className="text-[10px] font-bold text-gray-600 truncate max-w-[80px]">{doc.nom}</p><a href={doc.url} target="_blank" className="bg-black/5 p-1.5 rounded-full"><Eye size={14} className="text-gray-600"/></a></div><button onClick={() => deleteItem('chantier_documents', doc.id)} className="absolute top-2 right-2 bg-white/80 p-1.5 rounded-full text-red-500 shadow-sm opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button></div>))}
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {documents.map(doc => (
+                        <div key={doc.id} className="bg-white p-3 rounded-[25px] shadow-sm flex flex-col h-[200px] relative group hover:shadow-lg transition-all border border-gray-100">
+                            <div className="flex-1 bg-gray-50 rounded-[20px] mb-3 overflow-hidden flex items-center justify-center relative">
+                                {doc.type === 'image' ? (
+                                    <img src={doc.url} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"/>
+                                ) : (
+                                    <FileText size={48} className="text-gray-300 group-hover:text-[#e17055] transition-colors"/>
+                                )}
+                                <a href={doc.url} target="_blank" className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="bg-white p-2 rounded-full text-gray-800 shadow-lg scale-0 group-hover:scale-100 transition-transform delay-75">
+                                        <Eye size={20}/>
+                                    </div>
+                                </a>
+                            </div>
+                            <div className="flex justify-between items-center px-1">
+                                <p className="text-xs font-bold text-gray-600 truncate max-w-[100px]">{doc.nom}</p>
+                                <button onClick={() => deleteItem('chantier_documents', doc.id)} className="text-gray-300 hover:text-red-500">
+                                    <Trash2 size={16}/>
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         )}
