@@ -55,14 +55,14 @@ export default function TeamTile({ isCompact = false }: TeamTileProps) {
         
         {/* Header Compact */}
         <div className={`p-4 ${isCompact ? 'pb-0 text-center' : 'pb-2'}`}>
-          <h2 className={`font-black uppercase italic leading-none ${isCompact ? 'text-lg' : 'text-2xl'}`}>Répartition</h2>
+          <h2 className={`font-black uppercase italic leading-none ${isCompact ? 'text-[16px]' : 'text-2xl'}`}>Répartition</h2>
           {!isCompact && <span className="opacity-80 text-[11px] font-bold uppercase tracking-widest">Types de contrats</span>}
         </div>
 
-        <div className={`flex-1 flex items-center justify-center ${isCompact ? 'flex-col gap-2 p-2' : 'px-6 pb-4 gap-4'}`}>
+        <div className={`flex-1 flex items-center justify-center ${isCompact ? 'flex-col gap-1 p-2' : 'px-6 pb-4 gap-4'}`}>
           
           {/* DONUT */}
-          <div className={`relative rounded-full shrink-0 shadow-xl transition-all ${isCompact ? 'w-24 h-24' : 'w-28 h-28'}`}
+          <div className={`relative rounded-full shrink-0 shadow-xl transition-all ${isCompact ? 'w-20 h-20' : 'w-28 h-28'}`}
                style={{ 
                  background: total > 0 ? `conic-gradient(
                    #feca57 0% ${s1}%, 
@@ -72,16 +72,16 @@ export default function TeamTile({ isCompact = false }: TeamTileProps) {
                  )` : 'rgba(255,255,255,0.1)'
                }}>
             <div className="absolute inset-2.5 bg-[#0984e3] rounded-full flex flex-col items-center justify-center shadow-inner">
-               <span className={`${isCompact ? 'text-xl' : 'text-2xl'} font-black`}>{total}</span>
+               <span className={`${isCompact ? 'text-lg' : 'text-2xl'} font-black`}>{total}</span>
             </div>
           </div>
 
           {/* LÉGENDE COMPACTE */}
           <div className={`flex ${isCompact ? 'flex-wrap justify-center gap-1 w-full' : 'flex-col gap-1.5 flex-1'}`}>
             {stats.map((s, i) => (
-              <div key={i} className={`flex items-center gap-1 ${isCompact ? 'bg-black/10 px-2 py-0.5 rounded' : 'justify-between border-b border-white/10 pb-1'}`}>
+              <div key={i} className={`flex items-center gap-1 ${isCompact ? 'bg-black/10 px-1.5 py-0.5 rounded' : 'justify-between border-b border-white/10 pb-1'}`}>
                 <div className="w-2 h-2 rounded-full shrink-0" style={{backgroundColor: s.color}} />
-                <span className="text-[9px] font-bold uppercase truncate">{s.label}</span>
+                <span className="text-[8px] font-bold uppercase truncate max-w-[50px]">{s.label}</span>
                 {!isCompact && <span className="text-sm font-black">{s.val}</span>}
               </div>
             ))}
