@@ -8,7 +8,8 @@ import {
   Users, 
   HardHat, 
   ClipboardList, 
-  CalendarRange, 
+  CalendarRange,
+  CalendarDays, // Nouvel icône pour le planning hebdo
   ShieldCheck, 
   Factory, 
   Settings, 
@@ -23,6 +24,7 @@ export default function Sidebar() {
 
   const menuItems = [
     { name: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
+    { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' }, // Ajout du module Planning Hebdo
     { name: 'Planning de charge', icon: CalendarRange, path: '/planning-charge' },
     { name: 'Chantiers', icon: Factory, path: '/chantiers' },
     { name: 'Équipes & RH', icon: Users, path: '/equipe' },
