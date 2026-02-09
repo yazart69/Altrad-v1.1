@@ -2,14 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import Sidebar from '@/components/Sidebar'; // Assurez-vous d'utiliser la nouvelle Sidebar
+import Sidebar from '@/components/Sidebar';
 import TeamTile from "@/components/TeamTile";
 import BudgetHeuresTile from "@/components/BudgetHeuresTile";
 import LeavesTile from "@/components/LeavesTile";
 import TasksTile from "@/components/TasksTile";
 import StaffingTile from "@/components/StaffingTile"; 
 import MiddleTiles from "@/components/MiddleTiles";
-import HSETile from "@/components/HSETile"; // Remplace StartupTile
+import HSETile from "@/components/HSETile"; 
 
 export default function Home() {
   const [stats, setStats] = useState({ staff: 0, alerts: 0, activeSites: 0 });
@@ -20,7 +20,7 @@ export default function Home() {
       const { data: sites } = await supabase.from('chantiers').select('*').eq('statut', 'en_cours');
       
       const alerts = staff?.filter((e: any) => {
-        // Logique simplifiée pour l'exemple, à connecter à vos règles métiers
+        // Logique simplifiée, à connecter aux règles métiers futures
         return e.statut_actuel !== 'disponible';
       }).length || 0;
 
@@ -35,13 +35,13 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#f0f3f4] font-['Fredoka'] overflow-hidden">
-      {/* PHASE 4 : SIDEBAR INTÉGRÉE */}
+      {/* SIDEBAR INTÉGRÉE (PHASE 4) */}
       <Sidebar />
 
       {/* ZONE DE CONTENU PRINCIPALE */}
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
         
-        {/* GRILLE 12 COLONNES HARMONISÉE */}
+        {/* GRILLE 12 COLONNES HARMONISÉE (PHASE 3) */}
         <div className="grid grid-cols-12 gap-6 pb-10">
 
           {/* --- LIGNE 1 : SYNTHÈSE RH & LOGISTIQUE --- */}
@@ -51,7 +51,7 @@ export default function Home() {
             <LeavesTile />
           </div>
 
-          {/* Logistique & Matériel (Agrandissement pour compenser -> 9 cols) */}
+          {/* Logistique & Matériel (Agrandissement -> 9 cols) */}
           <div className="col-span-12 xl:col-span-9 h-[320px]">
             <MiddleTiles alertsCount={stats.alerts} /> 
           </div>
@@ -64,7 +64,7 @@ export default function Home() {
             <BudgetHeuresTile />
           </div>
 
-          {/* Actions Prioritaires (Agrandissement -> 4 cols, prend la place du calendrier) */}
+          {/* Actions Prioritaires (4 cols) - Remplace Semaine en cours */}
           <div className="col-span-12 xl:col-span-4 h-[400px]">
             <TasksTile />
           </div>
@@ -77,12 +77,12 @@ export default function Home() {
             <StaffingTile staffCount={stats.staff} />
           </div>
 
-          {/* Effectif Répartition (Réduit à 50% de sa largeur précédente -> 2 cols) */}
+          {/* Effectif Répartition (Réduit -> 2 cols) */}
           <div className="col-span-12 xl:col-span-2 h-[350px]">
-            <TeamTile isCompact={true} /> {/* Prop spéciale pour affichage réduit */}
+            <TeamTile isCompact={true} />
           </div>
 
-          {/* HSE / Démarrage (Agrandissement avec l'espace récupéré -> 6 cols) */}
+          {/* HSE / Démarrage (Agrandissement -> 6 cols) */}
           <div className="col-span-12 xl:col-span-6 h-[350px]">
             <HSETile />
           </div>
