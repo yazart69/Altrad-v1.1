@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, Save, Printer, 
   Lock, Unlock, Copy, RotateCcw, AlertTriangle, 
-  CheckCircle2, FileSpreadsheet, HardHat, Clock
+  CheckCircle2, FileSpreadsheet, HardHat, Clock, AlertCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
@@ -42,10 +42,8 @@ export default function PointagePage() {
   const weekNumber = getWeekNumber(currentDate);
   const year = currentDate.getFullYear();
   
-  // Verrouillage (si au moins une tâche de la semaine est validée)
-  const isWeekLocked = useMemo(() => {
-      return assignments.some(a => a.valide === true);
-  }, [assignments]);
+  // Verrouillage
+  const isWeekLocked = useMemo(() => assignments.some(a => a.valide === true), [assignments]);
 
   // --- 1. CHARGEMENT DONNÉES ---
   const fetchData = async () => {
@@ -55,7 +53,7 @@ export default function PointagePage() {
     const { data: emp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
     if (emp) setEmployes(emp);
 
-    // Récupérer le planning de la semaine (et un peu plus large pour la sécurité)
+    // Récupérer le planning
     const startOfWeek = toLocalISOString(currentDate);
     const endOfWeekDate = new Date(currentDate);
     endOfWeekDate.setDate(endOfWeekDate.getDate() + 6);
@@ -63,16 +61,32 @@ export default function PointagePage() {
 
     const { data: plan } = await supabase
       .from('planning')
-      .select(`
-        *,
-        employes (id, nom, prenom),
-        chantiers (id, nom, adresse)
-      `)
+      .select(`*, employes (id, nom, prenom), chantiers (id, nom, adresse)`)
       .gte('date_debut', startOfWeek)
       .lte('date_debut', endOfWeek)
       .order('employe_id');
 
-    if (plan) setAssignments(plan);
+    if (plan) {
+        // --- PRÉ-REMPLISSAGE LOGIQUE ---
+        // On enrichit les données reçues avec la valeur par défaut si 'heures' est null/0
+        const enrichedPlan = plan.map(task => {
+            if (task.heures > 0) return task; // Déjà saisi, on touche pas
+            
+            // Si c'est une absence, on laisse 0
+            if (['maladie', 'conge', 'formation', 'absence'].includes(task.type)) return task;
+
+            // Sinon, calcul auto selon le jour
+            const date = new Date(task.date_debut);
+            const dayNum = date.getDay(); // 0=Dim, 1=Lun, 5=Ven
+            const defaultHours = dayNum === 5 ? 4 : 8.5; // Vendredi 4h, sinon 8.5h
+            
+            // On retourne la tâche avec la valeur par défaut (pour affichage)
+            // Note: On ne sauvegarde pas en BDD tout de suite pour ne pas spammer, 
+            // mais l'affichage sera correct et le total aussi.
+            return { ...task, heures: defaultHours, isAuto: true }; 
+        });
+        setAssignments(enrichedPlan);
+    }
     setLoading(false);
   };
 
@@ -85,104 +99,77 @@ export default function PointagePage() {
     return d;
   });
 
-  // Totaux par employé (CORRECTION TYPAGE ICI)
+  // Totaux par employé
   const employeeTotals = useMemo(() => {
-      // On dit explicitement à TypeScript que c'est un objet { "id": nombre }
       const stats: Record<string, number> = {}; 
       assignments.forEach(a => {
-          if (!a.heures) return;
-          stats[a.employe_id] = (stats[a.employe_id] || 0) + parseFloat(a.heures);
+          // On ignore les heures des absents pour le total (sécurité)
+          if (['maladie', 'conge', 'formation'].includes(a.type)) return;
+          stats[a.employe_id] = (stats[a.employe_id] || 0) + (parseFloat(a.heures) || 0);
       });
       return stats;
   }, [assignments]);
 
-  // Données Graphique (Par Chantier)
+  // Données Graphique
   const chartData = useMemo(() => {
       const data: any = {};
       assignments.forEach(a => {
           if (!a.chantiers?.nom || !a.heures) return;
+          if (['maladie', 'conge', 'formation'].includes(a.type)) return;
           data[a.chantiers.nom] = (data[a.chantiers.nom] || 0) + parseFloat(a.heures);
       });
       return Object.keys(data).map(key => ({ name: key, heures: data[key] }));
   }, [assignments]);
 
   // --- 3. ACTIONS ---
-
-  // Mise à jour Heures (Blur ou Enter)
   const updateHours = async (id: string, value: string) => {
       if (isWeekLocked) return;
       const numValue = parseFloat(value) || 0;
-      
-      // Optimistic UI
-      setAssignments(prev => prev.map(a => a.id === id ? { ...a, heures: numValue } : a));
-      
+      // Optimistic UI : On enlève le flag isAuto si on modifie manuellement
+      setAssignments(prev => prev.map(a => a.id === id ? { ...a, heures: numValue, isAuto: false } : a));
       await supabase.from('planning').update({ heures: numValue }).eq('id', id);
   };
 
-  // Verrouiller / Déverrouiller la semaine
   const toggleLockWeek = async () => {
       const newState = !isWeekLocked;
       const ids = assignments.map(a => a.id);
-      
       if (ids.length > 0) {
           await supabase.from('planning').update({ valide: newState }).in('id', ids);
           fetchData();
       }
   };
 
-  // Copier Semaine Précédente
   const copyPreviousWeek = async () => {
       if (isWeekLocked) return;
-      if (!confirm("Copier les affectations de la semaine dernière ?")) return;
-
-      // 1. Calculer dates semaine précédente
-      const prevWeekStart = new Date(currentDate);
-      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-      const startStr = toLocalISOString(prevWeekStart);
+      if (!confirm("Copier S-1 ?")) return;
       
-      const prevWeekEnd = new Date(prevWeekStart);
-      prevWeekEnd.setDate(prevWeekEnd.getDate() + 6);
-      const endStr = toLocalISOString(prevWeekEnd);
-
-      // 2. Fetch data S-1
+      const prevStart = new Date(currentDate); prevStart.setDate(prevStart.getDate() - 7);
+      const prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + 6);
+      
       const { data: prevData } = await supabase.from('planning')
           .select('*')
-          .gte('date_debut', startStr)
-          .lte('date_debut', endStr);
+          .gte('date_debut', toLocalISOString(prevStart))
+          .lte('date_debut', toLocalISOString(prevEnd));
 
-      if (!prevData || prevData.length === 0) {
-          alert("Aucune donnée trouvée la semaine précédente.");
-          return;
-      }
+      if (!prevData?.length) { alert("Aucune donnée S-1"); return; }
 
-      // 3. Préparer insertion S (Décalage +7 jours)
       const newEntries = prevData.map(item => {
-          const oldDate = new Date(item.date_debut);
-          const newDate = new Date(oldDate);
-          newDate.setDate(newDate.getDate() + 7);
-          const newDateStr = toLocalISOString(newDate);
-
+          const d = new Date(item.date_debut); d.setDate(d.getDate() + 7);
           return {
-              employe_id: item.employe_id,
-              chantier_id: item.chantier_id,
-              type: item.type,
-              date_debut: newDateStr,
-              date_fin: newDateStr,
-              heures: item.heures, 
-              valide: false
+              employe_id: item.employe_id, chantier_id: item.chantier_id, type: item.type,
+              date_debut: toLocalISOString(d), date_fin: toLocalISOString(d),
+              heures: item.heures, valide: false
           };
       });
 
       const { error } = await supabase.from('planning').insert(newEntries);
-      if (error) alert("Erreur copie: " + error.message);
+      if (error) alert("Erreur: " + error.message);
       else fetchData();
   };
 
-  // Reset Semaine
   const resetWeek = async () => {
       if (isWeekLocked) return;
-      if (!confirm("Remettre à zéro toutes les heures de la semaine ? (Les affectations resteront)")) return;
-
+      if (!confirm("Remettre à zéro ?")) return;
       const ids = assignments.map(a => a.id);
       await supabase.from('planning').update({ heures: 0 }).in('id', ids);
       fetchData();
@@ -193,12 +180,8 @@ export default function PointagePage() {
       
       {/* BANDEAU HAUT */}
       <div className="bg-white rounded-[25px] p-4 mb-6 shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 print:hidden">
-          
-          {/* Titre & Nav */}
           <div className="flex items-center gap-4">
-              <div className="bg-orange-100 p-3 rounded-2xl text-orange-600">
-                  <Clock size={24} />
-              </div>
+              <div className="bg-orange-100 p-3 rounded-2xl text-orange-600"><Clock size={24} /></div>
               <div>
                   <h1 className="text-2xl font-black uppercase text-[#2d3436]">Pointage Heures</h1>
                   <div className="flex items-center gap-2">
@@ -208,31 +191,19 @@ export default function PointagePage() {
                   </div>
               </div>
           </div>
-
-          {/* Actions */}
           <div className="flex flex-wrap gap-2 justify-end">
-              <button onClick={copyPreviousWeek} disabled={isWeekLocked} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-black uppercase flex items-center gap-2 disabled:opacity-50">
-                  <Copy size={14}/> Copier S-1
-              </button>
-              <button onClick={resetWeek} disabled={isWeekLocked} className="px-3 py-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-xs font-black uppercase flex items-center gap-2 disabled:opacity-50">
-                  <RotateCcw size={14}/> R.A.Z
-              </button>
-              <button onClick={toggleLockWeek} className={`px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 text-white shadow-lg transition-all ${isWeekLocked ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
-                  {isWeekLocked ? <><Lock size={14}/> Semaine Verrouillée</> : <><Unlock size={14}/> Valider Semaine</>}
-              </button>
-              <button onClick={() => window.print()} className="bg-[#2d3436] text-white p-2 rounded-xl hover:bg-black transition-colors">
-                  <Printer size={18}/>
-              </button>
+              <button onClick={copyPreviousWeek} disabled={isWeekLocked} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-black uppercase flex items-center gap-2 disabled:opacity-50"><Copy size={14}/> S-1</button>
+              <button onClick={resetWeek} disabled={isWeekLocked} className="px-3 py-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-xs font-black uppercase flex items-center gap-2 disabled:opacity-50"><RotateCcw size={14}/> R.A.Z</button>
+              <button onClick={toggleLockWeek} className={`px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 text-white shadow-lg transition-all ${isWeekLocked ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>{isWeekLocked ? <><Lock size={14}/> Verrouillé</> : <><Unlock size={14}/> Valider</>}</button>
+              <button onClick={() => window.print()} className="bg-[#2d3436] text-white p-2 rounded-xl hover:bg-black transition-colors"><Printer size={18}/></button>
           </div>
       </div>
 
-      {/* HEADER IMPRESSION */}
       <div className="hidden print:block mb-6 border-b-2 border-black pb-4">
-          <h1 className="text-3xl font-black uppercase">Feuille de Pointage</h1>
-          <p className="text-lg font-bold">Semaine {weekNumber} / {year}</p>
+          <h1 className="text-3xl font-black uppercase">Feuille de Pointage - S{weekNumber}</h1>
       </div>
 
-      {/* TABLEAU PRINCIPAL (LE CŒUR) */}
+      {/* TABLEAU PRINCIPAL */}
       <div className="bg-white rounded-[25px] shadow-sm border border-gray-200 overflow-hidden mb-6 print:border-none print:shadow-none">
           <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full min-w-[1000px] border-collapse">
@@ -252,81 +223,83 @@ export default function PointagePage() {
                       {employes.map(emp => {
                           const total = employeeTotals[emp.id] || 0;
                           const isOverload = total > 39;
-                          
-                          // On vérifie si l'employé a des tâches cette semaine
                           const empTasks = assignments.filter(a => a.employe_id === emp.id);
-                          if(empTasks.length === 0) return null; // Masquer si pas planifié (Optionnel)
+                          if(empTasks.length === 0) return null;
 
                           return (
                               <tr key={emp.id} className="group hover:bg-gray-50 transition-colors">
-                                  {/* NOM EMPLOYÉ */}
                                   <td className="p-4 sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-100">
                                       <div className="font-black text-sm uppercase text-gray-700">{emp.nom} {emp.prenom}</div>
                                       {isOverload && <div className="text-[9px] font-bold text-red-500 flex items-center gap-1 mt-1"><AlertTriangle size={10}/> Surcharge ({total}h)</div>}
                                   </td>
-
-                                  {/* JOURS */}
                                   {weekDays.map((day, i) => {
                                       const dateStr = toLocalISOString(day);
                                       const dayTasks = empTasks.filter(a => a.date_debut === dateStr);
                                       
-                                      // Règles heures par défaut
-                                      const isFriday = day.getDay() === 5;
-                                      const stdHours = isFriday ? 4 : 8.5;
-
                                       return (
                                           <td key={i} className="p-2 border-l border-gray-100 align-top h-20">
                                               <div className="flex flex-col gap-1">
-                                                  {dayTasks.map(task => (
-                                                      <div key={task.id} className="flex flex-col">
-                                                          <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
-                                                              <span className="text-[9px] font-bold uppercase truncate max-w-[80px] text-blue-800">
-                                                                  {task.chantiers?.nom || task.type}
-                                                              </span>
+                                                  {dayTasks.map(task => {
+                                                      const isAbsence = ['maladie', 'conge', 'formation', 'absence'].includes(task.type);
+                                                      
+                                                      // Rendu conditionnel : Absence vs Chantier
+                                                      if (isAbsence) {
+                                                          let badgeColor = "bg-gray-100 text-gray-500";
+                                                          if(task.type === 'maladie') badgeColor = "bg-red-100 text-red-500";
+                                                          if(task.type === 'conge') badgeColor = "bg-orange-100 text-orange-500";
+                                                          
+                                                          return (
+                                                              <div key={task.id} className={`text-[10px] font-black uppercase text-center p-1 rounded ${badgeColor}`}>
+                                                                  {task.type}
+                                                              </div>
+                                                          );
+                                                      }
+
+                                                      // Cas normal (Chantier)
+                                                      const isAuto = task.isAuto; // Flag calculé plus haut
+                                                      return (
+                                                          <div key={task.id} className="flex flex-col">
+                                                              <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
+                                                                  <span className="text-[9px] font-bold uppercase truncate max-w-[80px] text-blue-800">
+                                                                      {task.chantiers?.nom || 'Chantier'}
+                                                                  </span>
+                                                                  {isAuto && <span className="text-[8px] text-blue-300 italic">auto</span>}
+                                                              </div>
+                                                              <input 
+                                                                  type="number" 
+                                                                  disabled={isWeekLocked}
+                                                                  className={`w-full p-1 text-center font-bold text-sm outline-none border-b-2 transition-colors ${
+                                                                      task.heures > (day.getDay() === 5 ? 4 : 8.5) ? 'border-red-400 bg-red-50 text-red-600' : 
+                                                                      task.heures > 0 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white'
+                                                                  }`}
+                                                                  value={task.heures}
+                                                                  onChange={(e) => {
+                                                                      // Mise à jour locale pour fluidité
+                                                                      const val = e.target.value;
+                                                                      setAssignments(prev => prev.map(a => a.id === task.id ? { ...a, heures: val } : a));
+                                                                  }}
+                                                                  onBlur={(e) => updateHours(task.id, e.target.value)}
+                                                              />
                                                           </div>
-                                                          <input 
-                                                              type="number" 
-                                                              disabled={isWeekLocked}
-                                                              className={`w-full p-1 text-center font-bold text-sm outline-none border-b-2 transition-colors ${
-                                                                  task.heures > stdHours ? 'border-red-400 bg-red-50 text-red-600' : 
-                                                                  task.heures > 0 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 
-                                                                  'border-gray-200 bg-white'
-                                                              }`}
-                                                              placeholder="0"
-                                                              defaultValue={task.heures}
-                                                              onBlur={(e) => updateHours(task.id, e.target.value)}
-                                                              onKeyDown={(e) => {
-                                                                  if (e.key === 'Enter') {
-                                                                      e.currentTarget.blur();
-                                                                  }
-                                                              }}
-                                                          />
-                                                      </div>
-                                                  ))}
-                                                  {dayTasks.length === 0 && (
-                                                      <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
-                                                  )}
+                                                      );
+                                                  })}
                                               </div>
                                           </td>
-                                      )
+                                      );
                                   })}
-
-                                  {/* TOTAL SEMAINE */}
                                   <td className={`p-4 text-center font-black sticky right-0 bg-white group-hover:bg-gray-50 z-10 border-l border-gray-200 ${isOverload ? 'text-red-500' : 'text-gray-800'}`}>
                                       {total}h
                                   </td>
                               </tr>
-                          )
+                          );
                       })}
                   </tbody>
               </table>
           </div>
       </div>
 
-      {/* GRAPHIQUES & STATS (BAS DE PAGE) */}
+      {/* GRAPHIQUES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
-          
-          {/* GRAPHIQUE 1 : HEURES PAR CHANTIER */}
           <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-none print:shadow-none">
               <div className="flex items-center justify-between mb-4">
                   <h3 className="font-black uppercase text-gray-700 text-sm">Répartition Heures / Chantier</h3>
@@ -338,7 +311,7 @@ export default function PointagePage() {
                           <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f2f6"/>
                           <XAxis type="number" hide />
                           <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
-                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}/>
+                          <Tooltip cursor={{fill: 'transparent'}}/>
                           <Bar dataKey="heures" fill="#0984e3" radius={[0, 4, 4, 0]} barSize={20}>
                               {chartData.map((entry: any, index: number) => (
                                   <Cell key={`cell-${index}`} fill={["#0984e3", "#00b894", "#6c5ce7", "#e17055"][index % 4]} />
@@ -349,34 +322,24 @@ export default function PointagePage() {
               </div>
           </div>
 
-          {/* STATS RAPIDES */}
           <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 flex flex-col justify-center gap-4">
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                   <div>
                       <p className="text-xs font-bold text-gray-400 uppercase">Total Heures Semaine</p>
                       <p className="text-3xl font-black text-[#2d3436]">
-                          {/* CALCUL DU TOTAL : PAS D'ERREUR ICI MAINTENANT */}
                           {Object.values(employeeTotals).reduce((a, b) => a + b, 0)}h
                       </p>
                   </div>
-                  <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400">
-                      <Clock size={24}/>
-                  </div>
+                  <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400"><Clock size={24}/></div>
               </div>
-              
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                   <div>
                       <p className="text-xs font-bold text-gray-400 uppercase">Employés Actifs</p>
-                      <p className="text-3xl font-black text-[#00b894]">
-                          {Object.keys(employeeTotals).length}
-                      </p>
+                      <p className="text-3xl font-black text-[#00b894]">{Object.keys(employeeTotals).length}</p>
                   </div>
-                  <div className="bg-white p-3 rounded-xl shadow-sm text-[#00b894]">
-                      <HardHat size={24}/>
-                  </div>
+                  <div className="bg-white p-3 rounded-xl shadow-sm text-[#00b894]"><HardHat size={24}/></div>
               </div>
           </div>
-
       </div>
     </div>
   );
