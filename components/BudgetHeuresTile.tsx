@@ -89,167 +89,92 @@ export default function BudgetHeuresTile() {
           disabled={creating}
           className="bg-white text-[#00b894] hover:bg-emerald-50 p-2.5 rounded-xl transition-all shadow-lg cursor-pointer hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-
           {creating ? <Loader2 size={24} className="animate-spin" /> : <Plus size={24} />}
-
         </button>
-
       </div>
-
-
 
       {/* Liste scrollable */}
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3 z-10">
-
         {loading ? (
-
-          <div className="space-y-3">
-
+         <div className="space-y-3">
             {[1, 2, 3].map((n) => (
-
               <div key={n} className="h-20 bg-white/10 animate-pulse rounded-2xl"></div>
-
             ))}
-
           </div>
-
         ) : chantiers.length === 0 ? (
-
           <div className="h-full flex flex-col items-center justify-center opacity-60">
-
              <p className="text-sm font-bold italic">Aucun chantier enregistré.</p>
-
           </div>
-
         ) : (
-
           chantiers.map((chantier) => {
-
             // Calcul du ratio d'avancement
-
             // Utilise 'heures_consommees' qui est maintenant mis à jour automatiquement par les tâches
-
             const ratio = chantier.heures_budget > 0 
-
-              ? (chantier.heures_consommees / chantier.heures_budget) 
-
+             ? (chantier.heures_consommees / chantier.heures_budget) 
               : 0;
-
             const percentage = Math.min(100, Math.round(ratio * 100));
-
 
 
             // Couleurs de barre
 
             let barColor = "bg-white"; 
-
             if (percentage >= 100) barColor = "bg-[#d63031]"; // Rouge
-
             else if (percentage > 85) barColor = "bg-[#ff9f43]"; // Orange
 
 
-
             return (
-
-              <Link 
-
+            <Link 
                 href={`/chantier/${chantier.id}`} 
-
                 key={chantier.id} 
-
                 className="block p-4 rounded-[20px] bg-white/10 hover:bg-white/20 transition-all border border-white/5 hover:border-white/10 group/item hover:shadow-md"
-
               >
-
                 <div className="flex justify-between items-start mb-2">
-
                   <div className="flex-1 mr-4">
-
                     <h3 className="font-bold text-white text-[16px] leading-tight group-hover/item:text-emerald-100 transition-colors truncate">
-
                       {chantier.nom}
-
                     </h3>
-
                     <div className="flex items-center gap-1 text-emerald-100 mt-1 opacity-80">
-
                       <MapPin size={12} />
-
                       <span className="text-[11px] font-medium truncate max-w-[200px] uppercase">
-
                         {chantier.adresse || "Pas d'adresse"}
-
                       </span>
-
                     </div>
-
                   </div>
-
                   <div className="text-right">
-
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${
-
                       chantier.statut === 'en_cours' ? 'bg-white text-[#00b894]' : 'bg-black/20 text-white'
-
                     }`}>
-
                       {chantier.statut}
-
                     </span>
-
                     <p className="text-[9px] font-bold text-emerald-50 mt-1 uppercase tracking-tighter opacity-80">
-
                       {chantier.heures_consommees} / {chantier.heures_budget} H
-
                     </p>
-
                   </div>
-
                 </div>
-
 
 
                 {/* Barre d'avancement graphique */}
-
                 <div className="relative pt-2">
-
                   <div className="flex mb-1 items-center justify-between">
-
                     <div className="w-full bg-black/10 rounded-full h-2.5 overflow-hidden">
-
                       <div 
-
                         className={`h-2.5 rounded-full transition-all duration-1000 ${barColor}`} 
-
                         style={{ width: `${percentage}%` }}
-
                       ></div>
-
                     </div>
-
                     <span className="ml-3 text-[11px] font-black text-white w-8 text-right">{percentage}%</span>
-
                   </div>
-
                 </div>
-
               </Link>
-
             );
-
           })
-
         )}
-
       </div>
 
 
-
        {/* Décoration d'arrière-plan */}
-
        <Activity size={180} className="absolute -right-8 -bottom-10 opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-700 pointer-events-none text-emerald-900" />
-
     </div>
 
   );
