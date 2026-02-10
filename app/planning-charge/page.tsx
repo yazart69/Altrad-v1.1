@@ -52,14 +52,11 @@ export default function PlanningChargePage() {
       .order('nom');
 
     // Récupère tout le planning (affectations réelles)
-    const { data: plan, error } = await supabase
+    const { data: plan } = await supabase
       .from('planning')
-      .select('*') 
-     .not('chantier_id', 'is', null); // Syntaxe plus robuste pour "neq null"
+      .select('*') // On récupère tout, y compris user_id
+      .not('chantier_id', 'is', null);
 
-    if (error) {
-        console.error("Erreur chargement planning:", error);
-    }
     if (chan) setChantiers(chan);
     if (plan) setAssignments(plan);
     setLoading(false);
@@ -88,13 +85,22 @@ export default function PlanningChargePage() {
         need = Math.round(need * (chantier.taux_reussite / 100));
     }
 
-    // Calcul du Staffé Réel
-    const staffed = assignments.filter(a => {
+    // --- CORRECTION DU CALCUL (Uniques personnes) ---
+    // 1. On filtre les affectations qui concernent ce chantier sur cette semaine
+    const relevantAssignments = assignments.filter(a => {
         if (a.chantier_id !== chantier.id) return false;
         const assignStart = new Date(a.date_debut);
         const assignEnd = new Date(a.date_fin);
+        // Chevauchement de dates
         return assignStart <= weekEnd && assignEnd >= weekStart;
-    }).length; 
+    });
+
+    // 2. On extrait les ID uniques des personnes (user_id ou resource_id)
+    // Cela évite de compter 5 fois la même personne si elle travaille 5 jours
+    const uniquePeople = new Set(relevantAssignments.map(a => a.user_id));
+    
+    // 3. Le nombre staffé est la taille du Set (nombre d'uniques)
+    const staffed = uniquePeople.size;
 
     const missing = Math.max(0, need - staffed);
     
