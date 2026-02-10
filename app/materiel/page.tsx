@@ -27,6 +27,7 @@ export default function MaterielPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalTab, setModalTab] = useState<'interne' | 'externe'>('interne'); // Onglet interne à la modale
 
+  // State pour le formulaire (incluant maintenant dates et chantier)
   const [newItem, setNewItem] = useState({
       nom: '',
       categorie: 'Outillage',
@@ -34,8 +35,12 @@ export default function MaterielPage() {
       qte_totale: 1,
       prix_location: 0,
       image: '',
-      responsable: '', // Nouveau champ
-      fournisseur: ''  // Nouveau champ pour externe
+      responsable: '',
+      fournisseur: '',
+      // Nouveaux champs pour Location Externe
+      chantier_id: '', 
+      date_debut: '',
+      date_fin: ''
   });
 
   // --- CHARGEMENT DES DONNÉES ---
@@ -90,26 +95,56 @@ export default function MaterielPage() {
     setLoading(false);
   };
 
-  // --- AJOUT MATERIEL (INVENTAIRE) ---
+  // --- AJOUT MATERIEL (LOGIQUE DOUBLE INSERTION) ---
   const handleAddItem = async () => {
       if (!newItem.nom) return alert("Le nom est obligatoire");
       
-      // On force le type selon l'onglet actif
+      // Préparation de l'objet Matériel
       const itemToSave = {
-          ...newItem,
-          type_stock: modalTab === 'interne' ? 'Interne' : 'Externe'
+          nom: newItem.nom,
+          categorie: newItem.categorie,
+          type_stock: modalTab === 'interne' ? 'Interne' : 'Externe',
+          qte_totale: newItem.qte_totale,
+          prix_location: newItem.prix_location,
+          image: newItem.image,
+          responsable: newItem.responsable,
+          fournisseur: newItem.fournisseur
       };
 
-      const { error } = await supabase.from('materiel').insert([itemToSave]);
+      // 1. Insertion dans le catalogue MATERIEL
+      const { data: createdMat, error: matError } = await supabase
+        .from('materiel')
+        .insert([itemToSave])
+        .select()
+        .single();
       
-      if (error) {
-          alert("Erreur: " + error.message);
-      } else {
-          alert("✅ Matériel ajouté au catalogue !");
-          setShowAddModal(false);
-          setNewItem({ nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, prix_location: 0, image: '', responsable: '', fournisseur: '' });
-          fetchData();
+      if (matError) {
+          return alert("Erreur création matériel : " + matError.message);
       }
+
+      // 2. Si Location Externe AVEC Chantier -> Insertion dans CHANTIER_MATERIEL (Allocation)
+      if (modalTab === 'externe' && newItem.chantier_id && createdMat) {
+          const { error: locError } = await supabase.from('chantier_materiel').insert([{
+              chantier_id: newItem.chantier_id,
+              materiel_id: createdMat.id,
+              date_debut: newItem.date_debut || null,
+              date_fin: newItem.date_fin || null,
+              qte_prise: newItem.qte_totale, // On suppose qu'on loue tout ce qu'on crée
+              statut: 'en_cours' // Location active par défaut
+          }]);
+
+          if (locError) console.error("Erreur affectation chantier:", locError);
+      }
+
+      alert("✅ Enregistré avec succès !");
+      setShowAddModal(false);
+      // Reset du formulaire
+      setNewItem({ 
+          nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, 
+          prix_location: 0, image: '', responsable: '', fournisseur: '',
+          chantier_id: '', date_debut: '', date_fin: ''
+      });
+      fetchData();
   };
 
   // --- LOGIQUES DE FILTRAGE ---
@@ -454,7 +489,7 @@ export default function MaterielPage() {
 
       </div>
 
-      {/* ================= MODALE AJOUT (DOUBLE ONGLET) ================= */}
+      {/* ================= MODALE AJOUT (DOUBLE ONGLET + DATE + CHANTIER) ================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 animate-in zoom-in-95">
@@ -522,27 +557,69 @@ export default function MaterielPage() {
                         </div>
                     </div>
 
-                    {/* CHAMPS SPÉCIFIQUES EXTERNE */}
+                    {/* CHAMPS SPÉCIFIQUES EXTERNE + LOCATION IMMÉDIATE */}
                     {modalTab === 'externe' && (
-                        <div className="grid grid-cols-2 gap-4 bg-purple-50 p-4 rounded-xl border border-purple-100">
-                            <div>
-                                <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Fournisseur</label>
-                                <input 
-                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                    placeholder="Ex: Kiloutou"
-                                    value={newItem.fournisseur}
-                                    onChange={e => setNewItem({...newItem, fournisseur: e.target.value})}
-                                />
+                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Fournisseur</label>
+                                    <input 
+                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
+                                        placeholder="Ex: Kiloutou"
+                                        value={newItem.fournisseur}
+                                        onChange={e => setNewItem({...newItem, fournisseur: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Prix / Jour (€)</label>
+                                    <input 
+                                        type="number" min="0"
+                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
+                                        value={newItem.prix_location}
+                                        onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}
+                                    />
+                                </div>
                             </div>
+
+                            <hr className="border-purple-200/50"/>
+
+                            {/* Affectation Immédiate */}
                             <div>
-                                <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Prix / Jour (€)</label>
-                                <input 
-                                    type="number" min="0"
-                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                    value={newItem.prix_location}
-                                    onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}
-                                />
+                                <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Chantier de Destination</label>
+                                <select 
+                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm cursor-pointer"
+                                    value={newItem.chantier_id}
+                                    onChange={e => setNewItem({...newItem, chantier_id: e.target.value})}
+                                >
+                                    <option value="">-- Sélectionner un chantier --</option>
+                                    {chantiers.map(c => (
+                                        <option key={c.id} value={c.id}>{c.nom}</option>
+                                    ))}
+                                </select>
                             </div>
+
+                            {newItem.chantier_id && (
+                                <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Début</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
+                                            value={newItem.date_debut}
+                                            onChange={e => setNewItem({...newItem, date_debut: e.target.value})}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Fin</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
+                                            value={newItem.date_fin}
+                                            onChange={e => setNewItem({...newItem, date_fin: e.target.value})}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
