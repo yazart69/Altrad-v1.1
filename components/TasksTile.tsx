@@ -2,19 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CheckCircle2, Circle, AlertCircle, Clock, ArrowUpRight, ListTodo } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowUpRight, ListTodo, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function TasksTile() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fonction de récupération (CODE ORIGINAL CONSERVÉ)
   const fetchTasks = async () => {
     const { data } = await supabase
       .from('chantier_tasks')
       .select('*, chantiers(nom)')
-      .eq('done', false) // FILTRE STRICT : Uniquement ce qui n'est PAS fait
+      .eq('done', false)
       .order('created_at', { ascending: false })
       .limit(10);
       
@@ -28,18 +27,48 @@ export default function TasksTile() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fonction de toggle (CODE ORIGINAL CONSERVÉ)
+  // --- LOGIQUE DE RECALCUL DU BUDGET ---
+  const recalculateChantierHours = async (chantierId: string) => {
+    // 1. Récupérer toutes les tâches de ce chantier
+    const { data: allTasks } = await supabase
+      .from('chantier_tasks')
+      .select('objectif_heures, done')
+      .eq('chantier_id', chantierId);
+
+    if (allTasks) {
+      // 2. Calculer la somme des heures faites
+      const totalHours = allTasks
+        .filter(t => t.done)
+        .reduce((sum, t) => sum + (t.objectif_heures || 0), 0);
+
+      // 3. Mettre à jour le chantier
+      await supabase
+        .from('chantiers')
+        .update({ heures_consommees: totalHours })
+        .eq('id', chantierId);
+    }
+  };
+
+  // --- TOGGLE TÂCHE + SYNC ---
   const toggleTask = async (task: any) => {
-    // Optimiste update : on l'enlève de la liste tout de suite car elle devient "faite"
+    // 1. Mise à jour optimiste UI
     setTasks(tasks.filter(t => t.id !== task.id));
+
+    // 2. Mise à jour DB (Marquer comme fait)
     await supabase.from('chantier_tasks').update({ done: true }).eq('id', task.id);
-    fetchTasks(); // Rafraîchissement pour être sûr
+
+    // 3. DÉCLENCHER LE RECALCUL DU CHANTIER (C'est ça qui met à jour la barre verte)
+    if (task.chantier_id) {
+        await recalculateChantierHours(task.chantier_id);
+    }
+
+    fetchTasks(); 
   };
 
   return (
     <div className="h-full w-full bg-[#34495e] rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.01] transition-transform duration-300">
       
-      {/* HEADER HARMONISÉ */}
+      {/* HEADER */}
       <div className="flex justify-between items-start mb-6 z-10">
         <div>
           <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
@@ -86,7 +115,6 @@ export default function TasksTile() {
                         {task.chantiers?.nom || 'Général'}
                       </p>
                       
-                      {/* Affichage de l'objectif heures si défini */}
                       {task.objectif_heures > 0 && (
                           <span className="text-[9px] bg-[#0984e3] px-1.5 py-0.5 rounded text-white font-bold flex items-center gap-1">
                               <Clock size={10} /> {task.objectif_heures}h
@@ -100,7 +128,7 @@ export default function TasksTile() {
         )}
       </div>
 
-      {/* FOOTER / CTA (AJOUTÉ POUR L'HARMONIE) */}
+      {/* FOOTER */}
       <div className="mt-4 pt-4 border-t border-white/10 z-10">
         <Link href="/taches">
           <button className="w-full py-3 bg-[#ff9f43] hover:bg-[#ee8f32] text-white rounded-xl font-bold uppercase text-xs tracking-widest shadow-lg shadow-orange-900/20 hover:shadow-orange-900/40 transition-all flex items-center justify-center gap-2">
@@ -110,7 +138,6 @@ export default function TasksTile() {
         </Link>
       </div>
 
-      {/* DÉCORATION FOND HARMONISÉE */}
       <ListTodo size={200} className="absolute -right-10 -bottom-10 opacity-5 rotate-12 pointer-events-none group-hover:rotate-0 transition-transform duration-700" />
     </div>
   );
