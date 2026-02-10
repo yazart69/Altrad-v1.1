@@ -2,274 +2,294 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import Link from 'next/link';
 import { 
-  ArrowLeft, 
-  BarChart3, 
-  Users, 
-  TrendingUp, 
-  CalendarRange, 
-  AlertTriangle, 
-  Briefcase, 
-  ArrowRight,
-  ChevronRight,
-  Clock
+  ChevronLeft, ChevronRight, HardHat, 
+  AlertTriangle, CheckCircle2, Users, 
+  CalendarRange, TrendingUp, Printer, Info
 } from 'lucide-react';
 
-export default function PlanningCharge() {
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalStaff: 0,
-    totalCapacityContext: 0, // Heures dispo totales/semaine
-    totalLoadContext: 0, // Heures requises totales/semaine
-    occupationRate: 0
-  });
-  const [chantiers, setChantiers] = useState<any[]>([]);
+// --- HELPERS DATES ---
+const getWeekNumber = (d: Date) => {
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+};
+
+const getWeekDates = (w: number, y: number) => {
+  const simple = new Date(y, 0, 1 + (w - 1) * 7);
+  const dow = simple.getDay();
+  const ISOweekStart = simple;
+  if (dow <= 4) ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
   
-  // Génération des 6 prochaines semaines pour la timeline
-  const [weeks, setWeeks] = useState<string[]>([]);
+  const end = new Date(ISOweekStart);
+  end.setDate(end.getDate() + 6); // Dimanche
+  return { start: ISOweekStart, end };
+};
 
+export default function PlanningChargePage() {
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [chantiers, setChantiers] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  
+  // États de calcul
+  const [globalStats, setGlobalStats] = useState<any>({});
+
+  // 1. CHARGEMENT DONNÉES
   useEffect(() => {
-    // Calcul des semaines (S, S+1...)
-    const currentWeek = getWeekNumber(new Date());
-    const nextWeeks = Array.from({ length: 6 }, (_, i) => `S${currentWeek + i}`);
-    setWeeks(nextWeeks);
-
     fetchData();
   }, []);
 
   const fetchData = async () => {
     setLoading(true);
-
-    // 1. Récupérer le Staff (Capacité)
-    const { data: staff } = await supabase.from('users').select('*').neq('role', 'admin'); // On exclut les admins du calcul de prod
-    const staffCount = staff?.length || 0;
-    const weeklyCapacity = staffCount * 35; // Hypothèse 35h/personne
-
-    // 2. Récupérer les Chantiers Actifs (Charge)
-    const { data: sites } = await supabase
+    // Récupère chantiers actifs cette année
+    const { data: chan } = await supabase
       .from('chantiers')
       .select('*')
-      .eq('statut', 'en_cours')
-      .order('date_fin_prevue', { ascending: true });
+      .neq('statut', 'termine') // On exclut les terminés pour la charge future
+      .order('nom');
 
-    // 3. Calcul de la charge théorique (Simulation simple pour l'exemple)
-    // Charge = (Heures Budget - Heures Conso) / Semaines restantes
-    let totalWeeklyLoad = 0;
-    const processedSites = sites?.map(site => {
-      const remainingHours = Math.max(0, site.heures_budget - site.heures_consommees);
-      // Estimation arbitraire : on lisse le reste sur 4 semaines par défaut si pas de date précise
-      const weeksLeft = 4; 
-      const weeklyNeed = Math.round(remainingHours / weeksLeft);
-      const staffNeed = Math.ceil(weeklyNeed / 35); // Combien de bonhommes il faut
+    // Récupère tout le planning (affectations réelles)
+    const { data: plan } = await supabase
+      .from('planning')
+      .select('*, users(role)') // On récupère le rôle pour distinguer interne/externe si besoin
+      .neq('chantier_id', null);
 
-      totalWeeklyLoad += weeklyNeed;
-
-      return {
-        ...site,
-        weeklyNeed,
-        staffNeed,
-        remainingHours
-      };
-    }) || [];
-
-    setStats({
-      totalStaff: staffCount,
-      totalCapacityContext: weeklyCapacity,
-      totalLoadContext: totalWeeklyLoad,
-      occupationRate: Math.round((totalWeeklyLoad / weeklyCapacity) * 100) || 0
-    });
-
-    setChantiers(processedSites);
+    if (chan) setChantiers(chan);
+    if (plan) setAssignments(plan);
     setLoading(false);
   };
 
-  // Utilitaire pour numéro de semaine
-  function getWeekNumber(d: Date) {
-    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-    var weekNo = Math.ceil(( ( (d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
-    return weekNo;
-  }
+  // 2. GÉNÉRATION DES SEMAINES (S1 à S52)
+  const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#0984e3] font-bold">Calcul de la charge...</div>;
+  // 3. LOGIQUE DE CALCUL PAR CELLULE
+  const calculateLoad = (chantier: any, weekNum: number) => {
+    const { start: weekStart, end: weekEnd } = getWeekDates(weekNum, year);
+    const chantierStart = new Date(chantier.date_debut);
+    const chantierEnd = new Date(chantier.date_fin);
+
+    // Le chantier est-il actif cette semaine ?
+    const isActive = chantierStart <= weekEnd && chantierEnd >= weekStart;
+
+    if (!isActive) return null;
+
+    // Besoin théorique (Par défaut 2 si pas défini en base)
+    const need = chantier.effectif_prevu || 2; 
+
+    // Calcul du Staffé Réel (depuis planning hebdo)
+    // On compte les affectations uniques pour ce chantier sur cette semaine
+    const staffed = assignments.filter(a => {
+        if (a.chantier_id !== chantier.id) return false;
+        const assignStart = new Date(a.date_debut);
+        const assignEnd = new Date(a.date_fin);
+        // Chevauchement de dates
+        return assignStart <= weekEnd && assignEnd >= weekStart;
+    }).length; // Note: Pour être précis, on devrait dédoublonner les employee_id
+
+    const missing = Math.max(0, need - staffed);
+    
+    // Status couleur
+    let status = 'bg-emerald-100 text-emerald-700 border-emerald-200'; // OK
+    if (missing > 0) status = 'bg-orange-100 text-orange-700 border-orange-200'; // Manque
+    if (missing > need * 0.5) status = 'bg-red-100 text-red-700 border-red-200'; // Critique (>50% manque)
+    if (staffed > need) status = 'bg-blue-100 text-blue-700 border-blue-200'; // Surcharge
+
+    return { need, staffed, missing, status };
+  };
+
+  // 4. CALCUL TOTAUX HEBDOMADAIRES (Ligne du bas)
+  const calculateWeeklyTotal = (weekNum: number) => {
+    let totalNeed = 0;
+    let totalStaffed = 0;
+
+    chantiers.forEach(c => {
+        const load = calculateLoad(c, weekNum);
+        if (load) {
+            totalNeed += load.need;
+            totalStaffed += load.staffed;
+        }
+    });
+
+    return { totalNeed, totalStaffed, gap: totalNeed - totalStaffed };
+  };
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800">
+    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] flex flex-col text-gray-800 ml-0 md:ml-0 transition-all">
       
-      {/* HEADER SIMPLE */}
-      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-            <Link href="/" className="flex items-center text-gray-400 hover:text-[#0984e3] transition-colors font-bold text-sm gap-2">
-                <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100"><ArrowLeft size={18} /></div>
-                <span className="hidden sm:inline">Retour Dashboard</span>
-            </Link>
-            <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">Planning de <span className="text-[#0984e3]">Charge</span></h1>
-            <div className="w-10"></div> {/* Spacer pour centrer le titre */}
+      {/* --- HEADER FIXE --- */}
+      <div className="bg-white border-b border-gray-200 p-4 md:p-6 sticky top-0 z-40 shadow-sm print:hidden">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 className="text-2xl font-black uppercase text-[#2d3436] flex items-center gap-3">
+                    <CalendarRange className="text-[#00b894]" size={32}/>
+                    Planning de <span className="text-[#00b894]">Charge</span>
+                </h1>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
+                    Pilotage stratégique des ressources {year}
+                </p>
+            </div>
+
+            {/* Légende & Outils */}
+            <div className="flex items-center gap-6">
+                <div className="flex gap-4 text-[10px] font-bold uppercase">
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-100 border border-emerald-300 rounded"></div> Complet</div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div> Manque</div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div> Critique</div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-100 border border-blue-300 rounded"></div> Surcharge</div>
+                </div>
+                
+                <div className="flex items-center bg-gray-100 rounded-xl p-1">
+                    <button onClick={() => setYear(year - 1)} className="p-2 hover:bg-white rounded-lg transition-all"><ChevronLeft size={16}/></button>
+                    <span className="px-4 font-black text-sm">{year}</span>
+                    <button onClick={() => setYear(year + 1)} className="p-2 hover:bg-white rounded-lg transition-all"><ChevronRight size={16}/></button>
+                </div>
+
+                <button onClick={() => window.print()} className="bg-[#2d3436] text-white p-3 rounded-xl hover:bg-black transition-colors shadow-lg">
+                    <Printer size={20} />
+                </button>
+            </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-
-        {/* 1. KPIs GLOBAUX */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Carte Capacité (Bleu) */}
-            <div className="bg-[#0984e3] rounded-[30px] p-6 text-white shadow-xl relative overflow-hidden group">
-                <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div>
-                        <p className="text-xs font-bold text-blue-200 uppercase tracking-widest">Capacité Hebdo</p>
-                        <h3 className="text-4xl font-black mt-1">{stats.totalCapacityContext}h</h3>
-                    </div>
-                    <div className="bg-white/20 p-2 rounded-xl"><Users size={24}/></div>
-                </div>
-                <p className="text-sm font-bold text-blue-100 relative z-10">
-                    Basé sur {stats.totalStaff} collaborateurs (Interne + Intérim)
-                </p>
-                <Users size={120} className="absolute -right-4 -bottom-6 text-blue-900 opacity-20 rotate-12 group-hover:rotate-0 transition-transform duration-500" />
+      {/* --- TABLEAU DE CHARGE --- */}
+      <div className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col">
+        
+        {loading ? (
+            <div className="flex-1 flex items-center justify-center font-bold text-gray-400 animate-pulse">
+                Synchronisation des données chantiers...
             </div>
-
-            {/* Carte Besoin (Orange) */}
-            <div className="bg-[#e17055] rounded-[30px] p-6 text-white shadow-xl relative overflow-hidden group">
-                <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div>
-                        <p className="text-xs font-bold text-orange-200 uppercase tracking-widest">Charge Requise</p>
-                        <h3 className="text-4xl font-black mt-1">{stats.totalLoadContext}h</h3>
-                    </div>
-                    <div className="bg-white/20 p-2 rounded-xl"><Briefcase size={24}/></div>
-                </div>
-                <p className="text-sm font-bold text-orange-100 relative z-10">
-                    Pour couvrir les {chantiers.length} chantiers actifs
-                </p>
-                <Briefcase size={120} className="absolute -right-4 -bottom-6 text-orange-900 opacity-20 rotate-12 group-hover:rotate-0 transition-transform duration-500" />
-            </div>
-
-            {/* Carte Taux (Vert/Rouge selon delta) */}
-            <div className={`rounded-[30px] p-6 text-white shadow-xl relative overflow-hidden group transition-colors ${stats.occupationRate > 100 ? 'bg-[#d63031]' : 'bg-[#00b894]'}`}>
-                <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div>
-                        <p className={`text-xs font-bold uppercase tracking-widest ${stats.occupationRate > 100 ? 'text-red-200' : 'text-emerald-200'}`}>
-                            Taux d'occupation
-                        </p>
-                        <h3 className="text-4xl font-black mt-1">{stats.occupationRate}%</h3>
-                    </div>
-                    <div className="bg-white/20 p-2 rounded-xl"><TrendingUp size={24}/></div>
-                </div>
-                <div className="relative z-10">
-                    {stats.occupationRate > 100 ? (
-                        <div className="flex items-center gap-2 bg-white/20 w-fit px-3 py-1 rounded-lg">
-                            <AlertTriangle size={16} />
-                            <span className="text-xs font-bold uppercase">Surcharge : +{stats.occupationRate - 100}%</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 bg-white/20 w-fit px-3 py-1 rounded-lg">
-                            <Users size={16} />
-                            <span className="text-xs font-bold uppercase">Dispo : {100 - stats.occupationRate}%</span>
-                        </div>
-                    )}
-                </div>
-                <TrendingUp size={120} className={`absolute -right-4 -bottom-6 opacity-20 rotate-12 group-hover:rotate-0 transition-transform duration-500 ${stats.occupationRate > 100 ? 'text-red-900' : 'text-emerald-900'}`} />
-            </div>
-        </div>
-
-        {/* 2. TABLEAU DE CHARGE PAR CHANTIER */}
-        <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                <h3 className="font-black text-gray-800 uppercase flex items-center gap-2">
-                    <CalendarRange className="text-[#0984e3]" /> Vision par Chantier
-                </h3>
-                <div className="flex gap-2">
-                     {weeks.map((w, i) => (
-                         <div key={i} className="hidden md:flex w-12 h-8 items-center justify-center bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-400">
-                             {w}
-                         </div>
-                     ))}
-                </div>
-            </div>
-
-            <div className="divide-y divide-gray-100">
-                {chantiers.map((site) => (
-                    <div key={site.id} className="p-4 hover:bg-blue-50/30 transition-colors group">
-                        <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-                            
-                            {/* Info Chantier */}
-                            <div className="flex-1 min-w-[250px]">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <h4 className="font-black text-gray-800 uppercase truncate">{site.nom}</h4>
-                                    <Link href={`/chantier/${site.id}`} className="text-gray-300 hover:text-[#0984e3] opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <ArrowRight size={16} />
-                                    </Link>
-                                </div>
-                                <div className="flex items-center gap-4 text-xs font-bold text-gray-400 uppercase">
-                                    <span className="flex items-center gap-1"><Clock size={12}/> Reste: {site.remainingHours}h</span>
-                                    <span className="flex items-center gap-1 text-[#e17055]"><Users size={12}/> Besoin: {site.staffNeed} pers.</span>
-                                </div>
-                            </div>
-
-                            {/* Timeline Visuelle (Barre de charge) */}
-                            <div className="flex-1 w-full md:w-auto flex items-center gap-1">
-                                {weeks.map((_, i) => {
-                                    // Simulation : si le chantier est "Actif", on met une barre colorée
-                                    // Plus tard, connecter à la date réelle
-                                    const isActive = i < 4; // Mock: actif les 4 prochaines semaines
+        ) : (
+            <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative">
+                
+                {/* Scroll Container */}
+                <div className="overflow-auto flex-1 custom-scrollbar">
+                    <table className="w-full border-collapse">
+                        
+                        {/* EN-TÊTE SEMAINES (Sticky Top) */}
+                        <thead className="sticky top-0 z-30 bg-white shadow-sm">
+                            <tr>
+                                <th className="p-4 w-[300px] min-w-[300px] sticky left-0 bg-white z-40 text-left border-r border-gray-200 border-b">
+                                    <div className="font-black text-xs text-gray-400 uppercase">Chantiers Actifs</div>
+                                </th>
+                                {weeks.map(w => {
+                                    const { start } = getWeekDates(w, year);
+                                    const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
                                     return (
-                                        <div key={i} className="flex-1 h-12 bg-gray-100 rounded-xl relative overflow-hidden group/cell">
-                                            {isActive && (
-                                                <div className={`absolute inset-0 m-1 rounded-lg flex items-center justify-center text-white text-[10px] font-black shadow-sm transition-all hover:scale-105 cursor-help ${
-                                                    site.staffNeed > 5 ? 'bg-[#d63031]' : 'bg-[#0984e3]'
-                                                }`}>
-                                                    {site.staffNeed}p
+                                        <th key={w} className={`p-2 min-w-[100px] text-center border-r border-b border-gray-100 ${isCurrentWeek ? 'bg-blue-50/50' : ''}`}>
+                                            <div className="text-[10px] font-black text-gray-400 uppercase">S{w}</div>
+                                            <div className="text-[9px] font-bold text-gray-300">{start.getDate()}/{start.getMonth()+1}</div>
+                                        </th>
+                                    );
+                                })}
+                            </tr>
+                        </thead>
+
+                        {/* CORPS DU TABLEAU */}
+                        <tbody>
+                            {chantiers.map(chantier => (
+                                <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
+                                    {/* NOM CHANTIER (Sticky Left) */}
+                                    <td className="p-4 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
+                                        <div className="flex flex-col">
+                                            <span className="font-black text-sm text-gray-800 uppercase truncate max-w-[250px]">{chantier.nom}</span>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">{chantier.type || 'Indus.'}</span>
+                                                {chantier.effectif_prevu && <span className="text-[9px] text-gray-400 font-bold flex items-center gap-1"><Users size={10}/> {chantier.effectif_prevu} pers.</span>}
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    {/* CELLULES SEMAINES */}
+                                    {weeks.map(w => {
+                                        const data = calculateLoad(chantier, w);
+                                        const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
+
+                                        return (
+                                            <td key={w} className={`p-1 border-r border-gray-100 h-16 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`}>
+                                                {data ? (
+                                                    <div className={`w-full h-full rounded-lg border ${data.status} p-1 flex flex-col justify-center items-center cursor-pointer hover:scale-105 transition-transform group/cell`}>
+                                                        {/* STAFFING INTERNE */}
+                                                        <div className="text-xs font-black flex items-center gap-1">
+                                                            {data.staffed} <span className="text-[8px] opacity-60">/ {data.need}</span>
+                                                        </div>
+                                                        
+                                                        {/* MANQUE (RENFORT) */}
+                                                        {data.missing > 0 && (
+                                                            <div className="mt-1 bg-white/80 px-1.5 rounded text-[9px] font-black text-red-600 shadow-sm whitespace-nowrap">
+                                                                +{data.missing} Renfort
+                                                            </div>
+                                                        )}
+
+                                                        {/* Tooltip au survol */}
+                                                        <div className="absolute bottom-full mb-2 bg-black text-white text-[10px] p-2 rounded shadow-xl hidden group-hover/cell:block z-50 whitespace-nowrap">
+                                                            <p className="font-bold uppercase mb-1">Semaine {w}</p>
+                                                            <p>Besoin : {data.need}</p>
+                                                            <p>Staffé : {data.staffed}</p>
+                                                            <hr className="border-gray-600 my-1"/>
+                                                            <p className="text-orange-300">À prévoir : {data.missing}</p>
+                                                            <p className="text-[8px] mt-1 text-gray-400">Cliquez pour détails</p>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full h-full"></div>
+                                                )}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+
+                        {/* PIED DE PAGE : TOTAL CHARGE (Sticky Bottom) */}
+                        <tfoot className="sticky bottom-0 z-30 bg-gray-800 text-white shadow-lg border-t border-gray-900">
+                            <tr>
+                                <td className="p-4 sticky left-0 bg-gray-800 z-40 border-r border-gray-700">
+                                    <div className="flex items-center gap-2">
+                                        <TrendingUp size={18} className="text-[#00b894]"/>
+                                        <div className="flex flex-col">
+                                            <span className="font-black text-xs uppercase">Charge Globale</span>
+                                            <span className="text-[9px] text-gray-400">Total besoins vs effectifs</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                {weeks.map(w => {
+                                    const total = calculateWeeklyTotal(w);
+                                    const hasActivity = total.totalNeed > 0;
+                                    
+                                    // Couleur barre de charge
+                                    let barColor = 'bg-emerald-500';
+                                    if (total.gap > 0) barColor = 'bg-orange-500'; // Manque global
+                                    if (total.gap > 5) barColor = 'bg-red-500'; // Manque critique
+
+                                    return (
+                                        <td key={w} className="p-2 border-r border-gray-700 text-center relative group/foot">
+                                            {hasActivity && (
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className="text-[9px] font-bold text-gray-300">{total.totalStaffed}/{total.totalNeed}</span>
+                                                    {/* Jauge de charge */}
+                                                    <div className="w-full h-1.5 bg-gray-600 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full ${barColor}`} 
+                                                            style={{ width: `${Math.min(100, (total.totalStaffed / total.totalNeed) * 100)}%` }} 
+                                                        />
+                                                    </div>
+                                                    {total.gap > 0 && (
+                                                        <span className="text-[8px] font-black text-orange-400">-{total.gap}</span>
+                                                    )}
                                                 </div>
                                             )}
-                                        </div>
-                                    )
+                                        </td>
+                                    );
                                 })}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-
-                {chantiers.length === 0 && (
-                    <div className="p-10 text-center opacity-40">
-                        <p className="font-bold text-gray-400 uppercase">Aucun chantier actif à planifier</p>
-                    </div>
-                )}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
-            
-            <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
-                <button className="text-xs font-black uppercase text-gray-400 hover:text-[#0984e3] flex items-center justify-center gap-1 transition-colors">
-                    Voir le planning détaillé des équipes <ChevronRight size={14}/>
-                </button>
-            </div>
-        </div>
-
-        {/* 3. SECTION ALERTES RH (Bas de page) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-[30px] p-6 shadow-sm border-l-8 border-[#e17055]">
-                <h3 className="font-black text-gray-800 uppercase mb-2 flex items-center gap-2">
-                    <AlertTriangle className="text-[#e17055]" size={20} /> Compétences Manquantes
-                </h3>
-                <p className="text-sm font-medium text-gray-500 mb-4">
-                    Le chantier "Parking Sud" nécessite 2 soudeurs certifiés en S3.
-                </p>
-                <button className="text-xs font-black bg-[#e17055] text-white px-4 py-2 rounded-xl uppercase hover:bg-orange-600 transition-colors">
-                    Recruter Intérim
-                </button>
-            </div>
-
-            <div className="bg-white rounded-[30px] p-6 shadow-sm border-l-8 border-[#0984e3]">
-                <h3 className="font-black text-gray-800 uppercase mb-2 flex items-center gap-2">
-                    <BarChart3 className="text-[#0984e3]" size={20} /> Prévisionnel S+4
-                </h3>
-                <p className="text-sm font-medium text-gray-500 mb-4">
-                    Baisse de charge prévue (-20%). 3 Équipes disponibles pour nouveaux projets.
-                </p>
-                <button className="text-xs font-black bg-[#0984e3] text-white px-4 py-2 rounded-xl uppercase hover:bg-blue-600 transition-colors">
-                    Voir Commerciaux
-                </button>
-            </div>
-        </div>
-
+        )}
       </div>
     </div>
   );
