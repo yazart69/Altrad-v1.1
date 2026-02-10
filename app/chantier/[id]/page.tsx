@@ -25,11 +25,12 @@ export default function ChantierDetail() {
   // DONNÉES GLOBALES
   const [chantier, setChantier] = useState<any>({
     nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel',
+    heures_budget: 0, heures_consommees: 0, // Ajout du champ pour l'avancement
     risques: [], epi: [],
     mesures_obligatoires: false
   });
   const [acqpaData, setAcqpaData] = useState<any>({
-    couches: [{ type: '', lot: '', methode: '', dilution: '' }] // Initialisation pour le multi-couches
+    couches: [{ type: '', lot: '', methode: '', dilution: '' }] 
   });
   
   // DONNÉES LISTES
@@ -82,6 +83,20 @@ export default function ChantierDetail() {
     setLoading(false);
   }
 
+  // --- LOGIQUE DE CALCUL AUTOMATIQUE DE L'AVANCEMENT ---
+  const updateProgress = async (currentTasks: any[]) => {
+    // 1. Calculer la somme des heures des tâches terminées
+    const totalConsumed = currentTasks
+        .filter(t => t.done)
+        .reduce((sum, t) => sum + (t.objectif_heures || 0), 0);
+
+    // 2. Mettre à jour la base de données
+    await supabase.from('chantiers').update({ heures_consommees: totalConsumed }).eq('id', id);
+    
+    // 3. Mettre à jour l'état local pour affichage immédiat
+    setChantier((prev: any) => ({ ...prev, heures_consommees: totalConsumed }));
+  };
+
   // --- SAUVEGARDE GLOBALE ---
   const handleSave = async () => {
     const toSave = {
@@ -92,6 +107,8 @@ export default function ChantierDetail() {
         date_debut: chantier.date_debut,
         date_fin: chantier.date_fin,
         type: chantier.type,
+        heures_budget: chantier.heures_budget, // On sauvegarde le budget défini
+        // heures_consommees n'est pas sauvegardé ici car géré par updateProgress
         risques: chantier.risques,
         epi: chantier.epi,
         mesures_obligatoires: chantier.mesures_obligatoires,
@@ -102,29 +119,50 @@ export default function ChantierDetail() {
     alert('✅ Chantier sauvegardé avec succès !');
   };
 
-  // --- GESTION TÂCHES (AJOUT / SUPPRESSION / MODIF) ---
+  // --- GESTION TÂCHES (AJOUT / SUPPRESSION / MODIF + RECALCUL) ---
   const addTask = async () => {
     if (!newTaskLabel) return;
-    await supabase.from('chantier_tasks').insert([{ 
+    
+    // Insertion
+    const { data, error } = await supabase.from('chantier_tasks').insert([{ 
         chantier_id: id, 
         label: newTaskLabel, 
         objectif_heures: parseInt(newTaskHours) || 0,
         done: false 
-    }]);
+    }]).select();
+
+    if (data) {
+        const updatedList = [data[0], ...tasks];
+        setTasks(updatedList);
+        // Pas besoin de recalculer ici car done est false par défaut, mais pour la forme :
+        updateProgress(updatedList);
+    }
+
     setNewTaskLabel("");
     setNewTaskHours("");
-    fetchChantierData();
   };
 
   const toggleTask = async (task: any) => {
+    // Mise à jour optimiste
+    const updatedList = tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t);
+    setTasks(updatedList);
+    
+    // Mise à jour DB
     await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
-    fetchChantierData();
+    
+    // Recalcul du budget consommé
+    updateProgress(updatedList);
   };
 
   const deleteTask = async (taskId: string) => {
     if(confirm('Supprimer cette tâche ?')) {
         await supabase.from('chantier_tasks').delete().eq('id', taskId);
-        fetchChantierData();
+        
+        const updatedList = tasks.filter(t => t.id !== taskId);
+        setTasks(updatedList);
+        
+        // Recalcul (au cas où on supprime une tâche faite)
+        updateProgress(updatedList);
     }
   };
 
@@ -185,6 +223,9 @@ export default function ChantierDetail() {
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold">Chargement...</div>;
 
+  // Calcul du % pour affichage local
+  const percent = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
+
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all">
       
@@ -197,7 +238,9 @@ export default function ChantierDetail() {
                 </Link>
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom || 'Nouveau Chantier'}</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Fiche Technique & Suivi</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Budget : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percent}%)
+                    </p>
                 </div>
             </div>
             <button onClick={handleSave} className="bg-[#00b894] hover:bg-[#00a383] text-white px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2">
@@ -276,6 +319,13 @@ export default function ChantierDetail() {
                             <div>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Fin</label>
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                            <div className="col-span-2">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures (Total)</label>
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2">
+                                    <Clock size={16} className="text-gray-400 mr-2"/>
+                                    <input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value)})} className="w-full bg-transparent p-3 font-bold outline-none" />
+                                </div>
                             </div>
                         </div>
                         <div className="mt-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center justify-between">
