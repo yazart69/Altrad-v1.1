@@ -56,7 +56,6 @@ export default function PointagePage() {
     if (emp) setEmployes(emp);
 
     // Récupérer le planning de la semaine (et un peu plus large pour la sécurité)
-    // On charge tout ce qui touche la semaine sélectionnée
     const startOfWeek = toLocalISOString(currentDate);
     const endOfWeekDate = new Date(currentDate);
     endOfWeekDate.setDate(endOfWeekDate.getDate() + 6);
@@ -168,7 +167,7 @@ export default function PointagePage() {
               type: item.type,
               date_debut: newDateStr,
               date_fin: newDateStr,
-              heures: item.heures, // On copie aussi les heures prévues/réalisées ? Souvent on remet 0 ou standard. Ici on copie.
+              heures: item.heures, 
               valide: false
           };
       });
@@ -355,7 +354,8 @@ export default function PointagePage() {
                   <div>
                       <p className="text-xs font-bold text-gray-400 uppercase">Total Heures Semaine</p>
                       <p className="text-3xl font-black text-[#2d3436]">
-                          {Object.values(employeeTotals).reduce((a: any, b: any) => a + b, 0)}h
+                          {/* CORRECTION TYPE ICI */}
+                          {(Object.values(employeeTotals) as number[]).reduce((a, b) => a + b, 0)}h
                       </p>
                   </div>
                   <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400">
