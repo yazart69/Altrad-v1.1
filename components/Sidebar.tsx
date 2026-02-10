@@ -26,7 +26,7 @@ export default function Sidebar() {
     { name: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
     { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' },
     { name: 'Planning de charge', icon: CalendarRange, path: '/planning-charge' },
-    { name: 'Chantiers', icon: Factory, path: '/chantiers' }, // Pointe vers la liste (Annuaire)
+    { name: 'Chantiers', icon: Factory, path: '/chantier' }, // Pointe vers la liste (Annuaire)
     { name: 'Équipes & RH', icon: Users, path: '/equipe' },
     { name: 'Matériel & Logistique', icon: HardHat, path: '/materiel' },
     { name: 'HSE & Sécurité', icon: ShieldCheck, path: '/hse' },
