@@ -3,9 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  ChevronLeft, ChevronRight, HardHat, 
-  AlertTriangle, CheckCircle2, Users, 
-  CalendarRange, TrendingUp, Printer, Info, Plus
+  ChevronLeft, ChevronRight, Users, 
+  CalendarRange, TrendingUp, Printer, X, Save, CheckSquare, Square
 } from 'lucide-react';
 
 // --- HELPERS DATES ---
@@ -25,7 +24,12 @@ const getWeekDates = (w: number, y: number) => {
   
   const end = new Date(ISOweekStart);
   end.setDate(end.getDate() + 6); // Dimanche
-  return { start: ISOweekStart, end };
+  
+  // Pour l'insertion en base, on veut souvent du Lundi au Vendredi
+  const workEnd = new Date(ISOweekStart);
+  workEnd.setDate(workEnd.getDate() + 4); // Vendredi
+
+  return { start: ISOweekStart, end, workEnd };
 };
 
 export default function PlanningChargePage() {
@@ -33,9 +37,12 @@ export default function PlanningChargePage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
-  
-  // États de calcul
-  const [globalStats, setGlobalStats] = useState<any>({});
+  const [employes, setEmployes] = useState<any[]>([]); // Liste du personnel
+
+  // États Modale d'Affectation
+  const [showModal, setShowModal] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<{chantier: any, week: number} | null>(null);
+  const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]); // IDs des employés sélectionnés dans la modale
 
   // 1. CHARGEMENT DONNÉES
   useEffect(() => {
@@ -44,121 +51,131 @@ export default function PlanningChargePage() {
 
   const fetchData = async () => {
     setLoading(true);
-    // Récupère chantiers actifs cette année
-    const { data: chan } = await supabase
-      .from('chantiers')
-      .select('*')
-      .neq('statut', 'termine') 
-      .order('nom');
-
-    // Récupère tout le planning (affectations réelles)
-    const { data: plan } = await supabase
-      .from('planning')
-      .select('*') // On récupère tout, y compris user_id
-      .not('chantier_id', 'is', null);
+    
+    // Chantiers
+    const { data: chan } = await supabase.from('chantiers').select('*').neq('statut', 'termine').order('nom');
+    // Planning
+    const { data: plan } = await supabase.from('planning').select('*').not('chantier_id', 'is', null);
+    // Employés (Pour la liste de choix)
+    const { data: emp } = await supabase.from('employes').select('id, nom, prenom, role').eq('statut_actuel', 'disponible').order('nom');
 
     if (chan) setChantiers(chan);
     if (plan) setAssignments(plan);
+    if (emp) setEmployes(emp);
+    
     setLoading(false);
   };
 
-  // 2. GÉNÉRATION DES SEMAINES (S1 à S52)
+  // 2. GÉNÉRATION DES SEMAINES
   const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
 
-  // 3. LOGIQUE DE CALCUL PAR CELLULE
+  // 3. LOGIQUE CALCUL (Corrigée Uniques)
   const calculateLoad = (chantier: any, weekNum: number) => {
     const { start: weekStart, end: weekEnd } = getWeekDates(weekNum, year);
-    
     if (!chantier.date_debut || !chantier.date_fin) return null;
+    const cS = new Date(chantier.date_debut);
+    const cE = new Date(chantier.date_fin);
+    if (!(cS <= weekEnd && cE >= weekStart)) return null;
 
-    const chantierStart = new Date(chantier.date_debut);
-    const chantierEnd = new Date(chantier.date_fin);
-
-    const isActive = chantierStart <= weekEnd && chantierEnd >= weekStart;
-
-    if (!isActive) return null;
-
-    // --- LOGIQUE PONDÉRÉE ---
     let need = chantier.effectif_prevu || 0; 
+    if (chantier.statut === 'potentiel' && chantier.taux_reussite) need = Math.round(need * (chantier.taux_reussite / 100));
 
-    if (chantier.statut === 'potentiel' && chantier.taux_reussite) {
-        need = Math.round(need * (chantier.taux_reussite / 100));
-    }
-
-    // --- CORRECTION DU CALCUL (Uniques personnes) ---
-    // 1. On filtre les affectations qui concernent ce chantier sur cette semaine
-    const relevantAssignments = assignments.filter(a => {
+    const relevant = assignments.filter(a => {
         if (a.chantier_id !== chantier.id) return false;
-        const assignStart = new Date(a.date_debut);
-        const assignEnd = new Date(a.date_fin);
-        // Chevauchement de dates
-        return assignStart <= weekEnd && assignEnd >= weekStart;
+        const aS = new Date(a.date_debut);
+        const aE = new Date(a.date_fin);
+        return aS <= weekEnd && aE >= weekStart;
     });
 
-    // 2. On extrait les ID uniques des personnes (user_id ou resource_id)
-    // Cela évite de compter 5 fois la même personne si elle travaille 5 jours
-    const uniquePeople = new Set(relevantAssignments.map(a => a.user_id));
-    
-    // 3. Le nombre staffé est la taille du Set (nombre d'uniques)
+    const uniquePeople = new Set(relevant.map(a => a.employe_id || a.user_id)); // Support des deux noms de colonne au cas où
     const staffed = uniquePeople.size;
-
     const missing = Math.max(0, need - staffed);
     
-    // Status couleur
     let statusClass = 'bg-gray-50 border-gray-100 text-gray-400';
     let textInfo = ""; 
 
     if (chantier.statut === 'potentiel') {
         statusClass = 'bg-purple-50 border-purple-200 text-purple-700 dashed-border'; 
         textInfo = `${chantier.taux_reussite || 0}%`;
-    } else {
-        if (need > 0) {
-            if (staffed === 0) statusClass = 'bg-red-50 border-red-100 text-red-400 hover:bg-red-100'; 
-            else if (missing > 0) {
-                 if (missing >= need * 0.5) statusClass = 'bg-red-100 border-red-200 text-red-700 hover:bg-red-200'; 
-                 else statusClass = 'bg-orange-100 border-orange-200 text-orange-700 hover:bg-orange-200';
-            }
-            else if (staffed > need) statusClass = 'bg-blue-100 border-blue-200 text-blue-700 hover:bg-blue-200'; 
-            else statusClass = 'bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200'; 
-        }
+    } else if (need > 0) {
+        if (staffed === 0) statusClass = 'bg-red-50 border-red-100 text-red-400 hover:bg-red-100'; 
+        else if (missing > 0) statusClass = missing >= need * 0.5 ? 'bg-red-100 border-red-200 text-red-700 hover:bg-red-200' : 'bg-orange-100 border-orange-200 text-orange-700 hover:bg-orange-200';
+        else if (staffed > need) statusClass = 'bg-blue-100 border-blue-200 text-blue-700 hover:bg-blue-200'; 
+        else statusClass = 'bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200'; 
     }
-
     return { need, staffed, missing, statusClass, textInfo };
   };
 
-  // 4. CALCUL TOTAUX HEBDOMADAIRES
-  const calculateWeeklyTotal = (weekNum: number) => {
-    let totalNeed = 0;
-    let totalStaffed = 0;
-
-    chantiers.forEach(c => {
-        const load = calculateLoad(c, weekNum);
-        if (load) {
-            totalNeed += load.need;
-            totalStaffed += load.staffed;
-        }
-    });
-
-    return { totalNeed, totalStaffed, gap: totalNeed - totalStaffed };
+  // 4. HANDLERS
+  const handleCellClick = (chantier: any, week: number) => {
+      setSelectedCell({ chantier, week });
+      
+      // Pré-remplir avec ceux déjà affectés cette semaine
+      const { start, end } = getWeekDates(week, year);
+      const existing = assignments.filter(a => 
+          a.chantier_id === chantier.id && 
+          new Date(a.date_debut) <= end && 
+          new Date(a.date_fin) >= start
+      ).map(a => a.employe_id || a.user_id);
+      
+      setSelectedEmpIds(existing);
+      setShowModal(true);
   };
 
-  // --- REGROUPEMENT DES CHANTIERS ---
+  const toggleEmployeeSelection = (empId: string) => {
+      if (selectedEmpIds.includes(empId)) {
+          setSelectedEmpIds(prev => prev.filter(id => id !== empId));
+      } else {
+          setSelectedEmpIds(prev => [...prev, empId]);
+      }
+  };
+
+  const saveAssignments = async () => {
+      if (!selectedCell) return;
+      
+      const { start, workEnd } = getWeekDates(selectedCell.week, year);
+      
+      // 1. Supprimer les anciennes affectations pour ce chantier sur cette semaine (Simplification: on écrase)
+      // Note: Dans un système complexe, on gérerait les dates précises. Ici on affecte à la semaine (Lun-Ven).
+      
+      // Pour l'instant, on ajoute les NOUVEAUX. 
+      // Une gestion fine des dates demanderait une interface jour par jour.
+      // Ici on insère une plage Lundi -> Vendredi pour les sélectionnés.
+      
+      const newAssignments = selectedEmpIds.map(empId => ({
+          chantier_id: selectedCell.chantier.id,
+          employe_id: empId, // Assurez-vous que votre table planning a bien 'employe_id'
+          date_debut: start.toISOString().split('T')[0],
+          date_fin: workEnd.toISOString().split('T')[0],
+          type: 'chantier'
+      }));
+
+      // On insère (Supabase gère les ID auto)
+      if (newAssignments.length > 0) {
+          const { error } = await supabase.from('planning').insert(newAssignments);
+          if (error) {
+              alert("Erreur sauvegarde : " + error.message);
+          } else {
+              alert("✅ Équipe mise à jour !");
+              setShowModal(false);
+              fetchData();
+          }
+      } else {
+          setShowModal(false); // Rien à ajouter
+      }
+  };
+
+  // --- REGROUPEMENT ---
   const groupedChantiers = {
       en_cours: chantiers.filter(c => c.statut === 'en_cours'),
       planifie: chantiers.filter(c => c.statut === 'planifie'),
       potentiel: chantiers.filter(c => c.statut === 'potentiel')
   };
 
-  // --- HANDLER INTERACTION ---
-  const handleCellClick = (chantier: any, week: number) => {
-      // ICI : Ouvrir modale ou rediriger vers le planning hebdo de cette semaine
-      alert(`Gérer équipe pour ${chantier.nom} - Semaine ${week}`);
-  };
-
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] flex flex-col text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:m-0 print:p-0">
       
-      {/* --- HEADER FIXE (Masqué à l'impression) --- */}
+      {/* HEADER */}
       <div className="bg-white border-b border-gray-200 p-4 md:p-6 sticky top-0 z-40 shadow-sm print:hidden">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
@@ -170,22 +187,17 @@ export default function PlanningChargePage() {
                     Pilotage stratégique des ressources {year}
                 </p>
             </div>
-
-            {/* Légende & Outils */}
             <div className="flex items-center gap-6">
                 <div className="flex gap-4 text-[10px] font-bold uppercase">
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-100 border border-emerald-300 rounded"></div> Complet</div>
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div> Manque</div>
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-purple-50 border border-purple-300 rounded"></div> Potentiel</div>
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div> Critique</div>
                 </div>
-                
                 <div className="flex items-center bg-gray-100 rounded-xl p-1">
                     <button onClick={() => setYear(year - 1)} className="p-2 hover:bg-white rounded-lg transition-all"><ChevronLeft size={16}/></button>
                     <span className="px-4 font-black text-sm">{year}</span>
                     <button onClick={() => setYear(year + 1)} className="p-2 hover:bg-white rounded-lg transition-all"><ChevronRight size={16}/></button>
                 </div>
-
                 <button onClick={() => window.print()} className="bg-[#2d3436] text-white p-3 rounded-xl hover:bg-black transition-colors shadow-lg">
                     <Printer size={20} />
                 </button>
@@ -193,21 +205,14 @@ export default function PlanningChargePage() {
         </div>
       </div>
 
-      {/* --- TABLEAU DE CHARGE --- */}
+      {/* TABLEAU */}
       <div className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col print:p-0 print:overflow-visible">
-        
         {loading ? (
-            <div className="flex-1 flex items-center justify-center font-bold text-gray-400 animate-pulse">
-                Synchronisation des données chantiers...
-            </div>
+            <div className="flex-1 flex items-center justify-center font-bold text-gray-400 animate-pulse">Synchronisation...</div>
         ) : (
             <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative print:border-none print:shadow-none">
-                
-                {/* Scroll Container */}
                 <div className="overflow-auto flex-1 custom-scrollbar print:overflow-visible">
                     <table className="w-full border-collapse">
-                        
-                        {/* EN-TÊTE SEMAINES (Sticky Top) */}
                         <thead className="sticky top-0 z-30 bg-white shadow-sm print:static">
                             <tr>
                                 <th className="p-4 w-[300px] min-w-[300px] sticky left-0 bg-white z-40 text-left border-r border-gray-200 border-b">
@@ -225,95 +230,71 @@ export default function PlanningChargePage() {
                                 })}
                             </tr>
                         </thead>
-
-                        {/* CORPS DU TABLEAU (Groupé) */}
                         <tbody>
-                            {/* GROUPE EN COURS */}
-                            {groupedChantiers.en_cours.length > 0 && (
-                                <>
-                                    <tr className="bg-blue-50/50 sticky left-0 z-10">
-                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-blue-600 tracking-widest border-b border-blue-100 pl-4">
-                                            En Cours ({groupedChantiers.en_cours.length})
-                                        </td>
-                                    </tr>
-                                    {groupedChantiers.en_cours.map(chantier => (
-                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
-                                    ))}
-                                </>
-                            )}
-
-                            {/* GROUPE PLANIFIÉ */}
-                            {groupedChantiers.planifie.length > 0 && (
-                                <>
-                                    <tr className="bg-emerald-50/50 sticky left-0 z-10">
-                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-emerald-600 tracking-widest border-b border-emerald-100 pl-4 mt-4">
-                                            Planifiés ({groupedChantiers.planifie.length})
-                                        </td>
-                                    </tr>
-                                    {groupedChantiers.planifie.map(chantier => (
-                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
-                                    ))}
-                                </>
-                            )}
-
-                            {/* GROUPE POTENTIEL */}
-                            {groupedChantiers.potentiel.length > 0 && (
-                                <>
-                                    <tr className="bg-purple-50/50 sticky left-0 z-10">
-                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-purple-600 tracking-widest border-b border-purple-100 pl-4 mt-4">
-                                            Opportunités ({groupedChantiers.potentiel.length})
-                                        </td>
-                                    </tr>
-                                    {groupedChantiers.potentiel.map(chantier => (
-                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
-                                    ))}
-                                </>
-                            )}
+                            {groupedChantiers.en_cours.length > 0 && <tr className="bg-blue-50/50 sticky left-0 z-10"><td colSpan={53} className="p-2 font-black text-xs uppercase text-blue-600 tracking-widest border-b border-blue-100 pl-4">En Cours</td></tr>}
+                            {groupedChantiers.en_cours.map(c => <RowChantier key={c.id} chantier={c} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />)}
+                            
+                            {groupedChantiers.planifie.length > 0 && <tr className="bg-emerald-50/50 sticky left-0 z-10"><td colSpan={53} className="p-2 font-black text-xs uppercase text-emerald-600 tracking-widest border-b border-emerald-100 pl-4 mt-4">Planifiés</td></tr>}
+                            {groupedChantiers.planifie.map(c => <RowChantier key={c.id} chantier={c} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />)}
+                            
+                            {groupedChantiers.potentiel.length > 0 && <tr className="bg-purple-50/50 sticky left-0 z-10"><td colSpan={53} className="p-2 font-black text-xs uppercase text-purple-600 tracking-widest border-b border-purple-100 pl-4 mt-4">Opportunités</td></tr>}
+                            {groupedChantiers.potentiel.map(c => <RowChantier key={c.id} chantier={c} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />)}
                         </tbody>
-
-                        {/* PIED DE PAGE : TOTAL CHARGE (Sticky Bottom) */}
-                        <tfoot className="sticky bottom-0 z-30 bg-gray-800 text-white shadow-lg border-t border-gray-900 print:hidden">
-                            <tr>
-                                <td className="p-4 sticky left-0 bg-gray-800 z-40 border-r border-gray-700">
-                                    <div className="flex items-center gap-2">
-                                        <TrendingUp size={18} className="text-[#00b894]"/>
-                                        <div className="flex flex-col">
-                                            <span className="font-black text-xs uppercase">Charge Globale</span>
-                                            <span className="text-[9px] text-gray-400">Total besoins vs effectifs</span>
-                                        </div>
-                                    </div>
-                                </td>
-                                {weeks.map(w => {
-                                    const total = calculateWeeklyTotal(w);
-                                    const hasActivity = total.totalNeed > 0;
-                                    let barColor = 'bg-emerald-500';
-                                    if (total.gap > 0) barColor = 'bg-orange-500'; 
-                                    if (total.gap > 5) barColor = 'bg-red-500'; 
-
-                                    return (
-                                        <td key={w} className="p-2 border-r border-gray-700 text-center relative group/foot h-20 align-bottom">
-                                            {hasActivity && (
-                                                <div className="flex flex-col items-center gap-1 h-full justify-end w-full">
-                                                    <span className="text-[8px] font-bold text-gray-300 mb-1">{total.totalStaffed}/{total.totalNeed}</span>
-                                                    {/* GRAPHIQUE BARRES */}
-                                                    <div className="w-4 bg-gray-700 rounded-t-sm relative h-full max-h-[40px] flex items-end">
-                                                        <div 
-                                                            className={`w-full rounded-t-sm transition-all duration-500 ${barColor}`} 
-                                                            style={{ height: `${Math.min(100, (total.totalStaffed / total.totalNeed) * 100)}%` }} 
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        </tfoot>
                     </table>
                 </div>
             </div>
         )}
       </div>
+
+      {/* --- MODALE D'AFFECTATION --- */}
+      {showModal && selectedCell && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 className="font-black text-xl text-[#2d3436]">Affectation Équipe</h3>
+                        <p className="text-xs font-bold text-gray-400 uppercase mt-1">
+                            {selectedCell.chantier.nom} — Semaine {selectedCell.week}
+                        </p>
+                    </div>
+                    <button onClick={() => setShowModal(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
+                        <X size={20}/>
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                    {employes.map(emp => {
+                        const isSelected = selectedEmpIds.includes(emp.id);
+                        return (
+                            <div 
+                                key={emp.id} 
+                                onClick={() => toggleEmployeeSelection(emp.id)}
+                                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-blue-50 border-blue-500' : 'bg-gray-50 border-gray-100 hover:bg-white'}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                        {emp.prenom.charAt(0)}{emp.nom.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <p className={`font-bold text-sm ${isSelected ? 'text-blue-800' : 'text-gray-700'}`}>{emp.prenom} {emp.nom}</p>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase">{emp.role}</p>
+                                    </div>
+                                </div>
+                                {isSelected ? <CheckSquare className="text-blue-500" size={20} /> : <Square className="text-gray-300" size={20} />}
+                            </div>
+                        )
+                    })}
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-2">
+                    <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-400 font-bold hover:bg-gray-50 rounded-xl">Annuler</button>
+                    <button onClick={saveAssignments} className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-6 py-2.5 rounded-xl font-bold uppercase flex items-center gap-2 shadow-lg">
+                        <Save size={16}/> Enregistrer ({selectedEmpIds.length})
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* --- STYLE PRINT --- */}
       <style jsx global>{`
@@ -325,7 +306,6 @@ export default function PlanningChargePage() {
           .print\\:overflow-visible { overflow: visible !important; }
           .print\\:border-none { border: none !important; }
           .print\\:shadow-none { box-shadow: none !important; }
-          /* Forcer l'impression des fonds de couleur */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
@@ -333,10 +313,9 @@ export default function PlanningChargePage() {
   );
 }
 
-// --- SOUS-COMPOSANT LIGNE (Pour éviter répétition) ---
+// --- ROW COMPONENT ---
 const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any) => (
     <tr className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
-        {/* NOM CHANTIER (Sticky Left) */}
         <td className="p-3 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
             <div className="flex flex-col">
                 <span className="font-black text-xs text-gray-800 uppercase truncate max-w-[200px]">{chantier.nom}</span>
@@ -348,12 +327,9 @@ const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any)
                 </div>
             </div>
         </td>
-
-        {/* CELLULES */}
         {weeks.map((w: number) => {
             const data = calculateLoad(chantier, w);
             const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
-
             return (
                 <td key={w} className={`p-0.5 border-r border-gray-100 h-14 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`} onClick={() => data && onCellClick(chantier, w)}>
                     {data ? (
@@ -361,24 +337,11 @@ const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any)
                             <div className="text-[10px] font-black flex items-center gap-0.5">
                                 {data.staffed} <span className="text-[7px] opacity-60">/{data.need}</span>
                             </div>
-                            
-                            {data.textInfo ? (
-                                <div className="mt-0.5 text-[7px] font-bold opacity-80">{data.textInfo}</div>
-                            ) : data.missing > 0 && (
+                            {data.missing > 0 && (
                                 <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full text-[6px] text-white flex items-center justify-center font-bold shadow-sm">!</div>
                             )}
-
-                            {/* Tooltip */}
-                            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black/90 text-white text-[9px] p-2 rounded shadow-xl hidden group-hover/cell:block z-50 whitespace-nowrap pointer-events-none">
-                                <p className="font-bold uppercase mb-1">Semaine {w}</p>
-                                <p>Besoin : {data.need}</p>
-                                <p>Staffé : {data.staffed}</p>
-                                {data.missing > 0 && <p className="text-red-300 font-bold">Manque : {data.missing}</p>}
-                            </div>
                         </div>
-                    ) : (
-                        <div className="w-full h-full group-hover:bg-gray-100/50 transition-colors"></div> // Case vide mais réactive au survol ligne
-                    )}
+                    ) : <div className="w-full h-full group-hover:bg-gray-100/50 transition-colors"></div>}
                 </td>
             );
         })}
