@@ -8,12 +8,27 @@ import {
   Send, FileCheck, FileX, X, Calendar as CalendarIcon
 } from 'lucide-react';
 
+// --- HELPER: Format Local Date to YYYY-MM-DD ---
+// This prevents timezone shifts (e.g. 2026-02-09 becoming 2026-02-08T23:00...)
+const toLocalISOString = (date: Date) => {
+  const offset = date.getTimezoneOffset();
+  const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return adjustedDate.toISOString().split('T')[0];
+};
+
 export default function PlanningPage() {
   const [employes, setEmployes] = useState<any[]>([]);
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentDate, setCurrentDate] = useState(new Date("2026-02-09")); 
+  
+  // Initialize with Monday of current week to avoid random mid-week starts
+  const [currentDate, setCurrentDate] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    return new Date(d.setDate(diff));
+  });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{empId: string, startDate: string, endDate: string} | null>(null);
@@ -23,9 +38,24 @@ export default function PlanningPage() {
   // 1. Chargement des données
   const fetchData = async () => {
     setLoading(true);
-    const { data: emp } = await supabase.from('users').select('*').order('nom');
-    const { data: chan } = await supabase.from('chantiers').select('id, nom').eq('statut', 'en_cours');
-    const { data: plan } = await supabase.from('planning').select('*, chantiers(nom)');
+    
+    // Fetch users
+    const { data: emp } = await supabase
+      .from('users')
+      .select('*')
+      .order('nom');
+      
+    // Fetch active chantiers
+    const { data: chan } = await supabase
+      .from('chantiers')
+      .select('id, nom')
+      .in('statut', ['en_cours', 'planifie']); // Fetch both active and planned
+      
+    // Fetch planning for the visible week (plus a buffer to be safe)
+    // We get all assignments to keep it simple, or filter by date range if heavy
+    const { data: plan } = await supabase
+      .from('planning')
+      .select('*, chantiers(nom)');
     
     setEmployes(emp || []);
     setChantiers(chan || []);
@@ -35,43 +65,54 @@ export default function PlanningPage() {
 
   useEffect(() => { fetchData(); }, [currentDate]);
 
-  // 2. Actions sur les ODM (Ordre de Mission)
+  // 2. Actions sur les ODM
   const handleActionODM = async (id: string, field: string, value: boolean) => {
-    await supabase.from('planning').update({ [field]: value }).eq('id', id);
-    fetchData();
+    const { error } = await supabase.from('planning').update({ [field]: value }).eq('id', id);
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
+    else fetchData();
   };
 
-  // 3. Suppression d'une affectation
+  // 3. Suppression
   const deleteAssignment = async (id: string) => {
     if(confirm("Supprimer cette affectation ?")) {
-      await supabase.from('planning').delete().eq('id', id);
-      fetchData();
+      const { error } = await supabase.from('planning').delete().eq('id', id);
+      if (error) alert("Erreur suppression : " + error.message);
+      else fetchData();
     }
   };
 
-  // 4. Ouverture de la Modal avec initialisation des dates
+  // 4. Modal Open
   const openAssignmentModal = (empId: string, date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalISOString(date);
     setSelectedCell({ empId, startDate: dateStr, endDate: dateStr });
+    setAssignType('chantier'); // Reset type to default
+    setSelectedChantier("");   // Reset selection
     setIsModalOpen(true);
   };
 
-  // 5. Sauvegarde (Gestion des périodes Du... Au...)
+  // 5. Sauvegarde
   const saveAssignment = async () => {
-    if (!selectedCell || (!selectedChantier && assignType === 'chantier')) return;
+    if (!selectedCell) return;
+    if (assignType === 'chantier' && !selectedChantier) {
+        alert("Veuillez sélectionner un chantier.");
+        return;
+    }
     
     const start = new Date(selectedCell.startDate);
     const end = new Date(selectedCell.endDate);
     const inserts = [];
 
-    // Boucle pour insérer chaque jour de la période (hors week-end)
+    // Loop through dates
+    // Using a new date object for iteration to avoid reference issues
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() !== 0 && d.getDay() !== 6) {
+      const dayOfWeek = d.getDay();
+      // Skip Weekends (0 = Sunday, 6 = Saturday)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         inserts.push({
           employe_id: selectedCell.empId,
           chantier_id: assignType === 'chantier' ? selectedChantier : null,
-          date_debut: d.toISOString().split('T')[0],
-          date_fin: d.toISOString().split('T')[0],
+          date_debut: toLocalISOString(d), // Use helper for consistency
+          date_fin: toLocalISOString(d),   // Single day entry per row
           type: assignType,
           odm_envoye: false,
           odm_signe: false
@@ -79,98 +120,178 @@ export default function PlanningPage() {
       }
     }
     
-    await supabase.from('planning').insert(inserts);
-    setIsModalOpen(false);
-    setSelectedChantier("");
-    fetchData();
+    if (inserts.length === 0) {
+        alert("Aucun jour ouvrable sélectionné (Week-end ?)");
+        return;
+    }
+
+    const { error } = await supabase.from('planning').insert(inserts);
+
+    if (error) {
+        alert("Erreur lors de la sauvegarde : " + error.message);
+    } else {
+        setIsModalOpen(false);
+        setSelectedChantier("");
+        fetchData();
+    }
   };
 
-  // 6. Calcul des jours de la semaine affichée
+  // 6. Calculate Week Days
   const weekDays = Array.from({ length: 5 }, (_, i) => {
+    // Clone currentDate to avoid mutation
     const start = new Date(currentDate);
     const day = start.getDay();
+    // Calculate Monday
     const diff = start.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(start.setDate(diff));
+    
+    // Add 'i' days
     monday.setDate(monday.getDate() + i);
     return monday;
   });
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-8 font-['Fredoka']">
+    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-8 font-['Fredoka'] ml-0 md:ml-64 transition-all">
       {/* HEADER */}
-      <div className="flex justify-between items-end mb-8 print:hidden">
+      <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4 print:hidden">
         <div>
-          <h1 className="text-3xl font-black uppercase text-gray-800 tracking-tighter italic">Planning Hebdomadaire</h1>
-          <p className="text-blue-500 font-bold text-[10px] uppercase tracking-widest mt-1">Altrad Operational Resources</p>
+          <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Planning <span className="text-[#00b894]">Hebdo</span></h1>
+          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Gestion des affectations</p>
         </div>
-        <div className="flex gap-4">
-          <div className="flex items-center bg-white rounded-2xl p-1 shadow-sm border border-gray-100 font-bold">
-            <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-xl transition-all"><ChevronLeft size={20}/></button>
-            <span className="px-6 text-xs font-black uppercase">Navigation</span>
-            <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-xl transition-all"><ChevronRight size={20}/></button>
-          </div>
+        
+        <div className="flex items-center bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100">
+            <button 
+                onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} 
+                className="p-3 hover:bg-gray-50 rounded-xl transition-colors text-gray-500 hover:text-black"
+            >
+                <ChevronLeft size={20}/>
+            </button>
+            <div className="px-6 text-center">
+                <span className="block text-xs font-black uppercase text-gray-400">Semaine du</span>
+                <span className="block text-sm font-black text-gray-800">
+                    {weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                </span>
+            </div>
+            <button 
+                onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} 
+                className="p-3 hover:bg-gray-50 rounded-xl transition-colors text-gray-500 hover:text-black"
+            >
+                <ChevronRight size={20}/>
+            </button>
         </div>
       </div>
 
-      {/* TABLEAU PRINCIPAL */}
-      <div className="bg-white rounded-[40px] shadow-sm overflow-hidden border border-gray-100">
-        <table className="w-full border-collapse text-left">
+      {/* TABLEAU */}
+      <div className="bg-white rounded-[30px] shadow-sm overflow-hidden border border-gray-100 overflow-x-auto">
+        <table className="w-full min-w-[800px] border-collapse text-left">
           <thead>
-            <tr className="bg-gray-50/50">
-              <th className="p-6 w-[260px] sticky left-0 bg-white z-10 font-black uppercase text-[10px] text-gray-400 border-b border-gray-100">Collaborateurs</th>
+            <tr className="bg-gray-50/80 border-b border-gray-100">
+              <th className="p-6 w-[200px] sticky left-0 bg-gray-50/80 z-20 font-black uppercase text-[10px] text-gray-400">
+                Collaborateurs
+              </th>
               {weekDays.map((day, i) => (
-                <th key={i} className="p-4 border-l border-b border-gray-100 text-center">
-                  <p className="text-[10px] uppercase font-black text-gray-400">{day.toLocaleDateString('fr-FR', { weekday: 'short' })}</p>
-                  <p className="text-lg font-black text-gray-800">{day.getDate()}/{day.getMonth() + 1}</p>
+                <th key={i} className="p-4 border-l border-gray-100 text-center min-w-[140px]">
+                  <p className="text-[10px] uppercase font-black text-gray-400 mb-1">
+                    {day.toLocaleDateString('fr-FR', { weekday: 'long' })}
+                  </p>
+                  <div className={`inline-block px-3 py-1 rounded-lg font-black text-sm ${
+                      toLocalISOString(day) === toLocalISOString(new Date()) 
+                      ? 'bg-[#00b894] text-white shadow-md' 
+                      : 'text-gray-700 bg-white border border-gray-100'
+                  }`}>
+                    {day.getDate()}
+                  </div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {employes.map((emp) => (
-              <tr key={emp.id} className="group border-b border-gray-50">
-                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-100 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">
-                  <p className="font-black text-gray-800 uppercase text-xs leading-none">{emp.nom} {emp.prenom}</p>
-                  <p className="text-[8px] font-bold text-blue-500 uppercase mt-1 tracking-tighter">{emp.role}</p>
+              <tr key={emp.id} className="group border-b border-gray-50 hover:bg-gray-50/30 transition-colors">
+                {/* COLONNE EMPLOYÉ */}
+                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-100 group-hover:bg-gray-50/30 transition-colors">
+                  <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-black text-xs text-gray-500">
+                          {emp.prenom.charAt(0)}{emp.nom.charAt(0)}
+                      </div>
+                      <div>
+                          <p className="font-bold text-gray-800 text-xs uppercase leading-tight">{emp.nom}</p>
+                          <p className="text-[10px] text-gray-400 capitalize">{emp.prenom}</p>
+                      </div>
+                  </div>
                 </td>
                 
+                {/* CELLULES JOURS */}
                 {weekDays.map((day, i) => {
-                  const dateStr = day.toISOString().split('T')[0];
-                  const isRH_Absent = emp.statut_actuel !== 'disponible';
-                  const mission = assignments.find(a => a.employe_id === emp.id && dateStr === a.date_debut);
+                  const dateStr = toLocalISOString(day);
+                  // Find assignment strictly matching date
+                  const mission = assignments.find(a => a.employe_id === emp.id && a.date_debut === dateStr);
                   
+                  // Specific styling based on type
+                  let cellStyle = "bg-gray-100 text-gray-400"; // Default empty/loading
+                  let borderStyle = "";
+                  
+                  if (mission) {
+                      if (mission.type === 'chantier') {
+                          cellStyle = "bg-[#0984e3] text-white shadow-md shadow-blue-200";
+                          // Visual cue for signed ODM
+                          if (mission.odm_signe) borderStyle = "ring-2 ring-green-400";
+                          else if (mission.odm_envoye) borderStyle = "ring-2 ring-orange-300";
+                      } else if (mission.type === 'conge') {
+                          cellStyle = "bg-[#fab1a0] text-white"; // Peach/Orange
+                      } else if (mission.type === 'maladie') {
+                          cellStyle = "bg-[#ff7675] text-white"; // Red
+                      } else if (mission.type === 'formation') {
+                          cellStyle = "bg-[#a29bfe] text-white"; // Purple
+                      }
+                  }
+
                   return (
-                    <td key={i} className="p-1 border-l border-gray-100 h-28 relative">
-                      {isRH_Absent ? (
-                        <div className={`w-full h-full rounded-2xl p-2 text-white flex flex-col justify-between shadow-sm ${emp.statut_actuel === 'conge' ? 'bg-orange-400' : 'bg-red-500'}`}>
-                           <p className="text-[9px] font-black uppercase italic">{emp.statut_actuel}</p>
-                           <Activity size={12} className="opacity-30" />
-                        </div>
-                      ) : mission ? (
-                        <div className={`w-full h-full rounded-2xl p-3 text-white shadow-md flex flex-col justify-between group/item transition-all hover:scale-[1.02] ${mission.type === 'chantier' ? 'bg-[#0984e3]' : 'bg-gray-400'}`}>
-                          <div className="flex justify-between items-start">
-                            <p className="text-[13px] font-[900] uppercase leading-tight tracking-tighter truncate pr-2">
-                               {mission.chantiers?.nom || mission.type}
-                            </p>
-                            {mission.type === 'chantier' && (
-                              <div className={`w-3 h-3 rounded-full border-2 border-white shrink-0 ${mission.odm_signe ? 'bg-green-400' : mission.odm_envoye ? 'bg-orange-400 animate-pulse' : 'bg-red-500'}`} />
-                            )}
+                    <td key={i} className="p-2 border-l border-gray-50 h-24 relative">
+                      {mission ? (
+                        <div className={`w-full h-full rounded-2xl p-3 flex flex-col justify-between group/card transition-all hover:scale-[1.02] cursor-pointer relative ${cellStyle} ${borderStyle}`}>
+                          
+                          {/* DELETE BUTTON (Hover) */}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); deleteAssignment(mission.id); }}
+                            className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full shadow-sm opacity-0 group-hover/card:opacity-100 transition-opacity z-20 hover:scale-110"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+
+                          {/* CONTENT */}
+                          <div className="font-bold text-[11px] uppercase leading-tight line-clamp-2">
+                            {mission.chantiers?.nom || mission.type}
                           </div>
-                          <div className="flex justify-between items-end">
-                            <div className="flex gap-2">
-                              {mission.type === 'chantier' && !mission.odm_envoye && (
-                                <button onClick={() => handleActionODM(mission.id, 'odm_envoye', true)} className="bg-white/20 p-1.5 rounded-lg hover:bg-white/40 transition-all"><Send size={12} /></button>
-                              )}
-                              {mission.odm_envoye && !mission.odm_signe && (
-                                <button onClick={() => handleActionODM(mission.id, 'odm_signe', true)} className="bg-white/20 p-1.5 rounded-lg hover:bg-white/40 transition-all"><Check size={12} /></button>
-                              )}
-                              {mission.odm_signe && <FileCheck size={14} className="text-green-200" />}
-                            </div>
-                            <button onClick={() => deleteAssignment(mission.id)} className="opacity-0 group-hover/item:opacity-100 text-white/50 hover:text-white transition-all"><Trash2 size={14} /></button>
-                          </div>
+
+                          {/* FOOTER ACTIONS (Only for Chantier) */}
+                          {mission.type === 'chantier' && (
+                              <div className="flex items-center gap-1 mt-1">
+                                  <div 
+                                    onClick={(e) => { e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye); }}
+                                    className={`p-1 rounded bg-white/20 hover:bg-white/40 transition-colors ${mission.odm_envoye ? 'text-white' : 'text-white/50'}`}
+                                    title="ODM Envoyé"
+                                  >
+                                      <Send size={10} />
+                                  </div>
+                                  <div 
+                                    onClick={(e) => { e.stopPropagation(); handleActionODM(mission.id, 'odm_signe', !mission.odm_signe); }}
+                                    className={`p-1 rounded bg-white/20 hover:bg-white/40 transition-colors ${mission.odm_signe ? 'text-white' : 'text-white/50'}`}
+                                    title="ODM Signé"
+                                  >
+                                      <Check size={10} />
+                                  </div>
+                              </div>
+                          )}
                         </div>
                       ) : (
-                        <button onClick={() => openAssignmentModal(emp.id, day)} className="w-full h-full text-gray-200 hover:text-blue-500 transition-all font-black text-2xl flex items-center justify-center">+</button>
+                        // EMPTY STATE ADD BUTTON
+                        <button 
+                            onClick={() => openAssignmentModal(emp.id, day)} 
+                            className="w-full h-full rounded-2xl border-2 border-dashed border-gray-100 text-gray-200 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center"
+                        >
+                            <Plus size={20} />
+                        </button>
                       )}
                     </td>
                   );
@@ -184,46 +305,68 @@ export default function PlanningPage() {
       {/* MODAL D'AFFECTATION */}
       {isModalOpen && selectedCell && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[30px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+            
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-black uppercase tracking-tighter italic text-gray-800">Planifier Mission</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-300 hover:text-black"><X size={24} /></button>
+              <div>
+                  <h2 className="text-xl font-black uppercase text-[#2d3436]">Nouvelle Affectation</h2>
+                  <p className="text-xs text-gray-400 font-bold">Définir la mission et la durée</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
+                  <X size={20} />
+              </button>
             </div>
             
+            {/* DATES */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Date Début</label>
-                <input type="date" value={selectedCell.startDate} onChange={(e) => setSelectedCell({...selectedCell, startDate: e.target.value})} className="w-full bg-gray-50 p-4 rounded-2xl border-none font-bold text-sm mt-1 focus:ring-2 focus:ring-blue-500" />
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Du</label>
+                <input type="date" value={selectedCell.startDate} onChange={(e) => setSelectedCell({...selectedCell, startDate: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-[#00b894]" />
               </div>
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Date Fin</label>
-                <input type="date" value={selectedCell.endDate} onChange={(e) => setSelectedCell({...selectedCell, endDate: e.target.value})} className="w-full bg-gray-50 p-4 rounded-2xl border-none font-bold text-sm mt-1 focus:ring-2 focus:ring-blue-500" />
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Au</label>
+                <input type="date" value={selectedCell.endDate} onChange={(e) => setSelectedCell({...selectedCell, endDate: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-[#00b894]" />
               </div>
             </div>
 
+            {/* SÉLECTION TYPE */}
             <div className="space-y-4">
-              <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Sélectionner Chantier</label>
-              <select className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs border-none focus:ring-2 focus:ring-blue-500" value={selectedChantier} onChange={(e) => { setAssignType('chantier'); setSelectedChantier(e.target.value); }}>
-                <option value="">--- CHANTIER ---</option>
-                {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-              </select>
-              
-              <div className="pt-4 border-t border-gray-100">
-                <p className="text-[10px] font-black text-gray-400 uppercase ml-2 mb-2 text-center">Ou statut spécial</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {['formation', 'maladie', 'conge'].map(t => (
-                    <button key={t} onClick={() => { setAssignType(t); setSelectedChantier(""); }} className={`py-3 rounded-xl text-[9px] font-black uppercase transition-all ${assignType === t ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                      {t}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-4 gap-2 bg-gray-50 p-1 rounded-xl">
+                    {['chantier', 'formation', 'maladie', 'conge'].map(t => (
+                        <button 
+                            key={t} 
+                            onClick={() => { setAssignType(t); if(t !== 'chantier') setSelectedChantier(""); }}
+                            className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                assignType === t ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            {t}
+                        </button>
+                    ))}
                 </div>
-              </div>
+
+                {assignType === 'chantier' && (
+                    <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Chantier</label>
+                        <select 
+                            className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm outline-none focus:border-[#00b894] border border-transparent cursor-pointer" 
+                            value={selectedChantier} 
+                            onChange={(e) => setSelectedChantier(e.target.value)}
+                        >
+                            <option value="">-- Choisir --</option>
+                            {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                        </select>
+                    </div>
+                )}
             </div>
 
-            <div className="flex gap-4 mt-8">
-              <button onClick={() => setIsModalOpen(false)} className="flex-1 font-black text-gray-400 uppercase text-xs hover:text-black">Annuler</button>
-              <button onClick={saveAssignment} className="flex-1 bg-black text-white py-5 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Valider Planning</button>
-            </div>
+            {/* FOOTER */}
+            <button 
+                onClick={saveAssignment} 
+                className="w-full mt-8 bg-[#00b894] hover:bg-[#00a383] text-white py-4 rounded-xl font-black uppercase text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95"
+            >
+                Valider l'affectation
+            </button>
           </div>
         </div>
       )}
