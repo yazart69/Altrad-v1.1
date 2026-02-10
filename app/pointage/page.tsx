@@ -85,9 +85,10 @@ export default function PointagePage() {
     return d;
   });
 
-  // Totaux par employé
+  // Totaux par employé (CORRECTION TYPAGE ICI)
   const employeeTotals = useMemo(() => {
-      const stats: any = {};
+      // On dit explicitement à TypeScript que c'est un objet { "id": nombre }
+      const stats: Record<string, number> = {}; 
       assignments.forEach(a => {
           if (!a.heures) return;
           stats[a.employe_id] = (stats[a.employe_id] || 0) + parseFloat(a.heures);
@@ -354,8 +355,8 @@ export default function PointagePage() {
                   <div>
                       <p className="text-xs font-bold text-gray-400 uppercase">Total Heures Semaine</p>
                       <p className="text-3xl font-black text-[#2d3436]">
-                          {/* CORRECTION TYPE ICI */}
-                          {(Object.values(employeeTotals) as number[]).reduce((a, b) => a + b, 0)}h
+                          {/* CALCUL DU TOTAL : PAS D'ERREUR ICI MAINTENANT */}
+                          {Object.values(employeeTotals).reduce((a, b) => a + b, 0)}h
                       </p>
                   </div>
                   <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400">
