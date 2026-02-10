@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
-  ArrowUpRight, Users, LayoutGrid, List, ClipboardList
+  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,6 +22,17 @@ export default function MaterielPage() {
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantierId, setSelectedChantierId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+
+  // État Modale Ajout
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItem, setNewItem] = useState({
+      nom: '',
+      categorie: 'Outillage',
+      type_stock: 'Interne',
+      qte_totale: 1,
+      prix_location: 0,
+      image: ''
+  });
 
   // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
@@ -77,6 +88,22 @@ export default function MaterielPage() {
     setLoading(false);
   };
 
+  // --- AJOUT MATERIEL (INVENTAIRE) ---
+  const handleAddItem = async () => {
+      if (!newItem.nom) return alert("Le nom est obligatoire");
+      
+      const { error } = await supabase.from('materiel').insert([newItem]);
+      
+      if (error) {
+          alert("Erreur: " + error.message);
+      } else {
+          alert("✅ Matériel ajouté au catalogue !");
+          setShowAddModal(false);
+          setNewItem({ nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, prix_location: 0, image: '' });
+          fetchData();
+      }
+  };
+
   // --- LOGIQUES DE FILTRAGE ---
   const filteredInventory = inventory.filter(item => {
     const matchSearch = item.nom.toLowerCase().includes(searchTerm.toLowerCase());
@@ -127,7 +154,7 @@ export default function MaterielPage() {
           </div>
           
           <div className="flex gap-2">
-             <button className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2 text-xs">
+             <button onClick={() => setShowAddModal(true)} className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2 text-xs">
                 <Plus size={16} /> Ajouter Matériel
             </button>
           </div>
@@ -247,6 +274,7 @@ export default function MaterielPage() {
                             <option value="Outillage">Outillage</option>
                             <option value="EPI">EPI</option>
                             <option value="Accès">Accès / Échafaudages</option>
+                            <option value="Véhicule">Véhicules</option>
                         </select>
                     </div>
                 </div>
@@ -409,6 +437,93 @@ export default function MaterielPage() {
         )}
 
       </div>
+
+      {/* ================= MODALE AJOUT (POPUP) ================= */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-black text-xl text-[#2d3436] flex items-center gap-2">
+                        <Plus size={20} className="text-[#0984e3]"/> Nouveau Matériel
+                    </h3>
+                    <button onClick={() => setShowAddModal(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
+                        <X size={16}/>
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom</label>
+                        <input 
+                            className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#0984e3]"
+                            placeholder="Ex: Hilti TE-30"
+                            value={newItem.nom}
+                            onChange={e => setNewItem({...newItem, nom: e.target.value})}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Catégorie</label>
+                            <select 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer"
+                                value={newItem.categorie}
+                                onChange={e => setNewItem({...newItem, categorie: e.target.value})}
+                            >
+                                <option value="Outillage">Outillage</option>
+                                <option value="Engin">Engin</option>
+                                <option value="EPI">EPI</option>
+                                <option value="Accès">Accès</option>
+                                <option value="Véhicule">Véhicule</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type Stock</label>
+                            <select 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer"
+                                value={newItem.type_stock}
+                                onChange={e => setNewItem({...newItem, type_stock: e.target.value})}
+                            >
+                                <option value="Interne">Interne</option>
+                                <option value="Externe">Externe</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quantité Totale</label>
+                            <input 
+                                type="number" min="1"
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
+                                value={newItem.qte_totale}
+                                onChange={e => setNewItem({...newItem, qte_totale: parseInt(e.target.value)})}
+                            />
+                        </div>
+                        {newItem.type_stock === 'Externe' && (
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Prix Loc. (€/j)</label>
+                                <input 
+                                    type="number" min="0"
+                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
+                                    value={newItem.prix_location}
+                                    onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                    <button 
+                        onClick={handleAddItem}
+                        className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg shadow-blue-200 transition-transform hover:scale-105"
+                    >
+                        Créer Matériel
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
