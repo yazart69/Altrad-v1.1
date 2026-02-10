@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
-  Calendar, MapPin, ArrowRight, AlertCircle, CheckCircle2, 
+  Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, // <-- ArrowLeft ajouté ici
   ArrowUpRight, Users, LayoutGrid, List
 } from 'lucide-react';
 import Link from 'next/link';
@@ -230,7 +230,7 @@ export default function MaterielPage() {
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
-                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Matériel</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Materiel</th>
                                 <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Chantier Affecté</th>
                                 <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Période</th>
                                 <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Type</th>
