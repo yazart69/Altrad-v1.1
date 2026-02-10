@@ -52,11 +52,14 @@ export default function PlanningChargePage() {
       .order('nom');
 
     // Récupère tout le planning (affectations réelles)
-    const { data: plan } = await supabase
+    const { data: plan, error } = await supabase
       .from('planning')
-      .select('*, users(role)') 
-      .neq('chantier_id', null);
+      .select('*') 
+     .not('chantier_id', 'is', null); // Syntaxe plus robuste pour "neq null"
 
+    if (error) {
+        console.error("Erreur chargement planning:", error);
+    }
     if (chan) setChantiers(chan);
     if (plan) setAssignments(plan);
     setLoading(false);
