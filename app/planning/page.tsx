@@ -4,8 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
-  Printer, AlertTriangle, Trash2, Activity, Check, 
-  Send, FileCheck, FileX, X, Calendar as CalendarIcon, User, Users
+  Printer, Trash2, Activity, Check, 
+  Send, FileCheck, X, User, Users
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -31,7 +31,7 @@ export default function PlanningPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Modification : On sélectionne maintenant un Chantier et une Date, puis on choisit l'employé
+  // État de la sélection
   const [selection, setSelection] = useState<{chantierId: string | null, date: string, type: string} | null>(null);
   const [selectedEmploye, setSelectedEmploye] = useState("");
 
@@ -40,7 +40,6 @@ export default function PlanningPage() {
     setLoading(true);
     
     const { data: emp } = await supabase.from('users').select('*').order('nom');
-    // On récupère uniquement les chantiers actifs ou planifiés pour le tableau
     const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').in('statut', ['en_cours', 'planifie']).order('nom');
     const { data: plan } = await supabase.from('planning').select('*, users(nom, prenom, role)');
     
@@ -66,12 +65,14 @@ export default function PlanningPage() {
     }
   };
 
-  // 4. Modal Open (Adapté pour Chantier -> Employé)
-  // typeContext peut être 'chantier' ou 'hors_chantier'
+  // 4. Modal Open
   const openAssignmentModal = (chantierId: string | null, date: Date, typeContext: string = 'chantier') => {
     const dateStr = toLocalISOString(date);
-    setSelection({ chantierId, date: dateStr, type: typeContext });
-    setSelectedEmploye(""); // Reset employé
+    // Si c'est hors chantier, on initialise le type par défaut à 'conge', sinon 'chantier'
+    const initialType = typeContext === 'hors_chantier' ? 'conge' : 'chantier';
+    
+    setSelection({ chantierId, date: dateStr, type: initialType });
+    setSelectedEmploye(""); 
     setIsModalOpen(true);
   };
 
@@ -79,30 +80,29 @@ export default function PlanningPage() {
   const saveAssignment = async () => {
     if (!selection || !selectedEmploye) return;
     
+    // Détermination du type final
+    // Si un chantier est défini (via chantierId), c'est 'chantier'
+    // Sinon, on prend le type sélectionné (conge, maladie...), ou 'conge' par défaut
+    const finalType = selection.chantierId ? 'chantier' : selection.type;
+
     const insertData = {
       employe_id: selectedEmploye,
       chantier_id: selection.chantierId, // Null si hors chantier
       date_debut: selection.date,
       date_fin: selection.date,
-      type: selection.type === 'hors_chantier' ? 'conge' : 'chantier', // Par défaut congé si hors chantier, modifiable ensuite
+      type: finalType,
       odm_envoye: false,
       odm_signe: false
     };
-
-    // Si c'est hors chantier, on vérifie le type (la modal pourrait avoir un sélecteur de type d'absence)
-    if (selection.type === 'hors_chantier') {
-        // Pour simplifier ici, on met 'conge' par défaut, ou on pourrait ajouter un selecteur dans la modal
-        // J'utiliserai le selecteur de type existant dans la modal
-    }
     
-    // Check doublon basic (optionnel)
+    // Check doublon basic
     const exists = assignments.find(a => 
         a.employe_id === selectedEmploye && 
         a.date_debut === selection.date
     );
 
     if (exists) {
-        alert("Cet employé est déjà planifié ce jour-là (Chantier: " + (exists.chantier_id || exists.type) + ")");
+        alert("Cet employé est déjà planifié ce jour-là.");
         return;
     }
 
@@ -134,7 +134,7 @@ export default function PlanningPage() {
   return (
     <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800">
       
-      {/* HEADER (Masqué à l'impression) */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4 print:hidden">
         <div>
           <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Planning <span className="text-[#00b894]">Chantiers</span></h1>
@@ -169,7 +169,7 @@ export default function PlanningPage() {
         </div>
       </div>
 
-      {/* HEADER IMPRESSION (Visible uniquement à l'impression) */}
+      {/* HEADER IMPRESSION */}
       <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
           <h1 className="text-2xl font-black uppercase">Planning Hebdomadaire</h1>
           <p className="text-sm">Semaine du {weekDays[0].toLocaleDateString('fr-FR')}</p>
@@ -215,14 +215,11 @@ export default function PlanningPage() {
                 {/* CELLULES JOURS */}
                 {weekDays.map((day, i) => {
                   const dateStr = toLocalISOString(day);
-                  // Filtrer les affectations pour ce chantier et ce jour
                   const dailyMissions = assignments.filter(a => a.chantier_id === chantier.id && a.date_debut === dateStr);
                   
                   return (
                     <td key={i} className="p-2 border-l border-gray-100 align-top h-32 relative print:border-gray-400 print:h-auto">
                       <div className="flex flex-col gap-1.5 h-full">
-                          
-                          {/* Liste des employés affectés */}
                           {dailyMissions.map((mission) => (
                               <div key={mission.id} className="bg-[#0984e3] text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black">
                                   <div className="flex items-center gap-2">
@@ -234,7 +231,6 @@ export default function PlanningPage() {
                                       </span>
                                   </div>
 
-                                  {/* Actions Rapides (Hover) - Masquées à l'impression */}
                                   <div className="hidden group-hover/card:flex gap-1 print:hidden">
                                       <button 
                                         onClick={(e) => {e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye)}}
@@ -253,7 +249,6 @@ export default function PlanningPage() {
                               </div>
                           ))}
 
-                          {/* Bouton Ajouter (Uniquement si pas impression) */}
                           <button 
                             onClick={() => openAssignmentModal(chantier.id, day, 'chantier')}
                             className="mt-auto w-full py-1.5 border-2 border-dashed border-gray-200 rounded-lg text-gray-300 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center print:hidden"
@@ -267,7 +262,7 @@ export default function PlanningPage() {
               </tr>
             ))}
 
-            {/* SECTION HORS CHANTIER (ABSENCES, ETC.) */}
+            {/* SECTION HORS CHANTIER */}
             <tr className="bg-gray-50 border-t-4 border-white print:border-gray-400">
                 <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:bg-white print:border-r">
                     <div className="flex items-center gap-3">
@@ -325,7 +320,7 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION (ADAPTÉE) */}
+      {/* MODAL D'AFFECTATION (CORRIGÉE) */}
       {isModalOpen && selection && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
           <div className="bg-white rounded-[30px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
@@ -334,7 +329,7 @@ export default function PlanningPage() {
               <div>
                   <h2 className="text-xl font-black uppercase text-[#2d3436]">Affecter une ressource</h2>
                   <p className="text-xs text-gray-400 font-bold">
-                      {selection.type === 'chantier' ? 'Ajout sur chantier' : 'Déclarer une absence'} - {new Date(selection.date).toLocaleDateString()}
+                      {selection.chantierId ? 'Ajout sur chantier' : 'Déclarer une absence'} - {new Date(selection.date).toLocaleDateString()}
                   </p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
@@ -360,15 +355,20 @@ export default function PlanningPage() {
                 </div>
 
                 {/* Si Hors Chantier, Type d'absence */}
-                {selection.type === 'hors_chantier' && (
+                {!selection.chantierId && (
                     <div>
                         <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Type d'absence</label>
                         <div className="grid grid-cols-3 gap-2">
                             {['conge', 'maladie', 'formation'].map(t => (
                                 <button 
                                     key={t}
-                                    onClick={() => setSelection({...selection, type: 'hors_chantier', subType: t})} // Note: subType logique simplifiée ici, on utilisera directement le type
-                                    className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 ${selection.type === t ? 'border-black bg-black text-white' : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                    // CORRECTION ICI : Mise à jour directe du type dans la selection
+                                    onClick={() => setSelection({ ...selection, type: t })}
+                                    className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-colors ${
+                                        selection.type === t 
+                                        ? 'border-black bg-black text-white' 
+                                        : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                    }`}
                                 >
                                     {t}
                                 </button>
