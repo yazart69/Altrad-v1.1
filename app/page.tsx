@@ -9,6 +9,7 @@ import TasksTile from "@/components/TasksTile";
 import StaffingTile from "@/components/StaffingTile"; 
 import MiddleTiles from "@/components/MiddleTiles";
 import HSETile from "@/components/HSETile"; 
+import PointageTile from "@/components/PointageTile"; // AJOUT IMPORT
 
 export default function Home() {
   const [stats, setStats] = useState({ staff: 0, alerts: 0, activeSites: 0 });
@@ -87,12 +88,9 @@ export default function Home() {
               <div className="flex-1 overflow-hidden">
                   <TeamTile isCompact={true} />
               </div>
-              <div className="flex-1 bg-white rounded-[25px] shadow-sm border border-gray-100 flex items-center justify-center relative overflow-hidden group hover:shadow-md transition-all">
-                  <div className="absolute inset-0 bg-gray-50/50 flex items-center justify-center">
-                      <span className="text-[10px] font-black uppercase text-gray-300 tracking-widest group-hover:text-blue-400 transition-colors">
-                          Module à venir
-                      </span>
-                  </div>
+              <div className="flex-1 overflow-hidden">
+                  {/* REMPLACEMENT ICI : MODULE POINTAGE */}
+                  <PointageTile />
               </div>
             </div>
 
