@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, 
   AlertTriangle, CheckCircle2, Users, 
-  CalendarRange, TrendingUp, Printer, Info
+  CalendarRange, TrendingUp, Printer, Info, Plus
 } from 'lucide-react';
 
 // --- HELPERS DATES ---
@@ -45,17 +45,16 @@ export default function PlanningChargePage() {
   const fetchData = async () => {
     setLoading(true);
     // Récupère chantiers actifs cette année
-    // On inclut aussi les potentiels pour la prévision
     const { data: chan } = await supabase
       .from('chantiers')
       .select('*')
-      .neq('statut', 'termine') // On exclut les terminés pour la charge future
+      .neq('statut', 'termine') 
       .order('nom');
 
     // Récupère tout le planning (affectations réelles)
     const { data: plan } = await supabase
       .from('planning')
-      .select('*, users(role)') // On récupère le rôle pour distinguer interne/externe si besoin
+      .select('*, users(role)') 
       .neq('chantier_id', null);
 
     if (chan) setChantiers(chan);
@@ -70,34 +69,27 @@ export default function PlanningChargePage() {
   const calculateLoad = (chantier: any, weekNum: number) => {
     const { start: weekStart, end: weekEnd } = getWeekDates(weekNum, year);
     
-    // Sécurité si dates manquantes
     if (!chantier.date_debut || !chantier.date_fin) return null;
 
     const chantierStart = new Date(chantier.date_debut);
     const chantierEnd = new Date(chantier.date_fin);
 
-    // Le chantier est-il actif cette semaine ?
     const isActive = chantierStart <= weekEnd && chantierEnd >= weekStart;
 
     if (!isActive) return null;
 
-    // --- LOGIQUE PONDÉRÉE (MODIFICATION ICI) ---
+    // --- LOGIQUE PONDÉRÉE ---
     let need = chantier.effectif_prevu || 0; 
 
-    // Si c'est un chantier potentiel, on applique le taux de réussite
     if (chantier.statut === 'potentiel' && chantier.taux_reussite) {
-        // Formule : Besoin * (Taux / 100)
-        // On arrondit à l'entier le plus proche (ex: 2.4 -> 2, 2.6 -> 3)
         need = Math.round(need * (chantier.taux_reussite / 100));
     }
 
-    // Calcul du Staffé Réel (depuis planning hebdo)
-    // On compte les affectations uniques pour ce chantier sur cette semaine
+    // Calcul du Staffé Réel
     const staffed = assignments.filter(a => {
         if (a.chantier_id !== chantier.id) return false;
         const assignStart = new Date(a.date_debut);
         const assignEnd = new Date(a.date_fin);
-        // Chevauchement de dates
         return assignStart <= weekEnd && assignEnd >= weekStart;
     }).length; 
 
@@ -105,29 +97,27 @@ export default function PlanningChargePage() {
     
     // Status couleur
     let statusClass = 'bg-gray-50 border-gray-100 text-gray-400';
-    let textInfo = ""; // Texte additionnel (ex: 50%)
+    let textInfo = ""; 
 
-    // Logique de couleur spécifique pour les Potentiels
     if (chantier.statut === 'potentiel') {
-        statusClass = 'bg-purple-50 border-purple-200 text-purple-700 dashed-border'; // Style spécial pour potentiel
+        statusClass = 'bg-purple-50 border-purple-200 text-purple-700 dashed-border'; 
         textInfo = `${chantier.taux_reussite || 0}%`;
     } else {
-        // Logique standard pour chantiers confirmés
         if (need > 0) {
-            if (staffed === 0) statusClass = 'bg-red-50 border-red-100 text-red-400'; 
+            if (staffed === 0) statusClass = 'bg-red-50 border-red-100 text-red-400 hover:bg-red-100'; 
             else if (missing > 0) {
-                 if (missing >= need * 0.5) statusClass = 'bg-red-100 border-red-200 text-red-700'; 
-                 else statusClass = 'bg-orange-100 border-orange-200 text-orange-700';
+                 if (missing >= need * 0.5) statusClass = 'bg-red-100 border-red-200 text-red-700 hover:bg-red-200'; 
+                 else statusClass = 'bg-orange-100 border-orange-200 text-orange-700 hover:bg-orange-200';
             }
-            else if (staffed > need) statusClass = 'bg-blue-100 border-blue-200 text-blue-700'; 
-            else statusClass = 'bg-emerald-100 border-emerald-200 text-emerald-700'; 
+            else if (staffed > need) statusClass = 'bg-blue-100 border-blue-200 text-blue-700 hover:bg-blue-200'; 
+            else statusClass = 'bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200'; 
         }
     }
 
     return { need, staffed, missing, statusClass, textInfo };
   };
 
-  // 4. CALCUL TOTAUX HEBDOMADAIRES (Ligne du bas)
+  // 4. CALCUL TOTAUX HEBDOMADAIRES
   const calculateWeeklyTotal = (weekNum: number) => {
     let totalNeed = 0;
     let totalStaffed = 0;
@@ -143,10 +133,23 @@ export default function PlanningChargePage() {
     return { totalNeed, totalStaffed, gap: totalNeed - totalStaffed };
   };
 
+  // --- REGROUPEMENT DES CHANTIERS ---
+  const groupedChantiers = {
+      en_cours: chantiers.filter(c => c.statut === 'en_cours'),
+      planifie: chantiers.filter(c => c.statut === 'planifie'),
+      potentiel: chantiers.filter(c => c.statut === 'potentiel')
+  };
+
+  // --- HANDLER INTERACTION ---
+  const handleCellClick = (chantier: any, week: number) => {
+      // ICI : Ouvrir modale ou rediriger vers le planning hebdo de cette semaine
+      alert(`Gérer équipe pour ${chantier.nom} - Semaine ${week}`);
+  };
+
   return (
-    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] flex flex-col text-gray-800 ml-0 md:ml-0 transition-all">
+    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] flex flex-col text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:m-0 print:p-0">
       
-      {/* --- HEADER FIXE --- */}
+      {/* --- HEADER FIXE (Masqué à l'impression) --- */}
       <div className="bg-white border-b border-gray-200 p-4 md:p-6 sticky top-0 z-40 shadow-sm print:hidden">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
@@ -182,21 +185,21 @@ export default function PlanningChargePage() {
       </div>
 
       {/* --- TABLEAU DE CHARGE --- */}
-      <div className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col">
+      <div className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col print:p-0 print:overflow-visible">
         
         {loading ? (
             <div className="flex-1 flex items-center justify-center font-bold text-gray-400 animate-pulse">
                 Synchronisation des données chantiers...
             </div>
         ) : (
-            <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative">
+            <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative print:border-none print:shadow-none">
                 
                 {/* Scroll Container */}
-                <div className="overflow-auto flex-1 custom-scrollbar">
+                <div className="overflow-auto flex-1 custom-scrollbar print:overflow-visible">
                     <table className="w-full border-collapse">
                         
                         {/* EN-TÊTE SEMAINES (Sticky Top) */}
-                        <thead className="sticky top-0 z-30 bg-white shadow-sm">
+                        <thead className="sticky top-0 z-30 bg-white shadow-sm print:static">
                             <tr>
                                 <th className="p-4 w-[300px] min-w-[300px] sticky left-0 bg-white z-40 text-left border-r border-gray-200 border-b">
                                     <div className="font-black text-xs text-gray-400 uppercase">Chantiers Actifs</div>
@@ -205,75 +208,62 @@ export default function PlanningChargePage() {
                                     const { start } = getWeekDates(w, year);
                                     const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
                                     return (
-                                        <th key={w} className={`p-2 min-w-[100px] text-center border-r border-b border-gray-100 ${isCurrentWeek ? 'bg-blue-50/50' : ''}`}>
+                                        <th key={w} className={`p-2 min-w-[60px] text-center border-r border-b border-gray-100 ${isCurrentWeek ? 'bg-blue-50/50' : ''}`}>
                                             <div className="text-[10px] font-black text-gray-400 uppercase">S{w}</div>
-                                            <div className="text-[9px] font-bold text-gray-300">{start.getDate()}/{start.getMonth()+1}</div>
+                                            <div className="text-[8px] font-bold text-gray-300">{start.getDate()}/{start.getMonth()+1}</div>
                                         </th>
                                     );
                                 })}
                             </tr>
                         </thead>
 
-                        {/* CORPS DU TABLEAU */}
+                        {/* CORPS DU TABLEAU (Groupé) */}
                         <tbody>
-                            {chantiers.map(chantier => (
-                                <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
-                                    {/* NOM CHANTIER (Sticky Left) */}
-                                    <td className="p-4 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
-                                        <div className="flex flex-col">
-                                            <span className="font-black text-sm text-gray-800 uppercase truncate max-w-[250px]">{chantier.nom}</span>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${chantier.statut === 'potentiel' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
-                                                    {chantier.statut === 'potentiel' ? 'Offre' : (chantier.type || 'Indus.')}
-                                                </span>
-                                                {chantier.effectif_prevu && <span className="text-[9px] text-gray-400 font-bold flex items-center gap-1"><Users size={10}/> {chantier.effectif_prevu} pers.</span>}
-                                            </div>
-                                        </div>
-                                    </td>
+                            {/* GROUPE EN COURS */}
+                            {groupedChantiers.en_cours.length > 0 && (
+                                <>
+                                    <tr className="bg-blue-50/50 sticky left-0 z-10">
+                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-blue-600 tracking-widest border-b border-blue-100 pl-4">
+                                            En Cours ({groupedChantiers.en_cours.length})
+                                        </td>
+                                    </tr>
+                                    {groupedChantiers.en_cours.map(chantier => (
+                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
+                                    ))}
+                                </>
+                            )}
 
-                                    {/* CELLULES SEMAINES */}
-                                    {weeks.map(w => {
-                                        const data = calculateLoad(chantier, w);
-                                        const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
+                            {/* GROUPE PLANIFIÉ */}
+                            {groupedChantiers.planifie.length > 0 && (
+                                <>
+                                    <tr className="bg-emerald-50/50 sticky left-0 z-10">
+                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-emerald-600 tracking-widest border-b border-emerald-100 pl-4 mt-4">
+                                            Planifiés ({groupedChantiers.planifie.length})
+                                        </td>
+                                    </tr>
+                                    {groupedChantiers.planifie.map(chantier => (
+                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
+                                    ))}
+                                </>
+                            )}
 
-                                        return (
-                                            <td key={w} className={`p-1 border-r border-gray-100 h-16 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`}>
-                                                {data ? (
-                                                    <div className={`w-full h-full rounded-lg border ${data.statusClass} p-1 flex flex-col justify-center items-center cursor-pointer hover:scale-105 transition-transform group/cell`}>
-                                                        {/* STAFFING / BESOIN */}
-                                                        <div className="text-xs font-black flex items-center gap-1">
-                                                            {data.staffed} <span className="text-[8px] opacity-60">/ {data.need}</span>
-                                                        </div>
-                                                        
-                                                        {/* INFO SUPP (Taux réussite ou Renfort) */}
-                                                        {data.textInfo ? (
-                                                            <div className="mt-1 text-[8px] font-bold opacity-80">{data.textInfo}</div>
-                                                        ) : data.missing > 0 && (
-                                                            <div className="mt-1 bg-white/80 px-1.5 rounded text-[9px] font-black text-red-600 shadow-sm whitespace-nowrap">
-                                                                +{data.missing}
-                                                            </div>
-                                                        )}
-
-                                                        {/* Tooltip */}
-                                                        <div className="absolute bottom-full mb-2 bg-black text-white text-[10px] p-2 rounded shadow-xl hidden group-hover/cell:block z-50 whitespace-nowrap">
-                                                            <p className="font-bold uppercase mb-1">Semaine {w}</p>
-                                                            <p>Besoin : {data.need}</p>
-                                                            {chantier.statut === 'potentiel' && <p className="text-purple-300 italic">Pondéré à {chantier.taux_reussite}%</p>}
-                                                            <p>Staffé : {data.staffed}</p>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="w-full h-full"></div>
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-                                </tr>
-                            ))}
+                            {/* GROUPE POTENTIEL */}
+                            {groupedChantiers.potentiel.length > 0 && (
+                                <>
+                                    <tr className="bg-purple-50/50 sticky left-0 z-10">
+                                        <td colSpan={53} className="p-2 font-black text-xs uppercase text-purple-600 tracking-widest border-b border-purple-100 pl-4 mt-4">
+                                            Opportunités ({groupedChantiers.potentiel.length})
+                                        </td>
+                                    </tr>
+                                    {groupedChantiers.potentiel.map(chantier => (
+                                        <RowChantier key={chantier.id} chantier={chantier} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />
+                                    ))}
+                                </>
+                            )}
                         </tbody>
 
                         {/* PIED DE PAGE : TOTAL CHARGE (Sticky Bottom) */}
-                        <tfoot className="sticky bottom-0 z-30 bg-gray-800 text-white shadow-lg border-t border-gray-900">
+                        <tfoot className="sticky bottom-0 z-30 bg-gray-800 text-white shadow-lg border-t border-gray-900 print:hidden">
                             <tr>
                                 <td className="p-4 sticky left-0 bg-gray-800 z-40 border-r border-gray-700">
                                     <div className="flex items-center gap-2">
@@ -287,27 +277,22 @@ export default function PlanningChargePage() {
                                 {weeks.map(w => {
                                     const total = calculateWeeklyTotal(w);
                                     const hasActivity = total.totalNeed > 0;
-                                    
-                                    // Couleur barre de charge
                                     let barColor = 'bg-emerald-500';
-                                    if (total.gap > 0) barColor = 'bg-orange-500'; // Manque global
-                                    if (total.gap > 5) barColor = 'bg-red-500'; // Manque critique
+                                    if (total.gap > 0) barColor = 'bg-orange-500'; 
+                                    if (total.gap > 5) barColor = 'bg-red-500'; 
 
                                     return (
-                                        <td key={w} className="p-2 border-r border-gray-700 text-center relative group/foot">
+                                        <td key={w} className="p-2 border-r border-gray-700 text-center relative group/foot h-20 align-bottom">
                                             {hasActivity && (
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <span className="text-[9px] font-bold text-gray-300">{total.totalStaffed}/{total.totalNeed}</span>
-                                                    {/* Jauge de charge */}
-                                                    <div className="w-full h-1.5 bg-gray-600 rounded-full overflow-hidden">
+                                                <div className="flex flex-col items-center gap-1 h-full justify-end w-full">
+                                                    <span className="text-[8px] font-bold text-gray-300 mb-1">{total.totalStaffed}/{total.totalNeed}</span>
+                                                    {/* GRAPHIQUE BARRES */}
+                                                    <div className="w-4 bg-gray-700 rounded-t-sm relative h-full max-h-[40px] flex items-end">
                                                         <div 
-                                                            className={`h-full ${barColor}`} 
-                                                            style={{ width: `${Math.min(100, (total.totalStaffed / total.totalNeed) * 100)}%` }} 
+                                                            className={`w-full rounded-t-sm transition-all duration-500 ${barColor}`} 
+                                                            style={{ height: `${Math.min(100, (total.totalStaffed / total.totalNeed) * 100)}%` }} 
                                                         />
                                                     </div>
-                                                    {total.gap > 0 && (
-                                                        <span className="text-[8px] font-black text-orange-400">-{total.gap}</span>
-                                                    )}
                                                 </div>
                                             )}
                                         </td>
@@ -320,6 +305,73 @@ export default function PlanningChargePage() {
             </div>
         )}
       </div>
+
+      {/* --- STYLE PRINT --- */}
+      <style jsx global>{`
+        @media print {
+          @page { size: landscape; margin: 5mm; }
+          body { background: white; }
+          .print\\:hidden { display: none !important; }
+          .print\\:p-0 { padding: 0 !important; }
+          .print\\:overflow-visible { overflow: visible !important; }
+          .print\\:border-none { border: none !important; }
+          .print\\:shadow-none { box-shadow: none !important; }
+          /* Forcer l'impression des fonds de couleur */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
     </div>
   );
 }
+
+// --- SOUS-COMPOSANT LIGNE (Pour éviter répétition) ---
+const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any) => (
+    <tr className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
+        {/* NOM CHANTIER (Sticky Left) */}
+        <td className="p-3 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
+            <div className="flex flex-col">
+                <span className="font-black text-xs text-gray-800 uppercase truncate max-w-[200px]">{chantier.nom}</span>
+                <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${chantier.statut === 'potentiel' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
+                        {chantier.statut === 'potentiel' ? 'Offre' : (chantier.type || 'Indus.')}
+                    </span>
+                    {chantier.effectif_prevu && <span className="text-[8px] text-gray-400 font-bold flex items-center gap-1"><Users size={8}/> {chantier.effectif_prevu}</span>}
+                </div>
+            </div>
+        </td>
+
+        {/* CELLULES */}
+        {weeks.map((w: number) => {
+            const data = calculateLoad(chantier, w);
+            const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
+
+            return (
+                <td key={w} className={`p-0.5 border-r border-gray-100 h-14 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`} onClick={() => data && onCellClick(chantier, w)}>
+                    {data ? (
+                        <div className={`w-full h-full rounded border ${data.statusClass} p-0.5 flex flex-col justify-center items-center cursor-pointer hover:brightness-95 transition-all relative group/cell`}>
+                            <div className="text-[10px] font-black flex items-center gap-0.5">
+                                {data.staffed} <span className="text-[7px] opacity-60">/{data.need}</span>
+                            </div>
+                            
+                            {data.textInfo ? (
+                                <div className="mt-0.5 text-[7px] font-bold opacity-80">{data.textInfo}</div>
+                            ) : data.missing > 0 && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full text-[6px] text-white flex items-center justify-center font-bold shadow-sm">!</div>
+                            )}
+
+                            {/* Tooltip */}
+                            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black/90 text-white text-[9px] p-2 rounded shadow-xl hidden group-hover/cell:block z-50 whitespace-nowrap pointer-events-none">
+                                <p className="font-bold uppercase mb-1">Semaine {w}</p>
+                                <p>Besoin : {data.need}</p>
+                                <p>Staffé : {data.staffed}</p>
+                                {data.missing > 0 && <p className="text-red-300 font-bold">Manque : {data.missing}</p>}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="w-full h-full group-hover:bg-gray-100/50 transition-colors"></div> // Case vide mais réactive au survol ligne
+                    )}
+                </td>
+            );
+        })}
+    </tr>
+);
