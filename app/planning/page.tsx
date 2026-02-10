@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, Check, 
-  Send, FileCheck, X, User, Users, Loader2
+  Send, FileCheck, X, User, Users, Loader2, 
+  Clock, AlertTriangle, Eraser, CalendarDays, Save
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -21,7 +22,7 @@ export default function PlanningPage() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Initialisation au Lundi de la semaine courante
+  // Initialisation au Lundi
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
     const day = d.getDay();
@@ -29,172 +30,229 @@ export default function PlanningPage() {
     return new Date(d.setDate(diff));
   });
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // État de la sélection
-  const [selection, setSelection] = useState<{chantierId: string | null, date: string, type: string} | null>(null);
-  const [selectedEmploye, setSelectedEmploye] = useState("");
+  // MODES
+  const [modePointage, setModePointage] = useState(false); // Bascule entre Planning et Pointage
 
-  // 1. Chargement des données
+  // ÉTATS UI
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selection, setSelection] = useState<{chantierId: string | null, date: string, type: string} | null>(null);
+  const [selectedEmployes, setSelectedEmployes] = useState<string[]>([]); // Multi-select
+  const [dateRange, setDateRange] = useState({ start: '', end: '' }); // Plage de dates
+
+  // --- 1. CHARGEMENT DONNÉES ---
   const fetchData = async () => {
     setLoading(true);
     
-    // CORRECTION ICI : On cible 'employes' au lieu de 'users' pour correspondre à la Foreign Key
-    // Si votre table s'appelle 'users', changez 'employes' par 'users' ici, mais vérifiez vos clés étrangères dans Supabase.
-    const { data: emp, error: errEmp } = await supabase.from('employes').select('*').order('nom');
-    
-    if (errEmp) {
-        // Fallback si la table s'appelle 'users'
-        console.warn("Table employes introuvable, tentative sur users...");
-        const { data: users } = await supabase.from('users').select('*').order('nom');
-        if (users) setEmployes(users);
-    } else {
-        setEmployes(emp || []);
-    }
+    // Employés
+    const { data: emp } = await supabase.from('employes').select('*').order('nom');
+    if (emp) setEmployes(emp);
 
-    const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').in('statut', ['en_cours', 'planifie']).order('nom');
+    // Chantiers (Actifs)
+    const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').neq('statut', 'termine').order('nom');
+    if (chan) setChantiers(chan);
     
-    // CORRECTION JOIN : On essaie de joindre 'employes', sinon on fera attention aux données
+    // Planning (Sur une plage large pour éviter les rechargements constants)
+    // On pourrait optimiser en filtrant par date, mais pour l'instant on charge tout pour la synchro
     const { data: plan } = await supabase
         .from('planning')
         .select(`
             *,
-            employes (nom, prenom, role),
+            employes (id, nom, prenom, role),
             chantiers (nom)
         `);
     
-    // Normalisation des données pour l'affichage (gestion du cas où la relation s'appelle users ou employes)
+    // Normalisation
     const formattedPlan = plan?.map(p => ({
         ...p,
-        users: p.employes || p.users // On stocke les infos employé sous 'users' pour l'affichage générique
+        users: p.employes // Alias pour compatibilité
     })) || [];
 
-    setChantiers(chan || []);
     setAssignments(formattedPlan);
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, [currentDate]);
 
-  // 2. Actions sur les ODM
-  const handleActionODM = async (id: string, field: string, value: boolean) => {
-    await supabase.from('planning').update({ [field]: value }).eq('id', id);
-    fetchData();
-  };
-
-  // 3. Suppression
-  const deleteAssignment = async (id: string) => {
-    if(confirm("Retirer ce collaborateur du planning ?")) {
-      await supabase.from('planning').delete().eq('id', id);
-      fetchData();
-    }
-  };
-
-  // 4. Modal Open
-  const openAssignmentModal = (chantierId: string | null, date: Date, typeContext: string = 'chantier') => {
-    const dateStr = toLocalISOString(date);
-    const initialType = typeContext === 'hors_chantier' ? 'conge' : 'chantier';
-    
-    setSelection({ chantierId, date: dateStr, type: initialType });
-    setSelectedEmploye(""); 
-    setIsModalOpen(true);
-  };
-
-  // 5. Sauvegarde
-  const saveAssignment = async () => {
-    if (!selection || !selectedEmploye) return;
-    
-    const finalType = selection.chantierId ? 'chantier' : selection.type;
-
-    const insertData = {
-      employe_id: selectedEmploye,
-      chantier_id: selection.chantierId, // Null si hors chantier
-      date_debut: selection.date,
-      date_fin: selection.date,
-      type: finalType,
-      odm_envoye: false,
-      odm_signe: false
-    };
-    
-    // Check doublon basic
-    const exists = assignments.find(a => 
-        a.employe_id === selectedEmploye && 
-        a.date_debut === selection.date
-    );
-
-    if (exists) {
-        alert("Cet employé est déjà planifié ce jour-là.");
-        return;
-    }
-
-    const { error } = await supabase.from('planning').insert([insertData]);
-
-    if (error) {
-        alert("Erreur base de données : " + error.message);
-    } else {
-        setIsModalOpen(false);
-        fetchData();
-    }
-  };
-
-  // Imprimer
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // 6. Calcul des jours
-  const weekDays = Array.from({ length: 5 }, (_, i) => {
+  // --- 2. CALCULS DE TEMPS (SÉMAINE) ---
+  const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => {
     const start = new Date(currentDate);
     const day = start.getDay();
     const diff = start.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(start.setDate(diff));
     monday.setDate(monday.getDate() + i);
     return monday;
-  });
+  }), [currentDate]);
 
+  // Calcul des heures par personne sur la semaine
+  const weeklyHours = useMemo(() => {
+      const stats: any = {};
+      assignments.forEach(a => {
+          if (!a.employe_id || !a.heures) return;
+          // Vérifier si l'assignation est dans la semaine affichée
+          const aDate = new Date(a.date_debut);
+          if (aDate >= weekDays[0] && aDate <= weekDays[4]) {
+              stats[a.employe_id] = (stats[a.employe_id] || 0) + (a.heures || 0);
+          }
+      });
+      return stats;
+  }, [assignments, weekDays]);
+
+  // --- 3. ACTIONS ---
+
+  // Suppression
+  const deleteAssignment = async (id: string) => {
+    if(confirm("Retirer ce collaborateur ?")) {
+      await supabase.from('planning').delete().eq('id', id);
+      fetchData(); // Rafraîchir pour synchro immédiate
+    }
+  };
+
+  // Reset Semaine
+  const resetWeek = async () => {
+      if(!confirm("⚠️ ATTENTION : Cela va effacer TOUTES les affectations de cette semaine. Continuer ?")) return;
+      
+      const startStr = toLocalISOString(weekDays[0]);
+      const endStr = toLocalISOString(weekDays[4]);
+
+      // Suppression par plage de date
+      const { error } = await supabase.from('planning')
+          .delete()
+          .gte('date_debut', startStr)
+          .lte('date_debut', endStr);
+
+      if (error) alert("Erreur reset: " + error.message);
+      else fetchData();
+  };
+
+  // Ouverture Modale (Ajout)
+  const openAssignmentModal = (chantierId: string | null, date: Date, typeContext: string = 'chantier') => {
+    const dateStr = toLocalISOString(date);
+    const initialType = typeContext === 'hors_chantier' ? 'conge' : 'chantier';
+    
+    setSelection({ chantierId, date: dateStr, type: initialType });
+    setDateRange({ start: dateStr, end: dateStr }); // Par défaut, 1 jour
+    setSelectedEmployes([]); // Reset sélection
+    setIsModalOpen(true);
+  };
+
+  // Sauvegarde (Multi + Plage Dates)
+  const saveAssignment = async () => {
+    if (!selection || selectedEmployes.length === 0) return;
+    
+    const finalType = selection.chantierId ? 'chantier' : selection.type;
+    const newAssignments: any[] = [];
+
+    // Boucle sur les jours (Plage de dates)
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
+    
+    // Sécurité boucle infinie
+    if (end < start) { alert("La date de fin doit être après la date de début."); return; }
+    
+    // Pour chaque jour de la plage
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        // Ignorer samedi/dimanche si voulu (ici on inclut tout, à affiner si besoin)
+        const currentIso = toLocalISOString(d);
+
+        // Pour chaque employé sélectionné
+        selectedEmployes.forEach(empId => {
+            // Vérifier doublon (Optionnel: ici on autorise doublon chantier si besoin de pointer matin/aprem, sinon bloquer)
+            const exists = assignments.find(a => 
+                a.employe_id === empId && 
+                a.date_debut === currentIso && 
+                a.chantier_id === selection.chantierId
+            );
+
+            if (!exists) {
+                newAssignments.push({
+                    employe_id: empId,
+                    chantier_id: selection.chantierId,
+                    date_debut: currentIso,
+                    date_fin: currentIso, // Planning hebdo = granularité jour
+                    type: finalType,
+                    odm_envoye: false,
+                    heures: 0 // Par défaut
+                });
+            }
+        });
+    }
+
+    if (newAssignments.length > 0) {
+        const { error } = await supabase.from('planning').insert(newAssignments);
+        if (error) alert("Erreur insertion: " + error.message);
+        else {
+            setIsModalOpen(false);
+            fetchData();
+        }
+    } else {
+        setIsModalOpen(false);
+    }
+  };
+
+  // Mise à jour des heures (Mode Pointage)
+  const updateHours = async (id: string, hours: number) => {
+      // Optimistic UI update
+      const newAssignments = assignments.map(a => a.id === id ? { ...a, heures: hours } : a);
+      setAssignments(newAssignments);
+
+      // Debounce ou save direct (ici direct pour simplicité)
+      await supabase.from('planning').update({ heures: hours }).eq('id', id);
+  };
+
+  // --- RENDER ---
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00b894]" size={40} /></div>;
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800">
+    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0">
       
-      {/* HEADER */}
+      {/* HEADER (Masqué print) */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4 print:hidden">
         <div>
-          <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Planning <span className="text-[#00b894]">Chantiers</span></h1>
-          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Vue Équipes & Affectations</p>
+          <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">
+              {modePointage ? <span className="text-orange-500">Pointage Heures</span> : <span>Planning <span className="text-[#00b894]">Chantiers</span></span>}
+          </h1>
+          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">
+              {modePointage ? "Saisie des temps réalisés" : "Vue Équipes & Affectations"}
+          </p>
         </div>
         
-        <div className="flex gap-3">
-            <button onClick={handlePrint} className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 flex items-center gap-2 shadow-sm">
-                <Printer size={16} /> Imprimer
+        <div className="flex flex-wrap gap-3 items-center">
+            
+            {/* BOUTON POINTAGE / PLANNING */}
+            <button 
+                onClick={() => setModePointage(!modePointage)} 
+                className={`px-4 py-2 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-sm transition-all ${modePointage ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            >
+                {modePointage ? <Check size={16}/> : <Clock size={16}/>}
+                {modePointage ? 'Terminer Pointage' : 'Saisir Heures'}
             </button>
 
-            <div className="flex items-center bg-white rounded-xl p-1 shadow-sm border border-gray-200">
-                <button 
-                    onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} 
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
-                >
-                    <ChevronLeft size={20}/>
+            {/* BOUTON RESET */}
+            {!modePointage && (
+                <button onClick={resetWeek} className="bg-red-50 text-red-500 border border-red-100 px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-red-100 flex items-center gap-2">
+                    <Eraser size={16} /> Reset Semaine
                 </button>
+            )}
+
+            <button onClick={() => window.print()} className="bg-[#2d3436] text-white px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-black flex items-center gap-2 shadow-lg">
+                <Printer size={16} />
+            </button>
+
+            {/* NAV SEMAINE */}
+            <div className="flex items-center bg-white rounded-xl p-1 shadow-sm border border-gray-200">
+                <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><ChevronLeft size={20}/></button>
                 <div className="px-4 text-center min-w-[140px]">
                     <span className="block text-[10px] font-black uppercase text-gray-400">Semaine du</span>
-                    <span className="block text-sm font-black text-gray-800">
-                        {weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                    </span>
+                    <span className="block text-sm font-black text-gray-800">{weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</span>
                 </div>
-                <button 
-                    onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} 
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
-                >
-                    <ChevronRight size={20}/>
-                </button>
+                <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><ChevronRight size={20}/></button>
             </div>
         </div>
       </div>
 
       {/* HEADER IMPRESSION */}
       <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
-          <h1 className="text-2xl font-black uppercase">Planning Hebdomadaire</h1>
+          <h1 className="text-2xl font-black uppercase">Relevé d'Heures / Planning</h1>
           <p className="text-sm">Semaine du {weekDays[0].toLocaleDateString('fr-FR')}</p>
       </div>
 
@@ -207,13 +265,9 @@ export default function PlanningPage() {
                 Chantiers / Projets
               </th>
               {weekDays.map((day, i) => (
-                <th key={i} className="p-3 border-l border-gray-200 text-center min-w-[160px] print:border-gray-400">
-                  <p className="text-[10px] uppercase font-black text-gray-500 mb-1">
-                    {day.toLocaleDateString('fr-FR', { weekday: 'long' })}
-                  </p>
-                  <span className="inline-block px-2 py-0.5 rounded text-sm font-black text-gray-800 bg-white border border-gray-200 print:border-black">
-                    {day.getDate()}
-                  </span>
+                <th key={i} className="p-3 border-l border-gray-200 text-center min-w-[140px] print:border-gray-400">
+                  <p className="text-[10px] uppercase font-black text-gray-500 mb-1">{day.toLocaleDateString('fr-FR', { weekday: 'long' })}</p>
+                  <span className="inline-block px-2 py-0.5 rounded text-sm font-black text-gray-800 bg-white border border-gray-200 print:border-black">{day.getDate()}</span>
                 </th>
               ))}
             </tr>
@@ -222,12 +276,9 @@ export default function PlanningPage() {
             {/* LIGNES CHANTIERS */}
             {chantiers.map((chantier) => (
               <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
-                {/* COLONNE NOM CHANTIER */}
                 <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:border-gray-400">
                   <div className="flex items-start gap-3">
-                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:text-black print:border print:border-black print:bg-white">
-                          <HardHat size={18} />
-                      </div>
+                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:text-black print:border print:border-black print:bg-white"><HardHat size={18} /></div>
                       <div>
                           <p className="font-black text-gray-800 text-sm uppercase leading-tight">{chantier.nom}</p>
                           <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate">{chantier.adresse || 'Localisation non définie'}</p>
@@ -235,52 +286,62 @@ export default function PlanningPage() {
                   </div>
                 </td>
                 
-                {/* CELLULES JOURS */}
                 {weekDays.map((day, i) => {
                   const dateStr = toLocalISOString(day);
                   const dailyMissions = assignments.filter(a => a.chantier_id === chantier.id && a.date_debut === dateStr);
                   
                   return (
-                    <td key={i} className="p-2 border-l border-gray-100 align-top h-32 relative print:border-gray-400 print:h-auto">
+                    <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border-gray-400 print:h-auto">
                       <div className="flex flex-col gap-1.5 h-full">
-                          
-                          {/* Liste des employés affectés */}
                           {dailyMissions.map((mission) => (
-                              <div key={mission.id} className="bg-[#0984e3] text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black">
-                                  <div className="flex items-center gap-2">
-                                      <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold print:bg-black/10">
-                                          {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
+                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'}`}>
+                                  <div className="flex items-center gap-2 w-full">
+                                      {!modePointage && (
+                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold print:bg-black/10 shrink-0">
+                                              {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
+                                          </div>
+                                      )}
+                                      <div className="flex-1 min-w-0">
+                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white print:text-black'}`}>
+                                              {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
+                                          </span>
+                                          
+                                          {/* MODE POINTAGE : INPUT HEURES */}
+                                          {modePointage && (
+                                              <div className="flex items-center gap-1 mt-1">
+                                                  <input 
+                                                      type="number" 
+                                                      min="0" max="24"
+                                                      className="w-12 p-1 text-xs font-bold border border-orange-200 rounded bg-white text-center outline-none focus:border-orange-500"
+                                                      value={mission.heures || 0}
+                                                      onChange={(e) => updateHours(mission.id, parseFloat(e.target.value))}
+                                                  />
+                                                  <span className="text-[9px] text-gray-400">h</span>
+                                              </div>
+                                          )}
                                       </div>
-                                      <span className="text-[10px] font-bold uppercase truncate max-w-[80px]">
-                                          {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
-                                      </span>
                                   </div>
 
-                                  {/* Actions Rapides (Hover) */}
-                                  <div className="hidden group-hover/card:flex gap-1 print:hidden">
-                                      <button 
-                                        onClick={(e) => {e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye)}}
-                                        className={`p-1 rounded ${mission.odm_envoye ? 'bg-green-400' : 'bg-white/20 hover:bg-white/40'}`}
-                                        title="ODM Envoyé"
-                                      >
-                                          <Send size={10} />
-                                      </button>
-                                      <button 
-                                        onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}}
-                                        className="p-1 rounded bg-red-500/80 hover:bg-red-500"
-                                      >
-                                          <Trash2 size={10} />
-                                      </button>
-                                  </div>
+                                  {/* Actions Rapides (Suppression) - Masqué en mode Pointage pour éviter fausse manip */}
+                                  {!modePointage && (
+                                      <div className="hidden group-hover/card:flex gap-1 print:hidden">
+                                          <button onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}} className="p-1 rounded bg-red-500/80 hover:bg-red-500 text-white">
+                                              <Trash2 size={10} />
+                                          </button>
+                                      </div>
+                                  )}
                               </div>
                           ))}
 
-                          <button 
-                            onClick={() => openAssignmentModal(chantier.id, day, 'chantier')}
-                            className="mt-auto w-full py-1.5 border-2 border-dashed border-gray-200 rounded-lg text-gray-300 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center print:hidden"
-                          >
-                              <Plus size={14} />
-                          </button>
+                          {/* Bouton Ajouter (Masqué en mode Pointage) */}
+                          {!modePointage && (
+                              <button 
+                                onClick={() => openAssignmentModal(chantier.id, day, 'chantier')}
+                                className="mt-auto w-full py-1.5 border-2 border-dashed border-gray-200 rounded-lg text-gray-300 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center print:hidden"
+                              >
+                                  <Plus size={14} />
+                              </button>
+                          )}
                       </div>
                     </td>
                   );
@@ -292,9 +353,7 @@ export default function PlanningPage() {
             <tr className="bg-gray-50 border-t-4 border-white print:border-gray-400">
                 <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:bg-white print:border-r">
                     <div className="flex items-center gap-3">
-                        <div className="bg-gray-400 p-2 rounded-lg text-white print:text-black print:border print:border-black print:bg-white">
-                            <Activity size={18} />
-                        </div>
+                        <div className="bg-gray-400 p-2 rounded-lg text-white print:text-black print:border print:border-black print:bg-white"><Activity size={18} /></div>
                         <div>
                             <p className="font-black text-gray-600 text-xs uppercase leading-tight">Hors Chantier</p>
                             <p className="text-[9px] text-gray-400 uppercase mt-0.5">Absences / Formations</p>
@@ -304,7 +363,6 @@ export default function PlanningPage() {
                 {weekDays.map((day, i) => {
                     const dateStr = toLocalISOString(day);
                     const dailyOffs = assignments.filter(a => !a.chantier_id && a.date_debut === dateStr);
-
                     return (
                         <td key={i} className="p-2 border-l border-gray-200 align-top h-24 print:border-gray-400">
                             <div className="flex flex-col gap-1.5">
@@ -312,31 +370,15 @@ export default function PlanningPage() {
                                     let color = "bg-gray-400";
                                     if(mission.type === 'conge') color = "bg-[#e17055]";
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
-                                    if(mission.type === 'formation') color = "bg-[#6c5ce7]";
-
                                     return (
                                         <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-black print:text-black`}>
-                                            <span className="text-[10px] font-bold uppercase truncate">
-                                                {mission.users?.nom || 'Inconnu'}
-                                            </span>
-                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-gray-300">
-                                                {mission.type}
-                                            </span>
-                                            <button 
-                                                onClick={() => deleteAssignment(mission.id)}
-                                                className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"
-                                            >
-                                                <X size={12} />
-                                            </button>
+                                            <span className="text-[10px] font-bold uppercase truncate">{mission.users?.nom || 'Inconnu'}</span>
+                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-gray-300">{mission.type}</span>
+                                            {!modePointage && <button onClick={() => deleteAssignment(mission.id)} className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"><X size={12} /></button>}
                                         </div>
                                     )
                                 })}
-                                <button 
-                                    onClick={() => openAssignmentModal(null, day, 'hors_chantier')}
-                                    className="mt-2 w-full flex items-center justify-center text-gray-300 hover:text-gray-500 py-1 print:hidden"
-                                >
-                                    <Plus size={12} />
-                                </button>
+                                {!modePointage && <button onClick={() => openAssignmentModal(null, day, 'hors_chantier')} className="mt-2 w-full flex items-center justify-center text-gray-300 hover:text-gray-500 py-1 print:hidden"><Plus size={12} /></button>}
                             </div>
                         </td>
                     )
@@ -346,55 +388,78 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION */}
+      {/* MODAL D'AFFECTATION (ENRICHIE) */}
       {isModalOpen && selection && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
-          <div className="bg-white rounded-[30px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden animate-in fade-in">
+          <div className="bg-white rounded-[30px] p-6 w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             
             <div className="flex justify-between items-center mb-6">
               <div>
-                  <h2 className="text-xl font-black uppercase text-[#2d3436]">Affecter une ressource</h2>
+                  <h2 className="text-xl font-black uppercase text-[#2d3436]">Affecter Ressources</h2>
                   <p className="text-xs text-gray-400 font-bold">
-                      {selection.chantierId ? 'Ajout sur chantier' : 'Déclarer une absence'} - {new Date(selection.date).toLocaleDateString()}
+                      {selection.chantierId ? 'Ajout sur chantier' : 'Déclarer absence'}
                   </p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
-                  <X size={20} />
-              </button>
+              <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"><X size={20} /></button>
             </div>
 
-            <div className="space-y-4">
-                {/* SELECTEUR EMPLOYÉ */}
-                <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Collaborateur</label>
-                    <div className="relative">
-                        <Users className="absolute left-3 top-3.5 text-gray-400" size={16} />
-                        <select 
-                            className="w-full pl-10 p-3 bg-gray-50 rounded-xl font-bold text-sm outline-none focus:border-[#00b894] border border-transparent cursor-pointer appearance-none" 
-                            value={selectedEmploye} 
-                            onChange={(e) => setSelectedEmploye(e.target.value)}
-                        >
-                            <option value="">-- Sélectionner --</option>
-                            {employes.map(e => <option key={e.id} value={e.id}>{e.nom} {e.prenom}</option>)}
-                        </select>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pr-2">
+                
+                {/* 1. PLAGE DE DATES */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block flex items-center gap-1"><CalendarDays size={10}/> Période d'affectation</label>
+                    <div className="flex items-center gap-2">
+                        <input type="date" className="flex-1 p-2 rounded-lg border text-sm font-bold" value={dateRange.start} onChange={(e) => setDateRange({...dateRange, start: e.target.value})} />
+                        <span className="text-gray-400">à</span>
+                        <input type="date" className="flex-1 p-2 rounded-lg border text-sm font-bold" value={dateRange.end} onChange={(e) => setDateRange({...dateRange, end: e.target.value})} />
                     </div>
                 </div>
 
-                {/* Si Hors Chantier, Type d'absence */}
+                {/* 2. SÉLECTION MULTIPLE EMPLOYÉS */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Sélectionner Collaborateurs ({selectedEmployes.length})</label>
+                    <div className="max-h-[200px] overflow-y-auto border border-gray-100 rounded-xl">
+                        {employes.map(e => {
+                            const isSelected = selectedEmployes.includes(e.id);
+                            // Calcul heures déjà planifiées (optionnel, pour info)
+                            const currentHours = weeklyHours[e.id] || 0;
+                            const isOverload = currentHours > 39;
+
+                            return (
+                                <div 
+                                    key={e.id} 
+                                    onClick={() => {
+                                        if(isSelected) setSelectedEmployes(prev => prev.filter(id => id !== e.id));
+                                        else setSelectedEmployes(prev => [...prev, e.id]);
+                                    }}
+                                    className={`flex items-center justify-between p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            {e.prenom.charAt(0)}{e.nom.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <p className={`font-bold text-sm ${isSelected ? 'text-blue-800' : 'text-gray-700'}`}>{e.nom} {e.prenom}</p>
+                                            <p className="text-[10px] text-gray-400 font-bold uppercase">{e.role}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {isOverload && <AlertTriangle size={14} className="text-orange-500" />}
+                                        {isSelected && <Check className="text-blue-500" size={16} />}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+
+                {/* 3. TYPE (Si hors chantier) */}
                 {!selection.chantierId && (
                     <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Type d'absence</label>
+                        <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Type d'absence</label>
                         <div className="grid grid-cols-3 gap-2">
                             {['conge', 'maladie', 'formation'].map(t => (
-                                <button 
-                                    key={t}
-                                    onClick={() => setSelection({ ...selection, type: t })}
-                                    className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-colors ${
-                                        selection.type === t 
-                                        ? 'border-black bg-black text-white' 
-                                        : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                    }`}
-                                >
+                                <button key={t} onClick={() => setSelection({ ...selection, type: t })} className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-colors ${selection.type === t ? 'border-black bg-black text-white' : 'border-transparent bg-gray-100 text-gray-500'}`}>
                                     {t}
                                 </button>
                             ))}
@@ -405,10 +470,10 @@ export default function PlanningPage() {
 
             <button 
                 onClick={saveAssignment} 
-                disabled={!selectedEmploye}
-                className="w-full mt-8 bg-[#00b894] hover:bg-[#00a383] text-white py-4 rounded-xl font-black uppercase text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={selectedEmployes.length === 0}
+                className="w-full mt-6 bg-[#00b894] hover:bg-[#00a383] text-white py-4 rounded-xl font-black uppercase text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-                Valider l'affectation
+                <Save size={18} /> Valider l'affectation
             </button>
           </div>
         </div>
