@@ -45,6 +45,7 @@ export default function PlanningChargePage() {
   const fetchData = async () => {
     setLoading(true);
     // Récupère chantiers actifs cette année
+    // On inclut aussi les potentiels pour la prévision
     const { data: chan } = await supabase
       .from('chantiers')
       .select('*')
@@ -68,6 +69,10 @@ export default function PlanningChargePage() {
   // 3. LOGIQUE DE CALCUL PAR CELLULE
   const calculateLoad = (chantier: any, weekNum: number) => {
     const { start: weekStart, end: weekEnd } = getWeekDates(weekNum, year);
+    
+    // Sécurité si dates manquantes
+    if (!chantier.date_debut || !chantier.date_fin) return null;
+
     const chantierStart = new Date(chantier.date_debut);
     const chantierEnd = new Date(chantier.date_fin);
 
@@ -76,8 +81,15 @@ export default function PlanningChargePage() {
 
     if (!isActive) return null;
 
-    // Besoin théorique (Par défaut 2 si pas défini en base)
-    const need = chantier.effectif_prevu || 2; 
+    // --- LOGIQUE PONDÉRÉE (MODIFICATION ICI) ---
+    let need = chantier.effectif_prevu || 0; 
+
+    // Si c'est un chantier potentiel, on applique le taux de réussite
+    if (chantier.statut === 'potentiel' && chantier.taux_reussite) {
+        // Formule : Besoin * (Taux / 100)
+        // On arrondit à l'entier le plus proche (ex: 2.4 -> 2, 2.6 -> 3)
+        need = Math.round(need * (chantier.taux_reussite / 100));
+    }
 
     // Calcul du Staffé Réel (depuis planning hebdo)
     // On compte les affectations uniques pour ce chantier sur cette semaine
@@ -87,17 +99,32 @@ export default function PlanningChargePage() {
         const assignEnd = new Date(a.date_fin);
         // Chevauchement de dates
         return assignStart <= weekEnd && assignEnd >= weekStart;
-    }).length; // Note: Pour être précis, on devrait dédoublonner les employee_id
+    }).length; 
 
     const missing = Math.max(0, need - staffed);
     
     // Status couleur
-    let status = 'bg-emerald-100 text-emerald-700 border-emerald-200'; // OK
-    if (missing > 0) status = 'bg-orange-100 text-orange-700 border-orange-200'; // Manque
-    if (missing > need * 0.5) status = 'bg-red-100 text-red-700 border-red-200'; // Critique (>50% manque)
-    if (staffed > need) status = 'bg-blue-100 text-blue-700 border-blue-200'; // Surcharge
+    let statusClass = 'bg-gray-50 border-gray-100 text-gray-400';
+    let textInfo = ""; // Texte additionnel (ex: 50%)
 
-    return { need, staffed, missing, status };
+    // Logique de couleur spécifique pour les Potentiels
+    if (chantier.statut === 'potentiel') {
+        statusClass = 'bg-purple-50 border-purple-200 text-purple-700 dashed-border'; // Style spécial pour potentiel
+        textInfo = `${chantier.taux_reussite || 0}%`;
+    } else {
+        // Logique standard pour chantiers confirmés
+        if (need > 0) {
+            if (staffed === 0) statusClass = 'bg-red-50 border-red-100 text-red-400'; 
+            else if (missing > 0) {
+                 if (missing >= need * 0.5) statusClass = 'bg-red-100 border-red-200 text-red-700'; 
+                 else statusClass = 'bg-orange-100 border-orange-200 text-orange-700';
+            }
+            else if (staffed > need) statusClass = 'bg-blue-100 border-blue-200 text-blue-700'; 
+            else statusClass = 'bg-emerald-100 border-emerald-200 text-emerald-700'; 
+        }
+    }
+
+    return { need, staffed, missing, statusClass, textInfo };
   };
 
   // 4. CALCUL TOTAUX HEBDOMADAIRES (Ligne du bas)
@@ -137,8 +164,8 @@ export default function PlanningChargePage() {
                 <div className="flex gap-4 text-[10px] font-bold uppercase">
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-100 border border-emerald-300 rounded"></div> Complet</div>
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div> Manque</div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-purple-50 border border-purple-300 rounded"></div> Potentiel</div>
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div> Critique</div>
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-100 border border-blue-300 rounded"></div> Surcharge</div>
                 </div>
                 
                 <div className="flex items-center bg-gray-100 rounded-xl p-1">
@@ -196,7 +223,9 @@ export default function PlanningChargePage() {
                                         <div className="flex flex-col">
                                             <span className="font-black text-sm text-gray-800 uppercase truncate max-w-[250px]">{chantier.nom}</span>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">{chantier.type || 'Indus.'}</span>
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${chantier.statut === 'potentiel' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                    {chantier.statut === 'potentiel' ? 'Offre' : (chantier.type || 'Indus.')}
+                                                </span>
                                                 {chantier.effectif_prevu && <span className="text-[9px] text-gray-400 font-bold flex items-center gap-1"><Users size={10}/> {chantier.effectif_prevu} pers.</span>}
                                             </div>
                                         </div>
@@ -210,27 +239,27 @@ export default function PlanningChargePage() {
                                         return (
                                             <td key={w} className={`p-1 border-r border-gray-100 h-16 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`}>
                                                 {data ? (
-                                                    <div className={`w-full h-full rounded-lg border ${data.status} p-1 flex flex-col justify-center items-center cursor-pointer hover:scale-105 transition-transform group/cell`}>
-                                                        {/* STAFFING INTERNE */}
+                                                    <div className={`w-full h-full rounded-lg border ${data.statusClass} p-1 flex flex-col justify-center items-center cursor-pointer hover:scale-105 transition-transform group/cell`}>
+                                                        {/* STAFFING / BESOIN */}
                                                         <div className="text-xs font-black flex items-center gap-1">
                                                             {data.staffed} <span className="text-[8px] opacity-60">/ {data.need}</span>
                                                         </div>
                                                         
-                                                        {/* MANQUE (RENFORT) */}
-                                                        {data.missing > 0 && (
+                                                        {/* INFO SUPP (Taux réussite ou Renfort) */}
+                                                        {data.textInfo ? (
+                                                            <div className="mt-1 text-[8px] font-bold opacity-80">{data.textInfo}</div>
+                                                        ) : data.missing > 0 && (
                                                             <div className="mt-1 bg-white/80 px-1.5 rounded text-[9px] font-black text-red-600 shadow-sm whitespace-nowrap">
-                                                                +{data.missing} Renfort
+                                                                +{data.missing}
                                                             </div>
                                                         )}
 
-                                                        {/* Tooltip au survol */}
+                                                        {/* Tooltip */}
                                                         <div className="absolute bottom-full mb-2 bg-black text-white text-[10px] p-2 rounded shadow-xl hidden group-hover/cell:block z-50 whitespace-nowrap">
                                                             <p className="font-bold uppercase mb-1">Semaine {w}</p>
                                                             <p>Besoin : {data.need}</p>
+                                                            {chantier.statut === 'potentiel' && <p className="text-purple-300 italic">Pondéré à {chantier.taux_reussite}%</p>}
                                                             <p>Staffé : {data.staffed}</p>
-                                                            <hr className="border-gray-600 my-1"/>
-                                                            <p className="text-orange-300">À prévoir : {data.missing}</p>
-                                                            <p className="text-[8px] mt-1 text-gray-400">Cliquez pour détails</p>
                                                         </div>
                                                     </div>
                                                 ) : (
