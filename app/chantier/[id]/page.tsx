@@ -58,8 +58,12 @@ export default function ChantierDetail() {
     if (c) {
         setChantier({
             ...c,
+            // Sécurisation : si null en base, on met '' pour l'input HTML
+            date_debut: c.date_debut || '',
+            date_fin: c.date_fin || '',
             effectif_prevu: c.effectif_prevu || 0,
             taux_reussite: c.taux_reussite || 100, // Chargement du taux
+            statut: c.statut || 'en_cours',
             risques: c.risques || [],
             epi: c.epi || [],
             mesures_acqpa: c.mesures_acqpa || {}
@@ -105,13 +109,17 @@ export default function ChantierDetail() {
 
   // --- SAUVEGARDE GLOBALE ---
   const handleSave = async () => {
+    // CORRECTION DATE : On transforme les chaînes vides en NULL pour PostgreSQL
+    const dateDebutSafe = chantier.date_debut === "" ? null : chantier.date_debut;
+    const dateFinSafe = chantier.date_fin === "" ? null : chantier.date_fin;
+
     const toSave = {
         nom: chantier.nom,
         client: chantier.client,
         adresse: chantier.adresse,
         responsable: chantier.responsable,
-        date_debut: chantier.date_debut,
-        date_fin: chantier.date_fin,
+        date_debut: dateDebutSafe, // Utilisation de la variable sécurisée
+        date_fin: dateFinSafe,     // Utilisation de la variable sécurisée
         type: chantier.type,
         statut: chantier.statut, // Sauvegarde du statut
         heures_budget: chantier.heures_budget,
@@ -123,8 +131,16 @@ export default function ChantierDetail() {
         mesures_acqpa: acqpaData 
     };
     
-    await supabase.from('chantiers').update(toSave).eq('id', id);
-    alert('✅ Chantier sauvegardé avec succès !');
+    const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
+    
+    if (error) {
+        console.error("Erreur sauvegarde:", error);
+        alert("Erreur lors de la sauvegarde : " + error.message);
+    } else {
+        alert('✅ Chantier sauvegardé avec succès !');
+        // On recharge les données pour être sûr d'avoir le format DB
+        fetchChantierData();
+    }
   };
 
   // --- GESTION TÂCHES (AJOUT / SUPPRESSION / MODIF + RECALCUL) ---
