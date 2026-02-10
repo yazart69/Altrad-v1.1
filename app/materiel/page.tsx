@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
-  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X
+  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -25,13 +25,17 @@ export default function MaterielPage() {
 
   // État Modale Ajout
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalTab, setModalTab] = useState<'interne' | 'externe'>('interne'); // Onglet interne à la modale
+
   const [newItem, setNewItem] = useState({
       nom: '',
       categorie: 'Outillage',
       type_stock: 'Interne',
       qte_totale: 1,
       prix_location: 0,
-      image: ''
+      image: '',
+      responsable: '', // Nouveau champ
+      fournisseur: ''  // Nouveau champ pour externe
   });
 
   // --- CHARGEMENT DES DONNÉES ---
@@ -64,8 +68,6 @@ export default function MaterielPage() {
       .order('nom');
 
     if (matData) {
-      // Calculer la dispo en temps réel
-      // Dispo = Total - (Somme des locations 'en_cours' ou 'prevu')
       const processedInventory = matData.map(item => {
         const usedQty = locData?.filter((l: any) => 
           l.materiel_id === item.id && 
@@ -92,14 +94,20 @@ export default function MaterielPage() {
   const handleAddItem = async () => {
       if (!newItem.nom) return alert("Le nom est obligatoire");
       
-      const { error } = await supabase.from('materiel').insert([newItem]);
+      // On force le type selon l'onglet actif
+      const itemToSave = {
+          ...newItem,
+          type_stock: modalTab === 'interne' ? 'Interne' : 'Externe'
+      };
+
+      const { error } = await supabase.from('materiel').insert([itemToSave]);
       
       if (error) {
           alert("Erreur: " + error.message);
       } else {
           alert("✅ Matériel ajouté au catalogue !");
           setShowAddModal(false);
-          setNewItem({ nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, prix_location: 0, image: '' });
+          setNewItem({ nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, prix_location: 0, image: '', responsable: '', fournisseur: '' });
           fetchData();
       }
   };
@@ -155,7 +163,7 @@ export default function MaterielPage() {
           
           <div className="flex gap-2">
              <button onClick={() => setShowAddModal(true)} className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2 text-xs">
-                <Plus size={16} /> Ajouter Matériel
+                <Plus size={16} /> Ajouter Matériel / Location
             </button>
           </div>
         </div>
@@ -315,9 +323,17 @@ export default function MaterielPage() {
                                     </div>
                                     
                                     {item.type_stock === 'Externe' && (
-                                        <div className="flex justify-between items-center px-2">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase">Tarif Location</span>
-                                            <span className="text-sm font-black text-gray-700">{item.prix_location}€/j</span>
+                                        <div className="flex flex-col gap-1 px-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase">Tarif</span>
+                                                <span className="text-sm font-black text-gray-700">{item.prix_location}€/j</span>
+                                            </div>
+                                            {item.fournisseur && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Fournisseur</span>
+                                                    <span className="text-xs font-bold text-purple-600">{item.fournisseur}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -438,29 +454,48 @@ export default function MaterielPage() {
 
       </div>
 
-      {/* ================= MODALE AJOUT (POPUP) ================= */}
+      {/* ================= MODALE AJOUT (DOUBLE ONGLET) ================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
+            <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 animate-in zoom-in-95">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="font-black text-xl text-[#2d3436] flex items-center gap-2">
-                        <Plus size={20} className="text-[#0984e3]"/> Nouveau Matériel
+                        <Plus size={20} className="text-[#0984e3]"/> Ajouter au Parc
                     </h3>
                     <button onClick={() => setShowAddModal(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
                         <X size={16}/>
                     </button>
                 </div>
 
+                {/* SÉLECTEUR DE TYPE */}
+                <div className="flex gap-2 bg-gray-100 p-1 rounded-xl mb-6">
+                    <button 
+                        onClick={() => { setModalTab('interne'); setNewItem({...newItem, type_stock: 'Interne'}); }}
+                        className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'interne' ? 'bg-white shadow text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                        <Warehouse size={16}/> Stock Agence
+                    </button>
+                    <button 
+                        onClick={() => { setModalTab('externe'); setNewItem({...newItem, type_stock: 'Externe'}); }}
+                        className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'externe' ? 'bg-purple-100 text-purple-600 shadow' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                        <Building2 size={16}/> Location Externe
+                    </button>
+                </div>
+
                 <div className="space-y-4">
                     <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            {modalTab === 'interne' ? 'Nom du Matériel' : 'Matériel Loué'}
+                        </label>
                         <input 
                             className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#0984e3]"
-                            placeholder="Ex: Hilti TE-30"
+                            placeholder={modalTab === 'interne' ? "Ex: Hilti TE-30" : "Ex: Nacelle 12m"}
                             value={newItem.nom}
                             onChange={e => setNewItem({...newItem, nom: e.target.value})}
                         />
                     </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Catégorie</label>
@@ -472,25 +507,12 @@ export default function MaterielPage() {
                                 <option value="Outillage">Outillage</option>
                                 <option value="Engin">Engin</option>
                                 <option value="EPI">EPI</option>
-                                <option value="Accès">Accès</option>
+                                <option value="Accès">Accès / Échafaudage</option>
                                 <option value="Véhicule">Véhicule</option>
                             </select>
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type Stock</label>
-                            <select 
-                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer"
-                                value={newItem.type_stock}
-                                onChange={e => setNewItem({...newItem, type_stock: e.target.value})}
-                            >
-                                <option value="Interne">Interne</option>
-                                <option value="Externe">Externe</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quantité Totale</label>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quantité</label>
                             <input 
                                 type="number" min="1"
                                 className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
@@ -498,26 +520,50 @@ export default function MaterielPage() {
                                 onChange={e => setNewItem({...newItem, qte_totale: parseInt(e.target.value)})}
                             />
                         </div>
-                        {newItem.type_stock === 'Externe' && (
+                    </div>
+
+                    {/* CHAMPS SPÉCIFIQUES EXTERNE */}
+                    {modalTab === 'externe' && (
+                        <div className="grid grid-cols-2 gap-4 bg-purple-50 p-4 rounded-xl border border-purple-100">
                             <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Prix Loc. (€/j)</label>
+                                <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Fournisseur</label>
+                                <input 
+                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
+                                    placeholder="Ex: Kiloutou"
+                                    value={newItem.fournisseur}
+                                    onChange={e => setNewItem({...newItem, fournisseur: e.target.value})}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Prix / Jour (€)</label>
                                 <input 
                                     type="number" min="0"
-                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
+                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
                                     value={newItem.prix_location}
                                     onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}
                                 />
                             </div>
-                        )}
+                        </div>
+                    )}
+
+                    {/* CHAMP RESPONSABLE (Commun) */}
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable (Réception/Suivi)</label>
+                        <input 
+                            className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
+                            placeholder="Nom du responsable..."
+                            value={newItem.responsable}
+                            onChange={e => setNewItem({...newItem, responsable: e.target.value})}
+                        />
                     </div>
                 </div>
 
                 <div className="mt-8 flex justify-end">
                     <button 
                         onClick={handleAddItem}
-                        className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg shadow-blue-200 transition-transform hover:scale-105"
+                        className={`px-8 py-3 rounded-xl font-black uppercase shadow-lg transition-transform hover:scale-105 text-white ${modalTab === 'interne' ? 'bg-[#0984e3] hover:bg-[#0074d9] shadow-blue-200' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'}`}
                     >
-                        Créer Matériel
+                        {modalTab === 'interne' ? 'Ajouter au Stock' : 'Créer Location'}
                     </button>
                 </div>
             </div>
