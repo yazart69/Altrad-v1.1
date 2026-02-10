@@ -48,9 +48,9 @@ export default function Sidebar() {
         {!isCollapsed && (
           <div className="animate-in fade-in duration-300">
             <h1 className="text-2xl font-black uppercase tracking-tighter text-gray-900">
-              Altrad<span className="text-blue-600">.OS</span>
+              Altrad<span className="text-red-600">.OS</span>
             </h1>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Pilotage Industriel</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">by YAZ'ART69</p>
           </div>
         )}
         <button 
