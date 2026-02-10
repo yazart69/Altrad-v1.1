@@ -1,12 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, Users, 
-  CalendarRange, TrendingUp, Printer, X, Save, 
-  CheckSquare, Square, BarChart3, AlertCircle
+  CalendarRange, Printer, X, Save, 
+  CheckSquare, Square, BarChart3, AlertCircle, Activity
 } from 'lucide-react';
+
+// IMPORT RECHARTS (Nécessite: npm install recharts)
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  ReferenceLine, Cell, ComposedChart, Line 
+} from 'recharts';
 
 // --- HELPERS DATES ---
 const getWeekNumber = (d: Date) => {
@@ -61,6 +67,7 @@ export default function PlanningChargePage() {
   };
 
   const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
+  const totalCapacity = employes.length || 1; // Capacité totale de l'entreprise
 
   // 3. LOGIQUE CALCUL CHARGE (UNIQUES)
   const calculateLoad = (chantier: any, weekNum: number) => {
@@ -74,6 +81,7 @@ export default function PlanningChargePage() {
     let need = chantier.effectif_prevu || 0; 
     if (chantier.statut === 'potentiel' && chantier.taux_reussite) need = Math.round(need * (chantier.taux_reussite / 100));
 
+    // Filtrer les affectations pour ce chantier et cette semaine
     const relevant = assignments.filter(a => {
         if (a.chantier_id !== chantier.id) return false;
         const aS = new Date(a.date_debut);
@@ -81,6 +89,7 @@ export default function PlanningChargePage() {
         return aS <= weekEnd && aE >= weekStart;
     });
 
+    // Compter les personnes UNIQUES
     const uniquePeople = new Set(relevant.map(a => a.employe_id || a.user_id));
     const staffed = uniquePeople.size;
     const missing = Math.max(0, need - staffed);
@@ -100,23 +109,26 @@ export default function PlanningChargePage() {
     return { need, staffed, missing, statusClass, textInfo };
   };
 
-  // 4. CALCUL TOTAUX HEBDOMADAIRES (Global)
-  const calculateWeeklyTotal = (weekNum: number) => {
-    let totalNeed = 0;
-    let totalStaffed = 0;
+  // --- PRÉPARATION DONNÉES GRAPHIQUES ---
+  const graphData = useMemo(() => {
+    return weeks.map(w => {
+        let totalStaffed = 0;
+        let chantierData: any = { name: `S${w}` };
 
-    chantiers.forEach(c => {
-        const load = calculateLoad(c, weekNum);
-        if (load) {
-            totalNeed += load.need;
-            totalStaffed += load.staffed;
-        }
+        chantiers.forEach(c => {
+            const load = calculateLoad(c, w);
+            if (load && load.staffed > 0) {
+                totalStaffed += load.staffed;
+                // Pour l'empilement par chantier
+                chantierData[c.nom] = load.staffed;
+            }
+        });
+
+        chantierData.Total = totalStaffed;
+        chantierData.Capacite = totalCapacity;
+        return chantierData;
     });
-    return { totalNeed, totalStaffed, gap: totalNeed - totalStaffed };
-  };
-
-  // Trouver la charge MAX de l'année pour échelle graphique
-  const maxYearlyLoad = Math.max(...weeks.map(w => calculateWeeklyTotal(w).totalNeed), 1); // Avoid div/0
+  }, [weeks, chantiers, assignments, totalCapacity, year]);
 
   // --- HANDLERS ---
   const handleCellClick = (chantier: any, week: number) => {
@@ -141,8 +153,6 @@ export default function PlanningChargePage() {
       if (!selectedCell) return;
       const { start, workEnd } = getWeekDates(selectedCell.week, year);
       
-      // On supprime d'abord les affectations existantes sur ce créneau (Lundi-Ven) pour ce chantier
-      // NOTE: En prod, il faudrait être plus précis sur les dates, ici on remplace la semaine.
       const empToDelete = assignments.filter(a => 
           a.chantier_id === selectedCell.chantier.id && 
           new Date(a.date_debut) <= workEnd && 
@@ -171,12 +181,14 @@ export default function PlanningChargePage() {
       fetchData();
   };
 
-  // --- GROUPES ---
   const groupedChantiers = {
       en_cours: chantiers.filter(c => c.statut === 'en_cours'),
       planifie: chantiers.filter(c => c.statut === 'planifie'),
       potentiel: chantiers.filter(c => c.statut === 'potentiel')
   };
+
+  // Couleurs pour les chantiers (Palette Chart)
+  const chartColors = ["#0984e3", "#6c5ce7", "#00b894", "#e17055", "#fdcb6e", "#d63031", "#e84393", "#2d3436"];
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] flex flex-col text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:m-0 print:p-0">
@@ -216,7 +228,7 @@ export default function PlanningChargePage() {
         {loading ? (
             <div className="flex-1 flex items-center justify-center font-bold text-gray-400 animate-pulse">Synchronisation...</div>
         ) : (
-            <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative print:border-none print:shadow-none">
+            <div className="bg-white rounded-[20px] shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden relative print:border-none print:shadow-none mb-6">
                 <div className="overflow-auto flex-1 custom-scrollbar print:overflow-visible">
                     <table className="w-full border-collapse">
                         <thead className="sticky top-0 z-30 bg-white shadow-sm print:static">
@@ -237,7 +249,6 @@ export default function PlanningChargePage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {/* Groupes */}
                             {groupedChantiers.en_cours.length > 0 && <tr className="bg-blue-50/50 sticky left-0 z-10"><td colSpan={53} className="p-2 font-black text-xs uppercase text-blue-600 tracking-widest border-b border-blue-100 pl-4">En Cours</td></tr>}
                             {groupedChantiers.en_cours.map(c => <RowChantier key={c.id} chantier={c} weeks={weeks} year={year} calculateLoad={calculateLoad} onCellClick={handleCellClick} />)}
                             
@@ -251,62 +262,69 @@ export default function PlanningChargePage() {
                 </div>
             </div>
         )}
-      </div>
 
-      {/* --- GRAPHIQUE CHARGE GLOBALE (NOUVEAU) --- */}
-      <div className="p-6 pt-0 print:p-0 print:mt-4">
-          <div className="bg-white rounded-[25px] shadow-sm border border-gray-200 p-6 print:border-none print:shadow-none">
-              <div className="flex items-center gap-3 mb-6">
-                  <div className="bg-gray-100 p-2 rounded-xl text-gray-600"><BarChart3 size={24}/></div>
-                  <div>
-                      <h3 className="font-black uppercase text-gray-800">Charge Hebdomadaire Globale</h3>
-                      <p className="text-xs font-bold text-gray-400">Visualisation des effectifs nécessaires vs staffés</p>
-                  </div>
-              </div>
-              
-              <div className="h-48 flex items-end gap-1 w-full overflow-x-auto custom-scrollbar pb-2">
-                  {weeks.map(w => {
-                      const total = calculateWeeklyTotal(w);
-                      const heightPercent = (total.totalNeed / maxYearlyLoad) * 100;
-                      const staffPercent = total.totalNeed > 0 ? (total.totalStaffed / total.totalNeed) * 100 : 0;
-                      const isCurrent = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
-                      
-                      // Couleur dynamique
-                      let barColor = 'bg-emerald-400';
-                      if (total.gap > 0) barColor = 'bg-orange-400';
-                      if (total.gap > 5) barColor = 'bg-red-400';
-                      if (total.totalNeed === 0) barColor = 'bg-gray-100';
+        {/* --- ZONE GRAPHIQUE PROFESSIONNELLE --- */}
+        {!loading && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:grid-cols-2 print:gap-4">
+                
+                {/* Graphique 1 : Charge Globale vs Capacité */}
+                <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-gray-300">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="font-black text-lg uppercase text-gray-800">Charge Globale</h3>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Capacité vs Affectations</p>
+                        </div>
+                        <div className="text-right">
+                             <span className="text-xs font-bold text-red-500 flex items-center gap-1 justify-end"><Activity size={12}/> Capacité: {totalCapacity}</span>
+                        </div>
+                    </div>
+                    <div className="h-[250px] w-full text-xs font-bold">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart data={graphData} margin={{top: 10, right: 10, left: -20, bottom: 0}}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f2f6"/>
+                                <XAxis dataKey="name" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                                <YAxis axisLine={false} tickLine={false}/>
+                                <Tooltip cursor={{fill: '#f8f9fa'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}/>
+                                <ReferenceLine y={totalCapacity} stroke="#ff7675" strokeDasharray="3 3" label={{position: 'top', value: 'Max', fill: '#ff7675', fontSize: 10}} />
+                                <Bar dataKey="Total" radius={[4, 4, 0, 0]} barSize={20}>
+                                    {graphData.map((entry: any, index: number) => {
+                                        let color = "#00b894"; // Vert (OK)
+                                        if (entry.Total > totalCapacity * 0.85) color = "#fdcb6e"; // Orange (Tendu)
+                                        if (entry.Total > totalCapacity) color = "#d63031"; // Rouge (Surcharge)
+                                        return <Cell key={`cell-${index}`} fill={color} />;
+                                    })}
+                                </Bar>
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
 
-                      return (
-                          <div key={w} className="flex-1 min-w-[20px] flex flex-col items-center gap-1 group relative">
-                              {total.totalNeed > 0 && (
-                                  <>
-                                      {/* Tooltip Graphique */}
-                                      <div className="absolute bottom-full mb-2 bg-black text-white text-[9px] p-2 rounded shadow-xl hidden group-hover:block z-50 whitespace-nowrap">
-                                          <p className="font-bold uppercase">S{w}</p>
-                                          <p>Besoin: {total.totalNeed}</p>
-                                          <p>Staffé: {total.totalStaffed}</p>
-                                          <p className={total.gap > 0 ? 'text-red-300' : 'text-green-300'}>Gap: {total.gap * -1}</p>
-                                      </div>
-                                      
-                                      <span className="text-[8px] font-bold text-gray-400">{total.totalNeed}</span>
-                                      
-                                      {/* Barre Besoin (Fond) */}
-                                      <div className={`w-full rounded-t-sm bg-gray-100 relative overflow-hidden transition-all duration-500 hover:brightness-95 ${isCurrent ? 'ring-2 ring-blue-200' : ''}`} style={{ height: `${Math.max(heightPercent, 5)}%` }}>
-                                          {/* Barre Staffé (Remplissage) */}
-                                          <div 
-                                              className={`w-full absolute bottom-0 transition-all duration-700 ${barColor}`} 
-                                              style={{ height: `${Math.min(staffPercent, 100)}%` }}
-                                          ></div>
-                                      </div>
-                                      <span className={`text-[8px] font-black ${isCurrent ? 'text-blue-600' : 'text-gray-300'}`}>S{w}</span>
-                                  </>
-                              )}
-                          </div>
-                      );
-                  })}
-              </div>
-          </div>
+                {/* Graphique 2 : Répartition par Chantier (Empilé) */}
+                <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-gray-300">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="font-black text-lg uppercase text-gray-800">Répartition</h3>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Détail par chantier</p>
+                        </div>
+                    </div>
+                    <div className="h-[250px] w-full text-xs font-bold">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={graphData} margin={{top: 10, right: 10, left: -20, bottom: 0}}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f2f6"/>
+                                <XAxis dataKey="name" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+                                <YAxis axisLine={false} tickLine={false}/>
+                                <Tooltip cursor={{fill: '#f8f9fa'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}/>
+                                {chantiers.map((c, i) => (
+                                    <Bar key={c.id} dataKey={c.nom} stackId="a" fill={chartColors[i % chartColors.length]} radius={[0, 0, 0, 0]} barSize={20} />
+                                ))}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+            </div>
+        )}
+
       </div>
 
       {/* --- MODALE D'AFFECTATION --- */}
@@ -361,7 +379,7 @@ export default function PlanningChargePage() {
           .print\\:overflow-visible { overflow: visible !important; }
           .print\\:border-none { border: none !important; }
           .print\\:shadow-none { box-shadow: none !important; }
-          .print\\:mt-4 { margin-top: 1rem !important; }
+          .print\\:grid-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
