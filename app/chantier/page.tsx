@@ -45,36 +45,39 @@ export default function ChantiersList() {
       if (error) {
         alert("Erreur lors de la suppression : " + error.message);
       } else {
-        fetchChantiers(); // Rafraîchit la liste
+        // Mise à jour locale immédiate pour éviter de recharger
+        setChantiers(chantiers.filter(c => c.id !== id));
       }
     }
   };
 
-  // --- CRÉATION RAPIDE ---
+  // --- CRÉATION RAPIDE & REDIRECTION ---
   const handleCreate = async () => {
     setCreating(true);
+    
+    // ON CRÉE UNE COQUILLE VIDE (Juste le nom pour éviter les erreurs de colonnes manquantes)
+    // Le reste sera rempli dans la page de détail (Infos, ACQPA, etc.)
     const { data, error } = await supabase
       .from('chantiers')
       .insert([{ 
-        nom: 'Nouveau Chantier', 
-        statut: 'planifie',
-        type: 'Industriel',
-        client: 'À définir'
+        nom: 'Nouveau Chantier (Brouillon)', 
+        statut: 'planifie'
       }])
       .select()
       .single();
 
-    if (data) {
-      router.push(`/chantier/${data.id}`);
-    } else {
-      alert("Erreur création : " + error?.message);
+    if (error) {
+      alert("Erreur création (Vérifiez que la table 'chantiers' existe) : " + error.message);
       setCreating(false);
+    } else if (data) {
+      // REDIRECTION IMMÉDIATE vers la page complète (HSE/ACQPA)
+      router.push(`/chantier/${data.id}`);
     }
   };
 
   // Logique de filtrage
   const filtered = chantiers.filter(c => {
-    const matchesSearch = c.nom.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = c.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           c.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           c.adresse?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'tous' || c.statut === statusFilter;
@@ -173,7 +176,7 @@ export default function ChantiersList() {
                     <Link href={`/chantier/${chantier.id}`} key={chantier.id} className="group h-full">
                         <div className={`bg-white rounded-[25px] p-6 shadow-sm border hover:border-transparent hover:shadow-xl hover:-translate-y-1 transition-all h-full flex flex-col relative overflow-hidden ${statusConfig.border}`}>
                             
-                            {/* BOUTON SUPPRIMER (NOUVEAU) */}
+                            {/* BOUTON SUPPRIMER */}
                             <button 
                                 onClick={(e) => handleDelete(e, chantier.id, chantier.nom)}
                                 className="absolute top-4 right-4 z-20 p-2 bg-white/50 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-full transition-colors opacity-0 group-hover:opacity-100"
