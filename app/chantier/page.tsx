@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   Search, MapPin, Plus, ArrowRight, Building2, HardHat, 
-  CalendarClock, CheckCircle2, Filter, Loader2 
+  CalendarClock, CheckCircle2, Loader2, Trash2 
 } from 'lucide-react';
 
 export default function ChantiersList() {
@@ -17,7 +17,7 @@ export default function ChantiersList() {
   
   // Filtres
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('tous'); // 'tous', 'en_cours', 'planifie', 'termine'
+  const [statusFilter, setStatusFilter] = useState('tous');
 
   useEffect(() => {
     fetchChantiers();
@@ -33,10 +33,26 @@ export default function ChantiersList() {
     setLoading(false);
   }
 
-  // CRÉATION RAPIDE (Sans page intermédiaire)
+  // --- FONCTION SUPPRESSION ---
+  const handleDelete = async (e: React.MouseEvent, id: string, nom: string) => {
+    e.preventDefault(); // Empêche d'entrer dans la fiche chantier
+    e.stopPropagation(); 
+
+    const confirmation = window.confirm(`⚠️ Êtes-vous sûr de vouloir supprimer définitivement le chantier "${nom}" ?\nCette action est irréversible.`);
+    
+    if (confirmation) {
+      const { error } = await supabase.from('chantiers').delete().eq('id', id);
+      if (error) {
+        alert("Erreur lors de la suppression : " + error.message);
+      } else {
+        fetchChantiers(); // Rafraîchit la liste
+      }
+    }
+  };
+
+  // --- CRÉATION RAPIDE ---
   const handleCreate = async () => {
     setCreating(true);
-    // On crée une coquille vide
     const { data, error } = await supabase
       .from('chantiers')
       .insert([{ 
@@ -49,10 +65,9 @@ export default function ChantiersList() {
       .single();
 
     if (data) {
-      // Redirection immédiate vers la page détail pour remplir le reste
       router.push(`/chantier/${data.id}`);
     } else {
-      alert("Erreur lors de la création : " + error?.message);
+      alert("Erreur création : " + error?.message);
       setCreating(false);
     }
   };
@@ -66,7 +81,6 @@ export default function ChantiersList() {
     return matchesSearch && matchesStatus;
   });
 
-  // Calcul des stats pour les badges
   const counts = {
     tous: chantiers.length,
     en_cours: chantiers.filter(c => c.statut === 'en_cours').length,
@@ -98,10 +112,8 @@ export default function ChantiersList() {
         </button>
       </div>
 
-      {/* BARRE D'OUTILS (Recherche + Filtres) */}
+      {/* BARRE D'OUTILS */}
       <div className="flex flex-col lg:flex-row gap-4 mb-8">
-        
-        {/* Recherche */}
         <div className="bg-white p-2 rounded-[20px] shadow-sm flex items-center gap-3 border border-gray-100 flex-1 px-4">
             <Search className="text-gray-400" />
             <input 
@@ -113,7 +125,6 @@ export default function ChantiersList() {
             />
         </div>
 
-        {/* Filtres Statut (Pills) */}
         <div className="bg-white p-2 rounded-[20px] shadow-sm border border-gray-100 flex overflow-x-auto no-scrollbar gap-2">
             {[
                 { id: 'tous', label: 'Tous', count: counts.tous, color: 'bg-gray-800' },
@@ -139,7 +150,7 @@ export default function ChantiersList() {
         </div>
       </div>
 
-      {/* GRILLE DES CHANTIERS */}
+      {/* LISTE DES CHANTIERS */}
       {loading ? (
         <div className="flex justify-center items-center h-64">
             <Loader2 className="animate-spin text-[#00b894]" size={40} />
@@ -153,8 +164,6 @@ export default function ChantiersList() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filtered.map((chantier) => {
-                
-                // Configuration visuelle selon statut
                 let statusConfig = { color: 'bg-gray-500', text: 'Inconnu', icon: Building2, border: 'border-gray-200' };
                 if (chantier.statut === 'en_cours') statusConfig = { color: 'bg-[#00b894]', text: 'En Cours', icon: HardHat, border: 'border-emerald-200' };
                 if (chantier.statut === 'planifie') statusConfig = { color: 'bg-[#0984e3]', text: 'Planifié', icon: CalendarClock, border: 'border-blue-200' };
@@ -164,7 +173,16 @@ export default function ChantiersList() {
                     <Link href={`/chantier/${chantier.id}`} key={chantier.id} className="group h-full">
                         <div className={`bg-white rounded-[25px] p-6 shadow-sm border hover:border-transparent hover:shadow-xl hover:-translate-y-1 transition-all h-full flex flex-col relative overflow-hidden ${statusConfig.border}`}>
                             
-                            {/* Header Card */}
+                            {/* BOUTON SUPPRIMER (NOUVEAU) */}
+                            <button 
+                                onClick={(e) => handleDelete(e, chantier.id, chantier.nom)}
+                                className="absolute top-4 right-4 z-20 p-2 bg-white/50 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                title="Supprimer ce chantier"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+
+                            {/* En-tête Carte */}
                             <div className="flex justify-between items-start mb-4 relative z-10">
                                 <div className={`${statusConfig.color} p-3 rounded-2xl text-white shadow-lg shadow-gray-200`}>
                                     <statusConfig.icon size={20} />
@@ -174,9 +192,9 @@ export default function ChantiersList() {
                                 </span>
                             </div>
                             
-                            {/* Content */}
+                            {/* Contenu */}
                             <div className="relative z-10 flex-1">
-                                <h3 className="text-lg font-black uppercase text-gray-800 mb-1 leading-tight group-hover:text-[#00b894] transition-colors truncate">
+                                <h3 className="text-lg font-black uppercase text-gray-800 mb-1 leading-tight group-hover:text-[#00b894] transition-colors truncate pr-6">
                                     {chantier.nom}
                                 </h3>
                                 <p className="text-xs font-bold text-gray-400 uppercase mb-4 truncate">
@@ -195,7 +213,7 @@ export default function ChantiersList() {
                                 </div>
                             </div>
 
-                            {/* Footer Card */}
+                            {/* Pied de carte */}
                             <div className="mt-6 pt-4 border-t border-gray-50 flex justify-between items-center text-xs font-bold text-gray-400 uppercase relative z-10">
                                 <span>Voir détails</span>
                                 <div className="bg-gray-50 p-2 rounded-full group-hover:bg-[#00b894] group-hover:text-white transition-colors">
