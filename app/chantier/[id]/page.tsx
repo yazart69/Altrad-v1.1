@@ -8,7 +8,7 @@ import {
   AlertTriangle, Shield, CheckSquare, Thermometer, Droplets, 
   Layers, Ruler, ClipboardCheck, FolderOpen,
   Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus,
-  Users, Percent // Ajout de l'icône Percent
+  Users, Percent, Truck, Package, Wrench // <-- AJOUT DES ICÔNES ICI
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,14 +22,15 @@ export default function ChantierDetail() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('infos');
   const [showACQPAModal, setShowACQPAModal] = useState(false);
+  const [showAddMaterielModal, setShowAddMaterielModal] = useState(false); // <-- NOUVELLE MODALE
 
   // DONNÉES GLOBALES
   const [chantier, setChantier] = useState<any>({
     nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel', 
-    statut: 'en_cours', // Statut par défaut
+    statut: 'en_cours',
     heures_budget: 0, heures_consommees: 0, 
     effectif_prevu: 0, 
-    taux_reussite: 100, // AJOUT : Taux de réussite (défaut 100%)
+    taux_reussite: 100,
     risques: [], epi: [],
     mesures_obligatoires: false
   });
@@ -41,10 +42,18 @@ export default function ChantierDetail() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   
+  // --- NOUVELLES DONNÉES LOGISTIQUES ---
+  const [materielPrevu, setMaterielPrevu] = useState<any[]>([]); 
+  const [fournituresPrevu, setFournituresPrevu] = useState<any[]>([]);
+  const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
+  
   // UI STATES
   const [uploading, setUploading] = useState(false);
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [newTaskHours, setNewTaskHours] = useState("");
+
+  // STATE FORMULAIRE AJOUT MATERIEL
+  const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
 
   // --- CHARGEMENT ---
   useEffect(() => { fetchChantierData(); }, [id]);
@@ -58,11 +67,10 @@ export default function ChantierDetail() {
     if (c) {
         setChantier({
             ...c,
-            // Sécurisation : si null en base, on met '' pour l'input HTML
             date_debut: c.date_debut || '',
             date_fin: c.date_fin || '',
             effectif_prevu: c.effectif_prevu || 0,
-            taux_reussite: c.taux_reussite || 100, // Chargement du taux
+            taux_reussite: c.taux_reussite || 100,
             statut: c.statut || 'en_cours',
             risques: c.risques || [],
             epi: c.epi || [],
@@ -80,6 +88,9 @@ export default function ChantierDetail() {
             }];
         }
         setAcqpaData(currentAcqpa);
+
+        // Pré-remplir dates du formulaire matériel avec dates chantier par défaut
+        setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
     }
 
     // 2. Tâches
@@ -89,6 +100,22 @@ export default function ChantierDetail() {
     // 3. Documents
     const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (d) setDocuments(d);
+
+    // 4. --- CHARGEMENT LOGISTIQUE (NOUVEAU) ---
+    // Matériel Prévu (Jointure)
+    const { data: m } = await supabase
+        .from('chantier_materiel')
+        .select('*, materiel(*)') // On récupère les infos du matériel lié
+        .eq('chantier_id', id);
+    if (m) setMaterielPrevu(m);
+
+    // Fournitures Prévues
+    const { data: f } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', id);
+    if (f) setFournituresPrevu(f);
+
+    // Catalogue Matériel (Pour la modale)
+    const { data: cat } = await supabase.from('materiel').select('*').order('nom');
+    if (cat) setCatalogueMateriel(cat);
 
     setLoading(false);
   }
@@ -118,13 +145,13 @@ export default function ChantierDetail() {
         client: chantier.client,
         adresse: chantier.adresse,
         responsable: chantier.responsable,
-        date_debut: dateDebutSafe, // Utilisation de la variable sécurisée
-        date_fin: dateFinSafe,     // Utilisation de la variable sécurisée
+        date_debut: dateDebutSafe,
+        date_fin: dateFinSafe,
         type: chantier.type,
-        statut: chantier.statut, // Sauvegarde du statut
+        statut: chantier.statut,
         heures_budget: chantier.heures_budget,
         effectif_prevu: chantier.effectif_prevu,
-        taux_reussite: chantier.taux_reussite, // Sauvegarde du taux
+        taux_reussite: chantier.taux_reussite,
         risques: chantier.risques,
         epi: chantier.epi,
         mesures_obligatoires: chantier.mesures_obligatoires,
@@ -138,9 +165,36 @@ export default function ChantierDetail() {
         alert("Erreur lors de la sauvegarde : " + error.message);
     } else {
         alert('✅ Chantier sauvegardé avec succès !');
-        // On recharge les données pour être sûr d'avoir le format DB
         fetchChantierData();
     }
+  };
+
+  // --- NOUVEAU : AJOUT MATERIEL ---
+  const handleAddMateriel = async () => {
+      if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
+      
+      const { error } = await supabase.from('chantier_materiel').insert([{
+          chantier_id: id,
+          materiel_id: newMat.materiel_id,
+          date_debut: newMat.date_debut || null,
+          date_fin: newMat.date_fin || null,
+          qte_prise: newMat.qte,
+          statut: 'prevu'
+      }]);
+
+      if (error) {
+          alert("Erreur: " + error.message);
+      } else {
+          setShowAddMaterielModal(false);
+          fetchChantierData(); // Recharger la liste
+      }
+  };
+
+  const deleteMateriel = async (matId: string) => {
+      if (confirm('Retirer ce matériel du chantier ?')) {
+          await supabase.from('chantier_materiel').delete().eq('id', matId);
+          fetchChantierData();
+      }
   };
 
   // --- GESTION TÂCHES (AJOUT / SUPPRESSION / MODIF + RECALCUL) ---
@@ -279,6 +333,8 @@ export default function ChantierDetail() {
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {[
                 { id: 'infos', label: 'Infos & Tâches', icon: FileText, color: 'bg-[#34495e]' },
+                { id: 'logistique', label: 'Matériel & Loc.', icon: Truck, color: 'bg-[#6c5ce7]' }, // <-- AJOUT ONGLET
+                { id: 'fournitures', label: 'Fournitures', icon: Package, color: 'bg-[#fdcb6e]' }, // <-- AJOUT ONGLET
                 { id: 'hse', label: 'Sécurité / EPI', icon: Shield, color: 'bg-[#e17055]' },
                 { id: 'acqpa', label: 'Mesures ACQPA', icon: ClipboardCheck, color: 'bg-[#0984e3]' },
                 { id: 'docs', label: 'Photos / Docs', icon: UploadCloud, color: 'bg-[#6c5ce7]' },
@@ -325,7 +381,7 @@ export default function ChantierDetail() {
                                 <input value={chantier.responsable || ''} onChange={e => setChantier({...chantier, responsable: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
                             
-                            {/* --- AJOUT MENU STATUT AVEC OPTION POTENTIEL --- */}
+                            {/* MENU STATUT */}
                             <div>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Statut</label>
                                 <select 
@@ -361,7 +417,7 @@ export default function ChantierDetail() {
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
                             
-                            {/* --- AJOUT : EFFECTIF PRÉVU + CONDITIONNEL TAUX --- */}
+                            {/* EFFECTIF PRÉVU + TAUX */}
                             <div className={chantier.statut === 'potentiel' ? '' : 'col-span-2'}>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Prévu (Pers.)</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
@@ -476,6 +532,73 @@ export default function ChantierDetail() {
                             )}
                         </div>
                     </div>
+                </div>
+            </div>
+        )}
+
+        {/* ================= NOUVEAU : MATÉRIEL & LOGISTIQUE ================= */}
+        {activeTab === 'logistique' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2">
+                        <Truck className="text-[#6c5ce7]"/> Matériel & Locations
+                    </h3>
+                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2">
+                        <Plus size={16}/> Ajouter / Réserver
+                    </button>
+                </div>
+
+                <div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden">
+                    <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Matériel</th>
+                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Type</th>
+                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Période</th>
+                                <th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase">Quantité</th>
+                                <th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {materielPrevu.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="p-10 text-center text-gray-400 font-bold">Aucun matériel prévu.</td>
+                                </tr>
+                            ) : (
+                                materielPrevu.map(m => (
+                                    <tr key={m.id} className="hover:bg-gray-50">
+                                        <td className="p-4">
+                                            <span className="font-bold text-sm text-gray-800">{m.materiel?.nom || 'Inconnu'}</span>
+                                            <div className="text-[10px] text-gray-400">{m.materiel?.categorie}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>
+                                                {m.materiel?.type_stock || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-xs font-bold text-gray-600">
+                                            {m.date_debut ? `${m.date_debut} -> ${m.date_fin}` : 'Dates non définies'}
+                                        </td>
+                                        <td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td>
+                                        <td className="p-4 text-center">
+                                            <button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+
+        {/* ================= NOUVEAU : FOURNITURES ================= */}
+        {activeTab === 'fournitures' && (
+             <div className="animate-in fade-in slide-in-from-bottom-4">
+                <div className="bg-white rounded-[30px] p-20 text-center border border-gray-100 shadow-sm">
+                    <Package size={60} className="mx-auto text-yellow-300 mb-4" />
+                    <h3 className="font-black text-gray-400 uppercase text-xl">Module Fournitures</h3>
+                    <p className="text-gray-400 font-bold">Gestion des consommables à venir.</p>
                 </div>
             </div>
         )}
@@ -775,6 +898,81 @@ export default function ChantierDetail() {
                     </div>
                     <button onClick={() => { setShowACQPAModal(false); handleSave(); }} className="w-full md:w-auto bg-[#0984e3] hover:bg-[#0074d9] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg transition-transform hover:scale-105">
                         Enregistrer & Fermer
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* ================= MODALE AJOUT MATÉRIEL (NOUVEAU) ================= */}
+      {showAddMaterielModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
+                <h3 className="font-black text-xl text-[#2d3436] mb-4 flex items-center gap-2">
+                    <Truck className="text-[#6c5ce7]"/> Ajouter Matériel
+                </h3>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Matériel</label>
+                        <select 
+                            className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer"
+                            onChange={e => setNewMat({...newMat, materiel_id: e.target.value})}
+                        >
+                            <option value="">Sélectionner...</option>
+                            {catalogueMateriel.map(m => (
+                                <option key={m.id} value={m.id}>
+                                    {m.nom} ({m.type_stock})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Début</label>
+                            <input 
+                                type="date" 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold" 
+                                value={newMat.date_debut} 
+                                onChange={e => setNewMat({...newMat, date_debut: e.target.value})} 
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Fin</label>
+                            <input 
+                                type="date" 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold" 
+                                value={newMat.date_fin} 
+                                onChange={e => setNewMat({...newMat, date_fin: e.target.value})} 
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité</label>
+                        <input 
+                            type="number" 
+                            min="1" 
+                            className="w-full bg-gray-50 p-3 rounded-xl font-bold" 
+                            value={newMat.qte} 
+                            onChange={e => setNewMat({...newMat, qte: parseInt(e.target.value)})} 
+                        />
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-2">
+                    <button 
+                        onClick={() => setShowAddMaterielModal(false)} 
+                        className="px-4 py-2 text-gray-400 font-bold hover:bg-gray-50 rounded-xl transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button 
+                        onClick={handleAddMateriel} 
+                        className="bg-[#6c5ce7] text-white px-6 py-2 rounded-xl font-bold hover:bg-[#5b4bc4] transition-colors"
+                    >
+                        Confirmer
                     </button>
                 </div>
             </div>
