@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, Check, 
-  Send, FileCheck, X, User, Users
+  Send, FileCheck, X, User, Users, Loader2
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -39,13 +39,38 @@ export default function PlanningPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    const { data: emp } = await supabase.from('users').select('*').order('nom');
-    const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').in('statut', ['en_cours', 'planifie']).order('nom');
-    const { data: plan } = await supabase.from('planning').select('*, users(nom, prenom, role)');
+    // CORRECTION ICI : On cible 'employes' au lieu de 'users' pour correspondre à la Foreign Key
+    // Si votre table s'appelle 'users', changez 'employes' par 'users' ici, mais vérifiez vos clés étrangères dans Supabase.
+    const { data: emp, error: errEmp } = await supabase.from('employes').select('*').order('nom');
     
-    setEmployes(emp || []);
+    if (errEmp) {
+        // Fallback si la table s'appelle 'users'
+        console.warn("Table employes introuvable, tentative sur users...");
+        const { data: users } = await supabase.from('users').select('*').order('nom');
+        if (users) setEmployes(users);
+    } else {
+        setEmployes(emp || []);
+    }
+
+    const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').in('statut', ['en_cours', 'planifie']).order('nom');
+    
+    // CORRECTION JOIN : On essaie de joindre 'employes', sinon on fera attention aux données
+    const { data: plan } = await supabase
+        .from('planning')
+        .select(`
+            *,
+            employes (nom, prenom, role),
+            chantiers (nom)
+        `);
+    
+    // Normalisation des données pour l'affichage (gestion du cas où la relation s'appelle users ou employes)
+    const formattedPlan = plan?.map(p => ({
+        ...p,
+        users: p.employes || p.users // On stocke les infos employé sous 'users' pour l'affichage générique
+    })) || [];
+
     setChantiers(chan || []);
-    setAssignments(plan || []);
+    setAssignments(formattedPlan);
     setLoading(false);
   };
 
@@ -68,7 +93,6 @@ export default function PlanningPage() {
   // 4. Modal Open
   const openAssignmentModal = (chantierId: string | null, date: Date, typeContext: string = 'chantier') => {
     const dateStr = toLocalISOString(date);
-    // Si c'est hors chantier, on initialise le type par défaut à 'conge', sinon 'chantier'
     const initialType = typeContext === 'hors_chantier' ? 'conge' : 'chantier';
     
     setSelection({ chantierId, date: dateStr, type: initialType });
@@ -80,9 +104,6 @@ export default function PlanningPage() {
   const saveAssignment = async () => {
     if (!selection || !selectedEmploye) return;
     
-    // Détermination du type final
-    // Si un chantier est défini (via chantierId), c'est 'chantier'
-    // Sinon, on prend le type sélectionné (conge, maladie...), ou 'conge' par défaut
     const finalType = selection.chantierId ? 'chantier' : selection.type;
 
     const insertData = {
@@ -109,7 +130,7 @@ export default function PlanningPage() {
     const { error } = await supabase.from('planning').insert([insertData]);
 
     if (error) {
-        alert("Erreur : " + error.message);
+        alert("Erreur base de données : " + error.message);
     } else {
         setIsModalOpen(false);
         fetchData();
@@ -130,6 +151,8 @@ export default function PlanningPage() {
     monday.setDate(monday.getDate() + i);
     return monday;
   });
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00b894]" size={40} /></div>;
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800">
@@ -220,17 +243,20 @@ export default function PlanningPage() {
                   return (
                     <td key={i} className="p-2 border-l border-gray-100 align-top h-32 relative print:border-gray-400 print:h-auto">
                       <div className="flex flex-col gap-1.5 h-full">
+                          
+                          {/* Liste des employés affectés */}
                           {dailyMissions.map((mission) => (
                               <div key={mission.id} className="bg-[#0984e3] text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black">
                                   <div className="flex items-center gap-2">
                                       <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold print:bg-black/10">
-                                          {mission.users?.prenom?.charAt(0)}{mission.users?.nom?.charAt(0)}
+                                          {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
                                       </div>
                                       <span className="text-[10px] font-bold uppercase truncate max-w-[80px]">
-                                          {mission.users?.nom} {mission.users?.prenom?.charAt(0)}.
+                                          {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
                                       </span>
                                   </div>
 
+                                  {/* Actions Rapides (Hover) */}
                                   <div className="hidden group-hover/card:flex gap-1 print:hidden">
                                       <button 
                                         onClick={(e) => {e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye)}}
@@ -291,7 +317,7 @@ export default function PlanningPage() {
                                     return (
                                         <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-black print:text-black`}>
                                             <span className="text-[10px] font-bold uppercase truncate">
-                                                {mission.users?.nom}
+                                                {mission.users?.nom || 'Inconnu'}
                                             </span>
                                             <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-gray-300">
                                                 {mission.type}
@@ -320,7 +346,7 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION (CORRIGÉE) */}
+      {/* MODAL D'AFFECTATION */}
       {isModalOpen && selection && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
           <div className="bg-white rounded-[30px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
@@ -362,7 +388,6 @@ export default function PlanningPage() {
                             {['conge', 'maladie', 'formation'].map(t => (
                                 <button 
                                     key={t}
-                                    // CORRECTION ICI : Mise à jour directe du type dans la selection
                                     onClick={() => setSelection({ ...selection, type: t })}
                                     className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-colors ${
                                         selection.type === t 
