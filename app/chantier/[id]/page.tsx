@@ -8,7 +8,7 @@ import {
   AlertTriangle, Shield, CheckSquare, Thermometer, Droplets, 
   Layers, Ruler, ClipboardCheck, FolderOpen,
   Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus,
-  Users // Ajout de l'icône
+  Users, Percent // Ajout de l'icône Percent
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -25,9 +25,11 @@ export default function ChantierDetail() {
 
   // DONNÉES GLOBALES
   const [chantier, setChantier] = useState<any>({
-    nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel',
+    nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel', 
+    statut: 'en_cours', // Statut par défaut
     heures_budget: 0, heures_consommees: 0, 
-    effectif_prevu: 0, // AJOUT DU CHAMP DANS LE STATE
+    effectif_prevu: 0, 
+    taux_reussite: 100, // AJOUT : Taux de réussite (défaut 100%)
     risques: [], epi: [],
     mesures_obligatoires: false
   });
@@ -56,7 +58,8 @@ export default function ChantierDetail() {
     if (c) {
         setChantier({
             ...c,
-            effectif_prevu: c.effectif_prevu || 0, // CHARGEMENT DE LA VALEUR
+            effectif_prevu: c.effectif_prevu || 0,
+            taux_reussite: c.taux_reussite || 100, // Chargement du taux
             risques: c.risques || [],
             epi: c.epi || [],
             mesures_acqpa: c.mesures_acqpa || {}
@@ -110,8 +113,10 @@ export default function ChantierDetail() {
         date_debut: chantier.date_debut,
         date_fin: chantier.date_fin,
         type: chantier.type,
+        statut: chantier.statut, // Sauvegarde du statut
         heures_budget: chantier.heures_budget,
-        effectif_prevu: chantier.effectif_prevu, // SAUVEGARDE EN BASE
+        effectif_prevu: chantier.effectif_prevu,
+        taux_reussite: chantier.taux_reussite, // Sauvegarde du taux
         risques: chantier.risques,
         epi: chantier.epi,
         mesures_obligatoires: chantier.mesures_obligatoires,
@@ -303,8 +308,24 @@ export default function ChantierDetail() {
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable</label>
                                 <input value={chantier.responsable || ''} onChange={e => setChantier({...chantier, responsable: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
+                            
+                            {/* --- AJOUT MENU STATUT AVEC OPTION POTENTIEL --- */}
                             <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type Chantier</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Statut</label>
+                                <select 
+                                    value={chantier.statut || 'en_cours'} 
+                                    onChange={e => setChantier({...chantier, statut: e.target.value})} 
+                                    className={`w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer ${chantier.statut === 'potentiel' ? 'text-blue-600' : ''}`}
+                                >
+                                    <option value="planifie">Planifié</option>
+                                    <option value="en_cours">En Cours</option>
+                                    <option value="potentiel">Potentiel (Offre)</option>
+                                    <option value="termine">Terminé</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</label>
                                 <select value={chantier.type || 'Industriel'} onChange={e => setChantier({...chantier, type: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer">
                                     {TYPE_CHANTIER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
@@ -324,8 +345,8 @@ export default function ChantierDetail() {
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
                             
-                            {/* --- AJOUT DU CHAMP : EFFECTIF PRÉVU --- */}
-                            <div className="col-span-2">
+                            {/* --- AJOUT : EFFECTIF PRÉVU + CONDITIONNEL TAUX --- */}
+                            <div className={chantier.statut === 'potentiel' ? '' : 'col-span-2'}>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Prévu (Pers.)</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
                                     <Users size={16} className="text-gray-400 mr-2"/>
@@ -338,7 +359,23 @@ export default function ChantierDetail() {
                                     />
                                 </div>
                             </div>
-                            {/* -------------------------------------- */}
+
+                            {chantier.statut === 'potentiel' && (
+                                <div>
+                                    <label className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">% Réussite</label>
+                                    <div className="flex items-center bg-blue-50 rounded-xl px-2 mt-1 border border-blue-100">
+                                        <Percent size={16} className="text-blue-400 mr-2"/>
+                                        <input 
+                                            type="number" 
+                                            max="100"
+                                            value={chantier.taux_reussite || ''} 
+                                            onChange={e => setChantier({...chantier, taux_reussite: parseInt(e.target.value) || 0})} 
+                                            className="w-full bg-transparent p-3 font-bold text-blue-700 outline-none"
+                                            placeholder="100"
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures (Total)</label>
