@@ -7,7 +7,8 @@ import {
   ArrowLeft, Save, FileText, UploadCloud, X, Eye, Trash2, 
   AlertTriangle, Shield, CheckSquare, Thermometer, Droplets, 
   Layers, Ruler, ClipboardCheck, FolderOpen,
-  Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus
+  Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus,
+  Users // <-- J'ai ajouté l'icône Users ici
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -25,7 +26,8 @@ export default function ChantierDetail() {
   // DONNÉES GLOBALES
   const [chantier, setChantier] = useState<any>({
     nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel',
-    heures_budget: 0, heures_consommees: 0, // Ajout du champ pour l'avancement
+    heures_budget: 0, heures_consommees: 0, 
+    effectif_prevu: 0, // <-- AJOUT DU CHAMP ICI (State)
     risques: [], epi: [],
     mesures_obligatoires: false
   });
@@ -54,6 +56,7 @@ export default function ChantierDetail() {
     if (c) {
         setChantier({
             ...c,
+            effectif_prevu: c.effectif_prevu || 0, // <-- CHARGEMENT DE LA VALEUR
             risques: c.risques || [],
             epi: c.epi || [],
             mesures_acqpa: c.mesures_acqpa || {}
@@ -107,7 +110,8 @@ export default function ChantierDetail() {
         date_debut: chantier.date_debut,
         date_fin: chantier.date_fin,
         type: chantier.type,
-        heures_budget: chantier.heures_budget, // On sauvegarde le budget défini
+        heures_budget: chantier.heures_budget,
+        effectif_prevu: chantier.effectif_prevu, // <-- SAUVEGARDE EN BASE
         // heures_consommees n'est pas sauvegardé ici car géré par updateProgress
         risques: chantier.risques,
         epi: chantier.epi,
@@ -127,7 +131,7 @@ export default function ChantierDetail() {
     const { data, error } = await supabase.from('chantier_tasks').insert([{ 
         chantier_id: id, 
         label: newTaskLabel, 
-        objectif_heures: parseInt(newTaskHours) || 0,
+        objectif_heures: parseInt(newTaskHours) || 0, 
         done: false 
     }]).select();
 
@@ -320,9 +324,25 @@ export default function ChantierDetail() {
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Fin</label>
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
+                            
+                            {/* --- AJOUT : EFFECTIF PRÉVU --- */}
+                            <div className="col-span-2">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Prévu (Pers.)</label>
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
+                                    <Users size={16} className="text-gray-400 mr-2"/>
+                                    <input 
+                                        type="number" 
+                                        value={chantier.effectif_prevu || ''} 
+                                        onChange={e => setChantier({...chantier, effectif_prevu: parseInt(e.target.value) || 0})} 
+                                        className="w-full bg-transparent p-3 font-bold outline-none"
+                                        placeholder="0"
+                                    />
+                                </div>
+                            </div>
+
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures (Total)</label>
-                                <div className="flex items-center bg-gray-50 rounded-xl px-2">
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
                                     <Clock size={16} className="text-gray-400 mr-2"/>
                                     <input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value)})} className="w-full bg-transparent p-3 font-bold outline-none" />
                                 </div>
