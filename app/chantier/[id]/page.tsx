@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -8,13 +7,13 @@ import {
   ArrowLeft, Save, FileText, UploadCloud, X, Eye, Trash2, 
   AlertTriangle, Shield, CheckSquare, Thermometer, Droplets, 
   Layers, Ruler, ClipboardCheck, FolderOpen,
-  Calendar, MonitorPlay
+  Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus
 } from 'lucide-react';
 import Link from 'next/link';
 
 // LISTES PRÉDÉFINIES
 const RISK_OPTIONS = ['Amiante', 'Plomb', 'Silice', 'ATEX', 'Hauteur'];
-const EPI_OPTIONS = ['Casque', 'Harnais', 'chaussures de sécurité', 'Combinaison', 'protections des voies respiratoires', 'Gants', 'protections pour les oreilles', 'Lunettes'];
+const EPI_OPTIONS = ['Casque', 'Harnais', 'Chaussures de sécurité', 'Combinaison', 'Protections respiratoires', 'Gants', 'Protections auditives', 'Lunettes'];
 const TYPE_CHANTIER_OPTIONS = ['Industriel', 'Parking', 'Ouvrage d\'art', 'Autre'];
 
 export default function ChantierDetail() {
@@ -29,11 +28,18 @@ export default function ChantierDetail() {
     risques: [], epi: [],
     mesures_obligatoires: false
   });
-  const [acqpaData, setAcqpaData] = useState<any>({});
+  const [acqpaData, setAcqpaData] = useState<any>({
+    couches: [{ type: '', lot: '', methode: '', dilution: '' }] // Initialisation pour le multi-couches
+  });
   
-  // États secondaires pour l'UI
+  // DONNÉES LISTES
+  const [tasks, setTasks] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  
+  // UI STATES
   const [uploading, setUploading] = useState(false);
+  const [newTaskLabel, setNewTaskLabel] = useState("");
+  const [newTaskHours, setNewTaskHours] = useState("");
 
   // --- CHARGEMENT ---
   useEffect(() => { fetchChantierData(); }, [id]);
@@ -42,18 +48,34 @@ export default function ChantierDetail() {
     if (!id) return;
     setLoading(true);
 
+    // 1. Chantier & ACQPA
     const { data: c } = await supabase.from('chantiers').select('*').eq('id', id).single();
     if (c) {
-        // Initialisation des champs JSON s'ils sont null
         setChantier({
             ...c,
             risques: c.risques || [],
             epi: c.epi || [],
             mesures_acqpa: c.mesures_acqpa || {}
         });
-        setAcqpaData(c.mesures_acqpa || {});
+        
+        // Gestion de la compatibilité pour le multi-couches
+        const currentAcqpa = c.mesures_acqpa || {};
+        if (!currentAcqpa.couches) {
+            currentAcqpa.couches = [{ 
+                type: currentAcqpa.produit_type || '', 
+                lot: currentAcqpa.produit_lot || '',
+                methode: currentAcqpa.app_methode || '',
+                dilution: currentAcqpa.dilution || ''
+            }];
+        }
+        setAcqpaData(currentAcqpa);
     }
 
+    // 2. Tâches
+    const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+    if (t) setTasks(t);
+
+    // 3. Documents
     const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (d) setDocuments(d);
 
@@ -78,6 +100,52 @@ export default function ChantierDetail() {
     
     await supabase.from('chantiers').update(toSave).eq('id', id);
     alert('✅ Chantier sauvegardé avec succès !');
+  };
+
+  // --- GESTION TÂCHES (AJOUT / SUPPRESSION / MODIF) ---
+  const addTask = async () => {
+    if (!newTaskLabel) return;
+    await supabase.from('chantier_tasks').insert([{ 
+        chantier_id: id, 
+        label: newTaskLabel, 
+        objectif_heures: parseInt(newTaskHours) || 0,
+        done: false 
+    }]);
+    setNewTaskLabel("");
+    setNewTaskHours("");
+    fetchChantierData();
+  };
+
+  const toggleTask = async (task: any) => {
+    await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
+    fetchChantierData();
+  };
+
+  const deleteTask = async (taskId: string) => {
+    if(confirm('Supprimer cette tâche ?')) {
+        await supabase.from('chantier_tasks').delete().eq('id', taskId);
+        fetchChantierData();
+    }
+  };
+
+  // --- ACQPA : GESTION MULTI-COUCHES ---
+  const addCouche = () => {
+    setAcqpaData({
+        ...acqpaData,
+        couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }]
+    });
+  };
+
+  const removeCouche = (index: number) => {
+    const newCouches = [...acqpaData.couches];
+    newCouches.splice(index, 1);
+    setAcqpaData({ ...acqpaData, couches: newCouches });
+  };
+
+  const updateCouche = (index: number, field: string, value: string) => {
+    const newCouches = [...acqpaData.couches];
+    newCouches[index][field] = value;
+    setAcqpaData({ ...acqpaData, couches: newCouches });
   };
 
   // --- GESTION DES CHECKBOXES (RISQUES / EPI) ---
@@ -143,7 +211,7 @@ export default function ChantierDetail() {
         {/* --- NAVIGATION ONGLETS --- */}
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {[
-                { id: 'infos', label: 'Infos Générales', icon: FileText, color: 'bg-[#34495e]' },
+                { id: 'infos', label: 'Infos & Tâches', icon: FileText, color: 'bg-[#34495e]' },
                 { id: 'hse', label: 'Sécurité / EPI', icon: Shield, color: 'bg-[#e17055]' },
                 { id: 'acqpa', label: 'Mesures ACQPA', icon: ClipboardCheck, color: 'bg-[#0984e3]' },
                 { id: 'docs', label: 'Photos / Docs', icon: UploadCloud, color: 'bg-[#6c5ce7]' },
@@ -164,56 +232,56 @@ export default function ChantierDetail() {
 
         {/* ================= CONTENU ================= */}
 
-        {/* 1. INFOS GÉNÉRALES */}
+        {/* 1. INFOS GÉNÉRALES + TÂCHES */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
-                    <h3 className="font-black uppercase text-gray-700 mb-4">Identification</h3>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom du Chantier</label>
-                            <input value={chantier.nom || ''} onChange={e => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894]" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label>
-                            <input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Localisation</label>
-                            <input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable</label>
-                            <input value={chantier.responsable || ''} onChange={e => setChantier({...chantier, responsable: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type Chantier</label>
-                            <select value={chantier.type || 'Industriel'} onChange={e => setChantier({...chantier, type: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer">
-                                {TYPE_CHANTIER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
-                    <h3 className="font-black uppercase text-gray-700 mb-4">Planning & Paramètres</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Début</label>
-                            <input type="date" value={chantier.date_debut || ''} onChange={e => setChantier({...chantier, date_debut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Fin (Prévue)</label>
-                            <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
-                        </div>
-                    </div>
-
-                    <div className="mt-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                        <div className="flex items-center justify-between">
+                
+                {/* BLOC GAUCHE : INFOS CHANTIER */}
+                <div className="space-y-6">
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
+                        <h3 className="font-black uppercase text-gray-700 mb-4">Identification</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom du Chantier</label>
+                                <input value={chantier.nom || ''} onChange={e => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894]" />
+                            </div>
                             <div>
-                                <h4 className="font-black text-[#0984e3] uppercase">Mesures ACQPA Obligatoires</h4>
-                                <p className="text-xs text-blue-400 font-bold">Activer le formulaire de relevé peinture</p>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label>
+                                <input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Localisation</label>
+                                <input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable</label>
+                                <input value={chantier.responsable || ''} onChange={e => setChantier({...chantier, responsable: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type Chantier</label>
+                                <select value={chantier.type || 'Industriel'} onChange={e => setChantier({...chantier, type: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer">
+                                    {TYPE_CHANTIER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
+                        <h3 className="font-black uppercase text-gray-700 mb-4">Planning & Options</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Début</label>
+                                <input type="date" value={chantier.date_debut || ''} onChange={e => setChantier({...chantier, date_debut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Fin</label>
+                                <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                            </div>
+                        </div>
+                        <div className="mt-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center justify-between">
+                            <div>
+                                <h4 className="font-black text-[#0984e3] uppercase">Mesures ACQPA</h4>
+                                <p className="text-xs text-blue-400 font-bold">Activer le module qualité</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" checked={chantier.mesures_obligatoires || false} onChange={e => setChantier({...chantier, mesures_obligatoires: e.target.checked})} className="sr-only peer" />
@@ -221,10 +289,69 @@ export default function ChantierDetail() {
                             </label>
                         </div>
                         {chantier.mesures_obligatoires && (
-                            <button onClick={() => { setActiveTab('acqpa'); setShowACQPAModal(true); }} className="mt-3 w-full bg-[#0984e3] text-white py-2 rounded-xl font-bold text-sm uppercase shadow-md hover:bg-blue-600 transition-colors">
-                                Ouvrir le formulaire de mesures
+                            <button onClick={() => { setActiveTab('acqpa'); setShowACQPAModal(true); }} className="w-full bg-[#0984e3] text-white py-3 rounded-xl font-bold text-sm uppercase shadow-md hover:bg-blue-600 transition-colors">
+                                Ouvrir le formulaire
                             </button>
                         )}
+                    </div>
+                </div>
+
+                {/* BLOC DROITE : TÂCHES */}
+                <div className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col h-full min-h-[500px]">
+                    <div className="relative z-10 flex flex-col h-full">
+                        <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2">
+                            <div className="bg-[#ff9f43] p-2 rounded-full text-white shadow-lg"><CheckCircle2 size={20}/></div>
+                            Tâches & Objectifs
+                        </h3>
+                        
+                        {/* Input Ajout */}
+                        <div className="flex gap-2 mb-4">
+                            <input 
+                                placeholder="Nouvelle tâche..." 
+                                value={newTaskLabel}
+                                onChange={(e) => setNewTaskLabel(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                                className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20"
+                            />
+                            <input 
+                                type="number" placeholder="H" value={newTaskHours}
+                                onChange={(e) => setNewTaskHours(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                                className="w-20 bg-white/10 rounded-xl p-3 text-sm font-bold text-white text-center placeholder-white/40 outline-none border border-white/5"
+                            />
+                            <button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] shadow-lg">
+                                <Plus size={20}/>
+                            </button>
+                        </div>
+
+                        {/* Liste des tâches */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                            {tasks.length === 0 ? (
+                                <div className="text-center py-10 opacity-30">
+                                    <CheckCircle2 size={40} className="mx-auto mb-2"/>
+                                    <p className="text-sm font-bold">Aucune tâche</p>
+                                </div>
+                            ) : (
+                                tasks.map((t) => (
+                                    <div key={t.id} className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-colors group">
+                                        <div className="flex items-center gap-3 flex-1 cursor-pointer select-none" onClick={() => toggleTask(t)}>
+                                            {t.done ? <CheckCircle2 size={20} className="text-[#00b894] shrink-0" /> : <Circle size={20} className="text-[#ff9f43] shrink-0" />}
+                                            <span className={`text-sm font-bold ${t.done ? 'line-through opacity-40' : 'text-white'}`}>{t.label}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {t.objectif_heures > 0 && (
+                                                <span className="text-[10px] bg-[#0984e3] px-2 py-1 rounded text-white font-bold flex items-center gap-1">
+                                                    <Clock size={10} /> {t.objectif_heures}h
+                                                </span>
+                                            )}
+                                            <button onClick={() => deleteTask(t.id)} className="text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -245,7 +372,6 @@ export default function ChantierDetail() {
                                 <span className="font-bold text-sm uppercase">{risk}</span>
                             </label>
                         ))}
-                        <input placeholder="Autre risque (préciser)..." className="w-full bg-white/20 p-3 rounded-xl placeholder-white/60 text-white font-bold text-sm outline-none border border-white/10 focus:bg-white/30" />
                     </div>
                     <AlertTriangle size={150} className="absolute -right-5 -bottom-5 text-orange-900 opacity-10 rotate-12 pointer-events-none" />
                 </div>
@@ -259,17 +385,16 @@ export default function ChantierDetail() {
                                 <div onClick={() => toggleArrayItem('epi', epi)} className={`w-5 h-5 rounded flex items-center justify-center border-2 border-white ${chantier.epi?.includes(epi) ? 'bg-white' : 'bg-transparent'}`}>
                                     {chantier.epi?.includes(epi) && <CheckSquare size={14} className="text-[#00b894]" />}
                                 </div>
-                                <span className="font-bold text-sm uppercase">{epi}</span>
+                                <span className="font-bold text-[11px] uppercase leading-tight">{epi}</span>
                             </label>
                         ))}
-                         <input placeholder="Autre EPI..." className="col-span-2 w-full bg-white/20 p-3 rounded-xl placeholder-white/60 text-white font-bold text-sm outline-none border border-white/10 focus:bg-white/30" />
                     </div>
                     <Shield size={150} className="absolute -right-5 -bottom-5 text-emerald-900 opacity-10 rotate-12 pointer-events-none" />
                 </div>
             </div>
         )}
 
-        {/* 3. ACQPA (LE GROS MORCEAU) */}
+        {/* 3. ACQPA */}
         {activeTab === 'acqpa' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 {!chantier.mesures_obligatoires ? (
@@ -277,9 +402,6 @@ export default function ChantierDetail() {
                         <ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" />
                         <h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3>
                         <p className="text-gray-400 font-bold mb-4">Veuillez activer "Mesures ACQPA Obligatoires" dans l'onglet Infos.</p>
-                        <button onClick={() => { setChantier({...chantier, mesures_obligatoires: true}); setShowACQPAModal(true); }} className="bg-[#0984e3] text-white px-6 py-3 rounded-xl font-bold uppercase shadow-lg hover:bg-blue-600 transition-colors">
-                            Activer le module
-                        </button>
                     </div>
                 ) : (
                     <div className="space-y-6">
@@ -289,28 +411,28 @@ export default function ChantierDetail() {
                                 <p className="text-blue-200 font-bold text-sm">Suivi qualité et conformité application</p>
                             </div>
                             <button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">
-                                Ouvrir / Modifier Relevés
+                                Ouvrir / Modifier
                             </button>
                             <ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" />
                         </div>
                         
-                        {/* Aperçu rapide des données saisies (Read-Only) */}
+                        {/* Aperçu rapide */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">Température Air</p>
-                                <p className="text-xl font-black text-gray-800">{acqpaData.temp_air || '--'} °C</p>
-                            </div>
                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p>
                                 <p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p>
                             </div>
                              <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">DFT Mesuré</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p>
                                 <p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p>
                             </div>
                              <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p>
                                 <p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p>
+                            </div>
+                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p>
+                                <p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p>
                             </div>
                         </div>
                     </div>
@@ -318,13 +440,12 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* 4. DOCUMENTS / PHOTOS */}
+        {/* 4. DOCUMENTS */}
         {activeTab === 'docs' && (
              <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-[#6c5ce7] p-8 rounded-[30px] text-white shadow-xl flex flex-col items-center justify-center text-center border-4 border-dashed border-white/20 relative overflow-hidden group mb-6 hover:bg-[#5f27cd] cursor-pointer transition-colors">
                     <UploadCloud size={40} className="mb-2" />
                     <p className="font-black uppercase text-xl">Ajouter Photos / Docs</p>
-                    <p className="text-sm font-bold text-indigo-100 mt-1">PDF, JPG, PNG acceptés</p>
                     <input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 </div>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -334,7 +455,7 @@ export default function ChantierDetail() {
                                 {doc.type === 'image' ? <img src={doc.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform"/> : <FileText size={40} className="text-gray-300"/>}
                             </div>
                             <div className="flex justify-between items-center px-2">
-                                <p className="text-xs font-bold text-gray-600 truncate w-24">{doc.nom}</p>
+                                <p className="text-xs font-bold text-gray-600 truncate w-20">{doc.nom}</p>
                                 <div className="flex gap-2">
                                     <a href={doc.url} target="_blank" className="text-gray-400 hover:text-blue-500"><Eye size={16}/></a>
                                     <button onClick={() => deleteDocument(doc.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button>
@@ -346,7 +467,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* 5. PLACEHOLDERS POUR LES AUTRES ONGLETS */}
+        {/* 5. PLACEHOLDERS */}
         {(['classeur', 'planning', 'presentation'].includes(activeTab)) && (
             <div className="bg-white rounded-[30px] p-20 text-center border border-gray-100 shadow-sm animate-in fade-in">
                 <FolderOpen size={60} className="mx-auto text-gray-200 mb-4" />
@@ -361,6 +482,7 @@ export default function ChantierDetail() {
       {showACQPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+                
                 {/* Header Modal */}
                 <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0">
                     <div>
@@ -410,8 +532,8 @@ export default function ChantierDetail() {
                             {[
                                 {label: 'Degré de Soin', key: 'degre_soin', placeholder: 'ex: Sa 2.5'},
                                 {label: 'Propreté', key: 'proprete', placeholder: 'ex: OK'},
-                                {label: 'Rugosité (µm)', key: 'rugosite', type: 'number'},
-                                {label: 'Sels Solubles', key: 'sels', placeholder: 'mg/m²'}
+                                {label: 'Rugosité (µm)', key: 'rugosite', type: 'number'}, // µm ajouté
+                                {label: 'Sels Solubles (µg/cm²)', key: 'sels', placeholder: 'µg/cm²'} // Unité corrigée
                             ].map(f => (
                                 <div key={f.key}>
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.label}</label>
@@ -427,30 +549,49 @@ export default function ChantierDetail() {
                         </div>
                     </section>
 
-                    {/* SECTION 3 : PRODUITS */}
+                    {/* SECTION 3 : PRODUITS (DYNAMIQUE) */}
                     <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
-                            <Droplets className="text-[#0984e3]"/> Produits & Application
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Type Peinture</label>
-                                <input className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3]" value={acqpaData.produit_type || ''} onChange={e => setAcqpaData({...acqpaData, produit_type: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Numéro Lot</label>
-                                <input className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3]" value={acqpaData.produit_lot || ''} onChange={e => setAcqpaData({...acqpaData, produit_lot: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Méthode</label>
-                                <input placeholder="ex: Airless" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3]" value={acqpaData.app_methode || ''} onChange={e => setAcqpaData({...acqpaData, app_methode: e.target.value})} />
-                            </div>
-                             <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Dilution (%)</label>
-                                <input type="number" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3]" value={acqpaData.dilution || ''} onChange={e => setAcqpaData({...acqpaData, dilution: e.target.value})} />
-                            </div>
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+                            <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg">
+                                <Droplets className="text-[#0984e3]"/> Produits & Couches
+                            </h3>
+                            <button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors">
+                                <Plus size={14} /> Ajouter une couche
+                            </button>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        
+                        <div className="space-y-4">
+                            {acqpaData.couches && acqpaData.couches.map((couche: any, index: number) => (
+                                <div key={index} className="bg-gray-50 p-4 rounded-xl relative group">
+                                    <div className="absolute -top-3 left-3 bg-[#0984e3] text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                                        Couche {index + 1}
+                                    </div>
+                                    <button onClick={() => removeCouche(index)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Trash2 size={16} />
+                                    </button>
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Type Peinture</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.type} onChange={e => updateCouche(index, 'type', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Numéro Lot</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.lot} onChange={e => updateCouche(index, 'lot', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Méthode</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" placeholder="ex: Airless" value={couche.methode} onChange={e => updateCouche(index, 'methode', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Dilution (%)</label>
+                                            <input type="number" className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.dilution} onChange={e => updateCouche(index, 'dilution', e.target.value)} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
                             <div className="col-span-2 md:col-span-1">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Date Appli</label>
                                 <input type="date" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_date || ''} onChange={e => setAcqpaData({...acqpaData, app_date: e.target.value})} />
@@ -460,12 +601,8 @@ export default function ChantierDetail() {
                                 <input className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_nom || ''} onChange={e => setAcqpaData({...acqpaData, app_nom: e.target.value})} />
                             </div>
                              <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label>
                                 <input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} />
-                            </div>
-                             <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Nb Couches</label>
-                                <input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.nb_couches || ''} onChange={e => setAcqpaData({...acqpaData, nb_couches: e.target.value})} />
                             </div>
                         </div>
                     </section>
@@ -477,8 +614,8 @@ export default function ChantierDetail() {
                         </h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                             {[
-                                {label: 'Ép. Humide (µm)', key: 'ep_humide'},
-                                {label: 'Ép. Sèche (µm)', key: 'dft_mesure'},
+                                {label: 'Ép. Humide (µm)', key: 'ep_humide'}, // µm
+                                {label: 'Ép. Sèche (µm)', key: 'dft_mesure'}, // µm
                                 {label: 'Adhérence (MPa)', key: 'adherence'},
                                 {label: 'Défauts', key: 'defauts', type: 'text'},
                                 {label: 'Retouches ?', key: 'retouches', type: 'text'}
