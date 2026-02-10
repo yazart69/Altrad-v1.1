@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Nécessaire pour la redirection
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Plus, MapPin, ArrowUpRight, Activity, Loader2 } from 'lucide-react';
 
@@ -10,9 +10,9 @@ export default function BudgetHeuresTile() {
   const router = useRouter();
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false); // État pour le bouton +
+  const [creating, setCreating] = useState(false);
 
-  // Récupération des données
+  // Function to load data
   const fetchChantiers = async () => {
     const { data } = await supabase
       .from('chantiers')
@@ -24,15 +24,29 @@ export default function BudgetHeuresTile() {
   };
 
   useEffect(() => {
+    // Initial fetch
     fetchChantiers();
-    
-    // RAFFRAICHISSEMENT AUTOMATIQUE (Toutes les 5 secondes)
-    // Cela permet de voir la barre avancer si on modifie les tâches dans un autre onglet
-    const interval = setInterval(fetchChantiers, 5000);
-    return () => clearInterval(interval);
+
+    // --- REALTIME SUBSCRIPTION ---
+    // Listen for ANY changes (INSERT, UPDATE, DELETE) on the 'chantiers' table
+    const channel = supabase
+      .channel('realtime_budget_tile')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'chantiers' },
+        (payload) => {
+          // console.log('Change received!', payload); // For debugging
+          fetchChantiers(); // Refresh list immediately
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // --- LOGIQUE DE CRÉATION RAPIDE (Identique à la page Liste) ---
   const handleCreate = async () => {
     setCreating(true);
     const { data, error } = await supabase
@@ -47,7 +61,7 @@ export default function BudgetHeuresTile() {
       .single();
 
     if (data) {
-      router.push(`/chantier/${data.id}`); // Redirection immédiate
+      router.push(`/chantier/${data.id}`);
     } else {
       alert("Erreur création : " + error?.message);
       setCreating(false);
@@ -57,7 +71,7 @@ export default function BudgetHeuresTile() {
   return (
     <div className="h-full w-full bg-[#00b894] rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.01] transition-transform duration-300">
       
-      {/* En-tête de la tuile */}
+      {/* HEADER */}
       <div className="flex justify-between items-center mb-6 z-10">
         <Link href="/chantiers" className="group/title flex items-center gap-2">
           <div>
@@ -71,7 +85,6 @@ export default function BudgetHeuresTile() {
           </div>
         </Link>
         
-        {/* BOUTON CRÉATION RAPIDE (CORRIGÉ) */}
         <button 
           onClick={handleCreate}
           disabled={creating}
@@ -81,7 +94,7 @@ export default function BudgetHeuresTile() {
         </button>
       </div>
 
-      {/* Liste scrollable */}
+      {/* SCROLLABLE LIST */}
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3 z-10">
         {loading ? (
           <div className="space-y-3">
@@ -95,17 +108,16 @@ export default function BudgetHeuresTile() {
           </div>
         ) : (
           chantiers.map((chantier) => {
-            // Calcul du ratio d'avancement
-            // Utilise 'heures_consommees' qui est maintenant mis à jour automatiquement par les tâches
+            // Calculate progress ratio
             const ratio = chantier.heures_budget > 0 
               ? (chantier.heures_consommees / chantier.heures_budget) 
               : 0;
             const percentage = Math.min(100, Math.round(ratio * 100));
 
-            // Couleurs de barre
+            // Determine Bar Color
             let barColor = "bg-white"; 
-            if (percentage >= 100) barColor = "bg-[#d63031]"; // Rouge
-            else if (percentage > 85) barColor = "bg-[#ff9f43]"; // Orange
+            if (percentage >= 100) barColor = "bg-[#d63031]"; // Red (Over budget)
+            else if (percentage > 85) barColor = "bg-[#ff9f43]"; // Orange (Warning)
 
             return (
               <Link 
@@ -137,7 +149,7 @@ export default function BudgetHeuresTile() {
                   </div>
                 </div>
 
-                {/* Barre d'avancement graphique */}
+                {/* Progress Bar */}
                 <div className="relative pt-2">
                   <div className="flex mb-1 items-center justify-between">
                     <div className="w-full bg-black/10 rounded-full h-2.5 overflow-hidden">
@@ -155,7 +167,7 @@ export default function BudgetHeuresTile() {
         )}
       </div>
 
-       {/* Décoration d'arrière-plan */}
+       {/* Background Decoration */}
        <Activity size={180} className="absolute -right-8 -bottom-10 opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-700 pointer-events-none text-emerald-900" />
     </div>
   );
