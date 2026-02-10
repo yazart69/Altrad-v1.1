@@ -8,7 +8,7 @@ import {
   AlertTriangle, Shield, CheckSquare, Thermometer, Droplets, 
   Layers, Ruler, ClipboardCheck, FolderOpen,
   Calendar, MonitorPlay, CheckCircle2, Circle, Clock, Plus, Minus,
-  Users // <-- J'ai ajouté l'icône Users ici
+  Users // Ajout de l'icône
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,7 +27,7 @@ export default function ChantierDetail() {
   const [chantier, setChantier] = useState<any>({
     nom: '', client: '', adresse: '', responsable: '', date_debut: '', date_fin: '', type: 'Industriel',
     heures_budget: 0, heures_consommees: 0, 
-    effectif_prevu: 0, // <-- AJOUT DU CHAMP ICI (State)
+    effectif_prevu: 0, // AJOUT DU CHAMP DANS LE STATE
     risques: [], epi: [],
     mesures_obligatoires: false
   });
@@ -56,7 +56,7 @@ export default function ChantierDetail() {
     if (c) {
         setChantier({
             ...c,
-            effectif_prevu: c.effectif_prevu || 0, // <-- CHARGEMENT DE LA VALEUR
+            effectif_prevu: c.effectif_prevu || 0, // CHARGEMENT DE LA VALEUR
             risques: c.risques || [],
             epi: c.epi || [],
             mesures_acqpa: c.mesures_acqpa || {}
@@ -111,8 +111,7 @@ export default function ChantierDetail() {
         date_fin: chantier.date_fin,
         type: chantier.type,
         heures_budget: chantier.heures_budget,
-        effectif_prevu: chantier.effectif_prevu, // <-- SAUVEGARDE EN BASE
-        // heures_consommees n'est pas sauvegardé ici car géré par updateProgress
+        effectif_prevu: chantier.effectif_prevu, // SAUVEGARDE EN BASE
         risques: chantier.risques,
         epi: chantier.epi,
         mesures_obligatoires: chantier.mesures_obligatoires,
@@ -325,7 +324,7 @@ export default function ChantierDetail() {
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
                             
-                            {/* --- AJOUT : EFFECTIF PRÉVU --- */}
+                            {/* --- AJOUT DU CHAMP : EFFECTIF PRÉVU --- */}
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Prévu (Pers.)</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
@@ -339,6 +338,7 @@ export default function ChantierDetail() {
                                     />
                                 </div>
                             </div>
+                            {/* -------------------------------------- */}
 
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures (Total)</label>
