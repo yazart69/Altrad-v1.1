@@ -1,377 +1,447 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ShieldCheck, AlertTriangle, FileText, HardHat, 
   ClipboardCheck, Siren, Users, CalendarRange, 
-  Search, Plus, Printer, QrCode, FileInput, Download,
-  CheckCircle2, XCircle, Clock
+  Search, Plus, Printer, QrCode, Download,
+  CheckCircle2, XCircle, Clock, MapPin, Construction,
+  Filter, FileCheck, ArrowRight
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie 
 } from 'recharts';
 
-export default function HSEPage() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+// --- TYPES ---
+type ViewMode = 'dashboard' | 'documents' | 'causeries' | 'accidents' | 'staff' | 'materiel' | 'actions' | 'badges';
+
+export default function HSEPlatform() {
+  const [view, setView] = useState<ViewMode>('dashboard');
   const [loading, setLoading] = useState(true);
   
-  // Données
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]); // Causeries, Accidents
-  const [controles, setControles] = useState<any[]>([]);
+  // --- STATE DONNÉES ---
+  const [chantiers, setChantiers] = useState<any[]>([]);
+  const [selectedChantier, setSelectedChantier] = useState<string | null>(null); // NULL = GLOBAL
+  
+  const [docs, setDocs] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [equipements, setEquipements] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
-  const [stats, setStats] = useState({ 
-    accidents: 0, 
-    vgpRetard: 0, 
-    habilitationsExpirees: 0,
-    causeriesMois: 0
-  });
 
-  // --- CHARGEMENT ---
+  // --- INIT & SYNC ---
   useEffect(() => {
-    fetchData();
+    fetchGlobalData();
   }, []);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    fetchOperationalData();
+  }, [selectedChantier]); // Re-fetch quand on change de chantier
+
+  const fetchGlobalData = async () => {
+    const { data } = await supabase.from('chantiers').select('id, nom, adresse').eq('statut', 'en_cours');
+    if (data) setChantiers(data);
+  };
+
+  const fetchOperationalData = async () => {
     setLoading(true);
     
-    // 1. Documents (Global + Chantier)
-    const { data: docs } = await supabase.from('hse_documents').select('*, chantiers(nom)').order('created_at', { ascending: false });
+    // Construction des requêtes de base
+    let qDocs = supabase.from('hse_documents').select('*, chantiers(nom)');
+    let qEvents = supabase.from('hse_events').select('*, chantiers(nom)');
+    let qEquip = supabase.from('hse_equipements').select('*, chantiers(nom)');
+    let qStaff = supabase.from('employes').select('*'); // Staff est global par défaut, mais on peut filtrer par affectation si besoin
+
+    // Filtrage CHANTIER si sélectionné
+    if (selectedChantier) {
+      qDocs = qDocs.or(`chantier_id.eq.${selectedChantier},chantier_id.is.null`); // Voir Global + Chantier
+      qEvents = qEvents.eq('chantier_id', selectedChantier);
+      qEquip = qEquip.eq('chantier_id', selectedChantier);
+    }
+
+    const [rDocs, rEvents, rEquip, rStaff] = await Promise.all([qDocs, qEvents, qEquip, qStaff]);
+
+    if (rDocs.data) setDocs(rDocs.data);
+    if (rEvents.data) setEvents(rEvents.data);
+    if (rEquip.data) setEquipements(rEquip.data);
+    if (rStaff.data) setStaff(rStaff.data);
     
-    // 2. Événements (Causeries, Accidents)
-    const { data: evts } = await supabase.from('hse_events').select('*, chantiers(nom)').order('date_event', { ascending: false });
-    
-    // 3. Contrôles Matériel
-    const { data: ctrls } = await supabase.from('hse_materiel_controles').select('*, chantiers(nom)');
-    
-    // 4. Staff & Habilitations
-    const { data: empl } = await supabase.from('employes').select('*');
-
-    if (docs) setDocuments(docs);
-    if (evts) setEvents(evts);
-    if (ctrls) setControles(ctrls);
-    if (empl) setStaff(empl);
-
-    // Calcul Stats
-    const now = new Date();
-    const vgpRetard = ctrls?.filter(c => new Date(c.date_prochaine_verif) < now).length || 0;
-    const accidents = evts?.filter(e => e.type === 'accident').length || 0;
-    // Logique simplifiée pour habilitations (exemple sur SST)
-    const habExp = empl?.filter(e => e.sst_date && new Date(e.sst_date) < now).length || 0;
-
-    setStats({
-      accidents,
-      vgpRetard,
-      habilitationsExpirees: habExp,
-      causeriesMois: evts?.filter(e => e.type === 'causerie').length || 0
-    });
-
     setLoading(false);
   };
 
-  // --- ACTIONS SIMULÉES ---
-  const handleGeneratePPSPS = () => {
-    const nomChantier = prompt("Nom du chantier pour ce PPSPS ?");
-    if(!nomChantier) return;
-    alert(`🤖 GÉNÉRATEUR INTELLIGENT\n\nCréation du PPSPS pour : ${nomChantier}...\n\n1. Analyse des risques : OK\n2. Récupération adresse : OK\n3. Import effectifs : OK\n\n📄 Document généré !`);
+  // --- GENERATEURS (Logique Opérationnelle) ---
+  const generatePPSPS = () => {
+    if (!selectedChantier) {
+      alert("⚠️ SÉCURITÉ : Veuillez sélectionner un chantier pour générer son PPSPS spécifique.");
+      return;
+    }
+    const chantier = chantiers.find(c => c.id === selectedChantier);
+    const w = window.open('', '_blank');
+    w?.document.write(`
+      <html><head><title>PPSPS - ${chantier.nom}</title></head>
+      <body style="font-family: sans-serif; padding: 40px;">
+        <h1 style="color: #2d3436;">PPSPS SIMPLIFIÉ</h1>
+        <h2>Chantier : ${chantier.nom}</h2>
+        <p>Adresse : ${chantier.adresse}</p>
+        <hr/>
+        <h3>1. Description des travaux</h3>
+        <p>Travaux de construction / rénovation standard...</p>
+        <h3>2. Analyse des Risques</h3>
+        <ul>
+          <li>Chutes de hauteur : Protection collective prioritaire.</li>
+          <li>Électricité : Armoires fermées à clé.</li>
+          <li>Coactivité : Planning de charge mis à jour hebdo.</li>
+        </ul>
+        <h3>3. Urgences</h3>
+        <p>Pompiers : 18 | SAMU : 15 | Responsable HSE : 06...</p>
+        <br/><br/>
+        <p><i>Document généré automatiquement par Altrad.OS le ${new Date().toLocaleDateString()}</i></p>
+        <script>window.print();</script>
+      </body></html>
+    `);
   };
 
-  // --- COMPOSANTS UI ---
-  
-  // Onglet Dashboard
-  const DashboardView = () => (
+  const generateBadge = (employe: any) => {
+    if (!selectedChantier) {
+        alert("Pour créer un badge d'accès, choisissez un chantier.");
+        return;
+    }
+    const chantier = chantiers.find(c => c.id === selectedChantier);
+    const w = window.open('', '_blank');
+    // Simulation QR Code via API externe pour l'exemple opérationnel sans lib lourde
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${employe.id}-${selectedChantier}`;
+    
+    w?.document.write(`
+      <html><body style="font-family: sans-serif; text-align: center; padding: 20px;">
+        <div style="border: 2px solid black; border-radius: 10px; padding: 20px; width: 300px; margin: auto;">
+          <h2 style="margin: 0; color: #e74c3c;">ACCÈS CHANTIER</h2>
+          <h3 style="margin: 10px 0;">${chantier.nom}</h3>
+          <hr/>
+          <h1 style="margin: 20px 0;">${employe.prenom} ${employe.nom}</h1>
+          <p>${employe.role || 'Compagnon'}</p>
+          <img src="${qrUrl}" alt="QR Code" />
+          <p style="font-size: 10px;">Valide pour la durée du chantier</p>
+        </div>
+        <script>window.print();</script>
+      </body></html>
+    `);
+  };
+
+  // --- UTILS DATE ---
+  const checkDate = (dateStr: string) => {
+    if (!dateStr) return { status: 'none', label: '-' };
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffTime = d.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { status: 'expired', label: 'Expiré', color: 'bg-red-100 text-red-600' };
+    if (diffDays < 30) return { status: 'warning', label: `${diffDays}j`, color: 'bg-orange-100 text-orange-600' };
+    return { status: 'ok', label: 'OK', color: 'bg-emerald-100 text-emerald-600' };
+  };
+
+  // --- STATS CALCUL ---
+  const stats = {
+    accidents: events.filter(e => e.type === 'accident').length,
+    causeries: events.filter(e => e.type === 'causerie').length,
+    vgpRetard: equipements.filter(e => checkDate(e.date_prochaine_verif).status === 'expired').length,
+    habExp: staff.filter(s => checkDate(s.sst_date).status === 'expired' || checkDate(s.caces_date).status === 'expired').length
+  };
+
+  // --- VUES COMPOSANTS ---
+
+  const Dashboard = () => (
     <div className="space-y-6 animate-in fade-in">
-      {/* Tuiles Alertes */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-           <div>
-             <p className="text-xs font-bold text-gray-400 uppercase">Accidents (Année)</p>
-             <p className={`text-3xl font-black ${stats.accidents > 0 ? 'text-red-500' : 'text-emerald-500'}`}>{stats.accidents}</p>
-           </div>
-           <div className="bg-red-50 p-3 rounded-xl text-red-500"><Siren size={24}/></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-           <div>
-             <p className="text-xs font-bold text-gray-400 uppercase">VGP à faire</p>
-             <p className={`text-3xl font-black ${stats.vgpRetard > 0 ? 'text-orange-500' : 'text-gray-800'}`}>{stats.vgpRetard}</p>
-           </div>
-           <div className="bg-orange-50 p-3 rounded-xl text-orange-500"><ClipboardCheck size={24}/></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-           <div>
-             <p className="text-xs font-bold text-gray-400 uppercase">Habilitations Exp.</p>
-             <p className="text-3xl font-black text-blue-500">{stats.habilitationsExpirees}</p>
-           </div>
-           <div className="bg-blue-50 p-3 rounded-xl text-blue-500"><Users size={24}/></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-           <div>
-             <p className="text-xs font-bold text-gray-400 uppercase">Causeries (Mois)</p>
-             <p className="text-3xl font-black text-emerald-500">{stats.causeriesMois}</p>
-           </div>
-           <div className="bg-emerald-50 p-3 rounded-xl text-emerald-500"><ShieldCheck size={24}/></div>
-        </div>
+        <Tile label="Accidents (Année)" val={stats.accidents} icon={Siren} color={stats.accidents > 0 ? "red" : "emerald"} />
+        <Tile label="VGP Retard" val={stats.vgpRetard} icon={ClipboardCheck} color={stats.vgpRetard > 0 ? "red" : "gray"} />
+        <Tile label="Habilitations Exp." val={stats.habExp} icon={Users} color={stats.habExp > 0 ? "orange" : "blue"} />
+        <Tile label="Causeries Réalisées" val={stats.causeries} icon={ShieldCheck} color="blue" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Graphique Accidents */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-[300px]">
-          <h3 className="font-black text-gray-800 mb-4 uppercase text-sm">Répartition Événements</h3>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-[320px]">
+          <h3 className="font-black text-gray-800 mb-4 text-sm uppercase">Répartition Événements</h3>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={[
-              {name: 'Causeries', val: events.filter(e => e.type === 'causerie').length},
               {name: 'Accidents', val: events.filter(e => e.type === 'accident').length},
               {name: 'Presqu\'acc.', val: events.filter(e => e.type === 'presqu_accident').length},
+              {name: 'Causeries', val: events.filter(e => e.type === 'causerie').length},
               {name: 'Visites', val: events.filter(e => e.type === 'visite').length},
             ]}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f2f6"/>
-              <XAxis dataKey="name" tick={{fontSize: 12}} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{fill: '#f8f9fa'}}/>
-              <Bar dataKey="val" fill="#0984e3" radius={[4, 4, 0, 0]} barSize={40} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{fontSize:10}} axisLine={false} tickLine={false}/>
+              <Tooltip />
+              <Bar dataKey="val" fill="#0984e3" radius={[4,4,0,0]} barSize={40} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Dernières Actions */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <h3 className="font-black text-gray-800 mb-4 uppercase text-sm">Fil d'actualité Sécurité</h3>
-          <div className="space-y-4">
-            {events.slice(0, 4).map(evt => (
-              <div key={evt.id} className="flex items-start gap-3 border-b border-gray-50 pb-3 last:border-0">
-                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${evt.type === 'accident' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
-                <div>
-                  <p className="text-sm font-bold text-gray-800">{evt.titre || evt.type}</p>
-                  <p className="text-xs text-gray-400">{new Date(evt.date_event).toLocaleDateString()} • {evt.chantiers?.nom || 'Global'}</p>
-                </div>
-              </div>
-            ))}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-black text-gray-800 text-sm uppercase">Accès Rapide</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <ActionButton icon={FileText} label="Générer PPSPS" onClick={generatePPSPS} />
+            <ActionButton icon={Siren} label="Déclarer Accident" onClick={() => setView('accidents')} />
+            <ActionButton icon={Users} label="Créer Badge" onClick={() => setView('badges')} />
+            <ActionButton icon={ShieldCheck} label="Nouvelle Causerie" onClick={() => setView('causeries')} />
+          </div>
+          <div className="mt-6 pt-6 border-t border-gray-100">
+             <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Dernières Alertes</h4>
+             {events.slice(0,2).map(e => (
+               <div key={e.id} className="flex items-center gap-3 mb-2">
+                 <div className={`w-2 h-2 rounded-full ${e.type==='accident'?'bg-red-500':'bg-blue-500'}`}></div>
+                 <div className="flex-1">
+                   <p className="text-xs font-bold">{e.type} - {e.titre || 'Sans titre'}</p>
+                   <p className="text-[10px] text-gray-400">{new Date(e.date_event).toLocaleDateString()} - {e.chantiers?.nom}</p>
+                 </div>
+               </div>
+             ))}
           </div>
         </div>
       </div>
     </div>
   );
 
-  // Onglet Documents (Le cœur du système)
-  const DocumentsView = () => (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="flex justify-between items-center bg-blue-900 text-white p-6 rounded-2xl shadow-lg">
-        <div>
-          <h2 className="text-2xl font-black uppercase">Documents & Générateurs</h2>
-          <p className="text-blue-200 text-sm mt-1">Base documentaire synchronisée</p>
+  const DocumentsList = () => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 className="font-black text-sm uppercase">Bibliothèque Documentaire</h3>
+            <button onClick={generatePPSPS} className="bg-black text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-2">
+                <FileText size={14}/> Générer PPSPS
+            </button>
         </div>
-        <div className="flex gap-3">
-          <button onClick={handleGeneratePPSPS} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase flex items-center gap-2 shadow-lg transition-all">
-            <Settings size={16} className="animate-spin-slow"/> Générer PPSPS
-          </button>
-          <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase flex items-center gap-2 transition-all">
-            <Plus size={16}/> Upload
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Document</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Type</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Chantier</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Validité</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {documents.map(doc => (
-              <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
-                <td className="p-4 font-bold text-gray-800 flex items-center gap-3">
-                  <div className="bg-gray-100 p-2 rounded text-gray-500"><FileText size={16}/></div>
-                  {doc.nom}
-                </td>
-                <td className="p-4"><span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-black uppercase">{doc.type}</span></td>
-                <td className="p-4 text-xs font-bold text-gray-500">{doc.chantiers?.nom || '🏢 Global Entreprise'}</td>
-                <td className="p-4 text-xs font-bold text-gray-500">{doc.validite_date || 'Permanente'}</td>
-                <td className="p-4 text-right">
-                  <button className="text-gray-400 hover:text-blue-500"><Download size={18}/></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+            <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-400">
+                <tr>
+                    <th className="p-4">Nom</th>
+                    <th className="p-4">Type</th>
+                    <th className="p-4">Portée</th>
+                    <th className="p-4">Validité</th>
+                    <th className="p-4 text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody className="text-sm">
+                {docs.map(d => {
+                    const check = checkDate(d.validite_date);
+                    return (
+                        <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="p-4 font-bold">{d.nom}</td>
+                            <td className="p-4"><span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-black uppercase">{d.type}</span></td>
+                            <td className="p-4">
+                                {d.chantier_id 
+                                    ? <span className="flex items-center gap-1 text-xs font-bold text-gray-600"><MapPin size={12}/> {d.chantiers?.nom}</span>
+                                    : <span className="flex items-center gap-1 text-xs font-bold text-purple-600"><Filter size={12}/> Global</span>
+                                }
+                            </td>
+                            <td className="p-4"><span className={`px-2 py-1 rounded text-[10px] font-bold ${check.color}`}>{d.validite_date || 'Illimité'}</span></td>
+                            <td className="p-4 text-right"><Download size={16} className="ml-auto text-gray-400 cursor-pointer hover:text-black"/></td>
+                        </tr>
+                    )
+                })}
+            </tbody>
         </table>
-      </div>
     </div>
   );
 
-  // Onglet Habilitations (Matrice)
-  const StaffView = () => (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="font-black text-gray-800 uppercase">Suivi Habilitations & Formations</h3>
-          <button className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold uppercase">Ajouter Habilitation</button>
+  const StaffMatrix = () => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 className="font-black text-sm uppercase">Matrice Habilitations</h3>
+            {selectedChantier && <button onClick={() => setView('badges')} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-2"><QrCode size={14}/> Badges Chantier</button>}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="p-4 font-black text-xs text-gray-400 uppercase">Collaborateur</th>
-                <th className="p-4 font-black text-xs text-gray-400 uppercase text-center">SST</th>
-                <th className="p-4 font-black text-xs text-gray-400 uppercase text-center">Élec.</th>
-                <th className="p-4 font-black text-xs text-gray-400 uppercase text-center">CACES</th>
-                <th className="p-4 font-black text-xs text-gray-400 uppercase text-center">Trav. Hauteur</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {staff.map(emp => (
-                <tr key={emp.id} className="hover:bg-gray-50">
-                  <td className="p-4 font-bold text-sm">{emp.nom} {emp.prenom}</td>
-                  {/* Cellules avec code couleur automatique */}
-                  {['sst_date', 'elec_date', 'caces_date', 'travail_hauteur_date'].map(field => {
-                    const date = emp[field];
-                    const isValid = date && new Date(date) > new Date();
-                    const isSoon = date && new Date(date) < new Date(new Date().setMonth(new Date().getMonth() + 2)); // 2 mois
-                    
-                    let bg = "bg-gray-100"; let text = "text-gray-400"; let icon = "-";
-                    if(date) {
-                      if(!isValid) { bg="bg-red-100"; text="text-red-500"; icon="Expire"; }
-                      else if(isSoon) { bg="bg-orange-100"; text="text-orange-500"; icon="Bientôt"; }
-                      else { bg="bg-emerald-100"; text="text-emerald-500"; icon="OK"; }
-                    }
-
-                    return (
-                      <td key={field} className="p-4 text-center">
-                        <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[10px] font-black uppercase ${bg} ${text}`}>
-                          {icon}
-                        </div>
-                        {date && <div className="text-[8px] text-gray-400 mt-1">{date}</div>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <table className="w-full text-left">
+                <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-400">
+                    <tr>
+                        <th className="p-4">Collaborateur</th>
+                        <th className="p-4 text-center">SST</th>
+                        <th className="p-4 text-center">CACES</th>
+                        <th className="p-4 text-center">Élec</th>
+                        <th className="p-4 text-center">Hauteur</th>
+                        <th className="p-4 text-center">Badge</th>
+                    </tr>
+                </thead>
+                <tbody className="text-sm">
+                    {staff.map(s => (
+                        <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="p-4 font-bold">{s.nom} {s.prenom}</td>
+                            {['sst_date', 'caces_date', 'elec_date', 'travail_hauteur_date'].map(field => {
+                                const check = checkDate(s[field]);
+                                return (
+                                    <td key={field} className="p-4 text-center">
+                                        <div className={`inline-block px-2 py-1 rounded text-[10px] font-black uppercase ${check.color}`}>{check.label}</div>
+                                    </td>
+                                )
+                            })}
+                            <td className="p-4 text-center">
+                                <button onClick={() => generateBadge(s)} className="text-gray-400 hover:text-blue-600"><QrCode size={16}/></button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
-      </div>
     </div>
   );
 
-  // Onglet Contrôles (VGP)
-  const EquipmentView = () => (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <button className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between hover:border-blue-500 transition-all group">
-          <div className="text-left">
-            <h3 className="font-black text-gray-800 uppercase">EPI & Harnais</h3>
-            <p className="text-xs text-gray-400 mt-1">Registre des vérifications</p>
-          </div>
-          <HardHat className="text-gray-300 group-hover:text-blue-500" size={32}/>
-        </button>
-        <button className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex items-center justify-between hover:border-orange-500 transition-all group">
-          <div className="text-left">
-            <h3 className="font-black text-gray-800 uppercase">Levage & Machines</h3>
-            <p className="text-xs text-gray-400 mt-1">Suivi VGP</p>
-          </div>
-          <ClipboardCheck className="text-gray-300 group-hover:text-orange-500" size={32}/>
-        </button>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
+  const EquipmentCheck = () => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Équipement</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Localisation</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Dernière Vérif.</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase">Prochaine Vérif.</th>
-              <th className="p-4 font-black text-xs text-gray-400 uppercase text-center">Statut</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {controles.map(ctrl => {
-              const isLate = new Date(ctrl.date_prochaine_verif) < new Date();
-              return (
-                <tr key={ctrl.id} className="hover:bg-gray-50">
-                  <td className="p-4 font-bold text-sm">{ctrl.nom} <span className="text-gray-400 text-xs font-normal">({ctrl.type})</span></td>
-                  <td className="p-4 text-xs font-bold text-gray-500">{ctrl.chantiers?.nom || 'Dépôt'}</td>
-                  <td className="p-4 text-xs text-gray-500">{ctrl.date_derniere_verif}</td>
-                  <td className={`p-4 text-xs font-bold ${isLate ? 'text-red-500' : 'text-gray-500'}`}>{ctrl.date_prochaine_verif}</td>
-                  <td className="p-4 text-center">
-                    {isLate 
-                      ? <span className="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-black uppercase">Retard</span>
-                      : <span className="bg-emerald-100 text-emerald-600 px-2 py-1 rounded text-[10px] font-black uppercase">Conforme</span>
-                    }
-                  </td>
+            <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase text-gray-400">
+                <tr>
+                    <th className="p-4">Équipement</th>
+                    <th className="p-4">Type</th>
+                    <th className="p-4">Localisation</th>
+                    <th className="p-4">Prochaine VGP</th>
+                    <th className="p-4 text-center">État</th>
                 </tr>
-              );
-            })}
-          </tbody>
+            </thead>
+            <tbody className="text-sm">
+                {equipements.map(e => {
+                    const check = checkDate(e.date_prochaine_verif);
+                    return (
+                        <tr key={e.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="p-4 font-bold">{e.nom}</td>
+                            <td className="p-4 text-xs text-gray-500 uppercase">{e.type}</td>
+                            <td className="p-4 text-xs font-bold">{e.chantiers?.nom || 'Dépôt'}</td>
+                            <td className="p-4">
+                                <span className={`px-2 py-1 rounded text-[10px] font-bold ${check.color}`}>{e.date_prochaine_verif}</span>
+                            </td>
+                            <td className="p-4 text-center">
+                                {e.etat === 'conforme' ? <CheckCircle2 size={16} className="text-emerald-500 mx-auto"/> : <XCircle size={16} className="text-red-500 mx-auto"/>}
+                            </td>
+                        </tr>
+                    )
+                })}
+            </tbody>
         </table>
-      </div>
     </div>
   );
 
+  // --- LAYOUT ---
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-6 font-['Fredoka'] text-gray-800">
+    <div className="min-h-screen bg-[#f0f3f4] font-sans text-gray-800 flex flex-col">
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-black uppercase text-[#2d3436] flex items-center gap-3">
-            <ShieldCheck className="text-emerald-500" size={32}/>
-            Centrale <span className="text-emerald-500">HSE</span>
-          </h1>
-          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Pilotage Sécurité & Conformité</p>
+      {/* HEADER TOP BAR */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 px-6 py-3 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-4">
+            <div className="bg-red-600 text-white p-2 rounded-lg"><ShieldCheck size={24}/></div>
+            <div>
+                <h1 className="text-xl font-black uppercase text-gray-900 leading-none">HSE<span className="text-red-600">.Safety</span></h1>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pilotage Sécurité</p>
+            </div>
         </div>
-        <div className="flex gap-2">
-          <button className="bg-white text-gray-600 px-4 py-2 rounded-xl text-xs font-bold uppercase border border-gray-200 flex items-center gap-2 hover:bg-gray-50">
-            <QrCode size={16}/> Badge Chantier
-          </button>
-          <button className="bg-[#2d3436] text-white px-4 py-2 rounded-xl text-xs font-bold uppercase flex items-center gap-2 shadow-lg hover:bg-black">
-            <Printer size={16}/> Rapport Mensuel
-          </button>
+
+        {/* SELECTEUR CHANTIER - CRUCIAL POUR LA SYNCHRO */}
+        <div className="flex items-center gap-3 bg-gray-100 p-1 rounded-xl">
+            <button 
+                onClick={() => setSelectedChantier(null)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${!selectedChantier ? 'bg-white shadow text-black' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+                Global Entreprise
+            </button>
+            <div className="h-4 w-[1px] bg-gray-300"></div>
+            <select 
+                className={`bg-transparent text-xs font-bold uppercase outline-none px-2 py-2 cursor-pointer ${selectedChantier ? 'text-blue-600' : 'text-gray-400'}`}
+                onChange={(e) => setSelectedChantier(e.target.value || null)}
+                value={selectedChantier || ''}
+            >
+                <option value="">Sélectionner un chantier...</option>
+                {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
         </div>
-      </div>
+      </header>
 
       {/* NAVIGATION TABS */}
-      <div className="flex overflow-x-auto gap-4 mb-6 pb-2 no-scrollbar">
-        {[
-          { id: 'dashboard', label: 'Vue Globale', icon: LayoutDashboard },
-          { id: 'documents', label: 'Documents & Générateurs', icon: FileText },
-          { id: 'causeries', label: 'Causeries & Accidents', icon: Siren },
-          { id: 'staff', label: 'Habilitations', icon: Users },
-          { id: 'materiel', label: 'Matériel & VGP', icon: ClipboardCheck },
-        ].map(tab => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-xs uppercase transition-all whitespace-nowrap ${
-              activeTab === tab.id 
-              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' 
-              : 'bg-white text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {/* Note: Icons need to be imported or passed differently in real implementation, simplified here */}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* CONTENU */}
-      {activeTab === 'dashboard' && <DashboardView />}
-      {activeTab === 'documents' && <DocumentsView />}
-      {activeTab === 'causeries' && (
-        <div className="bg-white p-10 rounded-3xl text-center text-gray-400 font-bold">
-          <Siren size={48} className="mx-auto mb-4 opacity-20"/>
-          Module Causeries : Liste des quarts d'heure sécurité & Déclaration accident
+      <nav className="px-6 pt-6 pb-2 overflow-x-auto">
+        <div className="flex gap-2">
+            <NavTab label="Tableau de bord" id="dashboard" icon={ShieldCheck} active={view} set={setView} />
+            <NavTab label="Documents" id="documents" icon={FileText} active={view} set={setView} />
+            <NavTab label="Causeries" id="causeries" icon={Users} active={view} set={setView} />
+            <NavTab label="Accidents" id="accidents" icon={Siren} active={view} set={setView} />
+            <NavTab label="Habilitations" id="staff" icon={ClipboardCheck} active={view} set={setView} />
+            <NavTab label="Matériel & VGP" id="materiel" icon={HardHat} active={view} set={setView} />
         </div>
-      )}
-      {activeTab === 'staff' && <StaffView />}
-      {activeTab === 'materiel' && <EquipmentView />}
+      </nav>
+
+      {/* CONTENU PRINCIPAL */}
+      <main className="flex-1 p-6 overflow-y-auto">
+        {loading ? (
+            <div className="flex items-center justify-center h-64 text-gray-400 font-bold animate-pulse">Chargement HSE...</div>
+        ) : (
+            <>
+                {view === 'dashboard' && <Dashboard />}
+                {view === 'documents' && <DocumentsList />}
+                {view === 'staff' && <StaffMatrix />}
+                {view === 'materiel' && <EquipmentCheck />}
+                
+                {/* Vues simples pour Causeries/Accidents (Tableau similaire) */}
+                {(view === 'causeries' || view === 'accidents') && (
+                    <div className="bg-white rounded-2xl p-8 text-center border border-gray-200">
+                        <Construction size={48} className="mx-auto text-gray-300 mb-4"/>
+                        <h3 className="font-black text-gray-400 uppercase">Module {view} actif</h3>
+                        <p className="text-sm text-gray-400 mt-2">
+                            Liste filtrée pour : <span className="text-black font-bold">{selectedChantier ? chantiers.find(c => c.id === selectedChantier)?.nom : 'Tous les chantiers'}</span>
+                        </p>
+                        <div className="mt-6 flex justify-center gap-4">
+                            {events.filter(e => view === 'causeries' ? e.type === 'causerie' : e.type === 'accident').map(e => (
+                                <div key={e.id} className="text-left bg-gray-50 p-4 rounded-xl border border-gray-200 w-64">
+                                    <div className="font-bold text-sm mb-1">{e.titre || 'Événement'}</div>
+                                    <div className="text-xs text-gray-500">{new Date(e.date_event).toLocaleDateString()}</div>
+                                    <div className="mt-2 text-[10px] font-black uppercase bg-white px-2 py-1 rounded inline-block border border-gray-100">{e.chantiers?.nom}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {view === 'badges' && <StaffMatrix />} {/* Raccourci vers matrice pour générer */}
+            </>
+        )}
+      </main>
 
     </div>
   );
 }
 
-// Dummy icon import for the map above to work without errors
-import { LayoutDashboard, Settings } from 'lucide-react';
+// --- SOUS-COMPOSANTS ---
+
+const Tile = ({ label, val, icon: Icon, color }: any) => {
+    const colors: any = {
+        red: "bg-red-50 text-red-600 border-red-100",
+        orange: "bg-orange-50 text-orange-600 border-orange-100",
+        emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
+        blue: "bg-blue-50 text-blue-600 border-blue-100",
+        gray: "bg-white text-gray-800 border-gray-100"
+    };
+    return (
+        <div className={`p-4 rounded-2xl border flex items-center justify-between ${colors[color] || colors.gray} shadow-sm`}>
+            <div>
+                <p className="text-[10px] font-bold uppercase opacity-60">{label}</p>
+                <p className="text-3xl font-black tracking-tight">{val}</p>
+            </div>
+            <div className="bg-white/50 p-3 rounded-xl"><Icon size={24}/></div>
+        </div>
+    )
+};
+
+const ActionButton = ({ icon: Icon, label, onClick }: any) => (
+    <button onClick={onClick} className="flex flex-col items-center justify-center p-4 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 border border-gray-100 hover:border-blue-200 rounded-xl transition-all group">
+        <Icon size={24} className="mb-2 text-gray-400 group-hover:text-blue-600"/>
+        <span className="text-[10px] font-black uppercase text-center">{label}</span>
+    </button>
+);
+
+const NavTab = ({ label, id, icon: Icon, active, set }: any) => (
+    <button 
+        onClick={() => set(id)}
+        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all whitespace-nowrap ${
+            active === id 
+            ? 'bg-black text-white shadow-lg' 
+            : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-100'
+        }`}
+    >
+        <Icon size={14}/> {label}
+    </button>
+);
