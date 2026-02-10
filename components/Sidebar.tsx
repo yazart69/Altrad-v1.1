@@ -15,7 +15,8 @@ import {
   Settings, 
   ChevronLeft, 
   ChevronRight,
-  LogOut
+  LogOut,
+  Clock // AJOUT
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -25,8 +26,9 @@ export default function Sidebar() {
   const menuItems = [
     { name: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
     { name: 'Planning Hebdo', icon: CalendarDays, path: '/planning' },
+    { name: 'Pointage', icon: Clock, path: '/pointage' }, // AJOUT : Route Pointage
     { name: 'Planning de charge', icon: CalendarRange, path: '/planning-charge' },
-    { name: 'Chantiers', icon: Factory, path: '/chantier' }, // Pointe vers la liste (Annuaire)
+    { name: 'Chantiers', icon: Factory, path: '/chantier' }, 
     { name: 'Équipes & RH', icon: Users, path: '/equipe' },
     { name: 'Matériel & Logistique', icon: HardHat, path: '/materiel' },
     { name: 'HSE & Sécurité', icon: ShieldCheck, path: '/hse' },
