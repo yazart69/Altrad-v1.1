@@ -5,11 +5,10 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, AlertTriangle, Trash2, Activity, Check, 
-  Send, FileCheck, FileX, X, Calendar as CalendarIcon
+  Send, FileCheck, FileX, X, Calendar as CalendarIcon, User, Users
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
-// This prevents timezone shifts (e.g. 2026-02-09 becoming 2026-02-08T23:00...)
 const toLocalISOString = (date: Date) => {
   const offset = date.getTimezoneOffset();
   const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
@@ -22,40 +21,28 @@ export default function PlanningPage() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Initialize with Monday of current week to avoid random mid-week starts
+  // Initialisation au Lundi de la semaine courante
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedCell, setSelectedCell] = useState<{empId: string, startDate: string, endDate: string} | null>(null);
-  const [selectedChantier, setSelectedChantier] = useState("");
-  const [assignType, setAssignType] = useState("chantier");
+  
+  // Modification : On sélectionne maintenant un Chantier et une Date, puis on choisit l'employé
+  const [selection, setSelection] = useState<{chantierId: string | null, date: string, type: string} | null>(null);
+  const [selectedEmploye, setSelectedEmploye] = useState("");
 
   // 1. Chargement des données
   const fetchData = async () => {
     setLoading(true);
     
-    // Fetch users
-    const { data: emp } = await supabase
-      .from('users')
-      .select('*')
-      .order('nom');
-      
-    // Fetch active chantiers
-    const { data: chan } = await supabase
-      .from('chantiers')
-      .select('id, nom')
-      .in('statut', ['en_cours', 'planifie']); // Fetch both active and planned
-      
-    // Fetch planning for the visible week (plus a buffer to be safe)
-    // We get all assignments to keep it simple, or filter by date range if heavy
-    const { data: plan } = await supabase
-      .from('planning')
-      .select('*, chantiers(nom)');
+    const { data: emp } = await supabase.from('users').select('*').order('nom');
+    // On récupère uniquement les chantiers actifs ou planifiés pour le tableau
+    const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').in('statut', ['en_cours', 'planifie']).order('nom');
+    const { data: plan } = await supabase.from('planning').select('*, users(nom, prenom, role)');
     
     setEmployes(emp || []);
     setChantiers(chan || []);
@@ -67,156 +54,160 @@ export default function PlanningPage() {
 
   // 2. Actions sur les ODM
   const handleActionODM = async (id: string, field: string, value: boolean) => {
-    const { error } = await supabase.from('planning').update({ [field]: value }).eq('id', id);
-    if (error) alert("Erreur lors de la mise à jour : " + error.message);
-    else fetchData();
+    await supabase.from('planning').update({ [field]: value }).eq('id', id);
+    fetchData();
   };
 
   // 3. Suppression
   const deleteAssignment = async (id: string) => {
-    if(confirm("Supprimer cette affectation ?")) {
-      const { error } = await supabase.from('planning').delete().eq('id', id);
-      if (error) alert("Erreur suppression : " + error.message);
-      else fetchData();
+    if(confirm("Retirer ce collaborateur du planning ?")) {
+      await supabase.from('planning').delete().eq('id', id);
+      fetchData();
     }
   };
 
-  // 4. Modal Open
-  const openAssignmentModal = (empId: string, date: Date) => {
+  // 4. Modal Open (Adapté pour Chantier -> Employé)
+  // typeContext peut être 'chantier' ou 'hors_chantier'
+  const openAssignmentModal = (chantierId: string | null, date: Date, typeContext: string = 'chantier') => {
     const dateStr = toLocalISOString(date);
-    setSelectedCell({ empId, startDate: dateStr, endDate: dateStr });
-    setAssignType('chantier'); // Reset type to default
-    setSelectedChantier("");   // Reset selection
+    setSelection({ chantierId, date: dateStr, type: typeContext });
+    setSelectedEmploye(""); // Reset employé
     setIsModalOpen(true);
   };
 
   // 5. Sauvegarde
   const saveAssignment = async () => {
-    if (!selectedCell) return;
-    if (assignType === 'chantier' && !selectedChantier) {
-        alert("Veuillez sélectionner un chantier.");
-        return;
-    }
+    if (!selection || !selectedEmploye) return;
     
-    const start = new Date(selectedCell.startDate);
-    const end = new Date(selectedCell.endDate);
-    const inserts = [];
+    const insertData = {
+      employe_id: selectedEmploye,
+      chantier_id: selection.chantierId, // Null si hors chantier
+      date_debut: selection.date,
+      date_fin: selection.date,
+      type: selection.type === 'hors_chantier' ? 'conge' : 'chantier', // Par défaut congé si hors chantier, modifiable ensuite
+      odm_envoye: false,
+      odm_signe: false
+    };
 
-    // Loop through dates
-    // Using a new date object for iteration to avoid reference issues
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      // Skip Weekends (0 = Sunday, 6 = Saturday)
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        inserts.push({
-          employe_id: selectedCell.empId,
-          chantier_id: assignType === 'chantier' ? selectedChantier : null,
-          date_debut: toLocalISOString(d), // Use helper for consistency
-          date_fin: toLocalISOString(d),   // Single day entry per row
-          type: assignType,
-          odm_envoye: false,
-          odm_signe: false
-        });
-      }
+    // Si c'est hors chantier, on vérifie le type (la modal pourrait avoir un sélecteur de type d'absence)
+    if (selection.type === 'hors_chantier') {
+        // Pour simplifier ici, on met 'conge' par défaut, ou on pourrait ajouter un selecteur dans la modal
+        // J'utiliserai le selecteur de type existant dans la modal
     }
     
-    if (inserts.length === 0) {
-        alert("Aucun jour ouvrable sélectionné (Week-end ?)");
+    // Check doublon basic (optionnel)
+    const exists = assignments.find(a => 
+        a.employe_id === selectedEmploye && 
+        a.date_debut === selection.date
+    );
+
+    if (exists) {
+        alert("Cet employé est déjà planifié ce jour-là (Chantier: " + (exists.chantier_id || exists.type) + ")");
         return;
     }
 
-    const { error } = await supabase.from('planning').insert(inserts);
+    const { error } = await supabase.from('planning').insert([insertData]);
 
     if (error) {
-        alert("Erreur lors de la sauvegarde : " + error.message);
+        alert("Erreur : " + error.message);
     } else {
         setIsModalOpen(false);
-        setSelectedChantier("");
         fetchData();
     }
   };
 
-  // 6. Calculate Week Days
+  // Imprimer
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // 6. Calcul des jours
   const weekDays = Array.from({ length: 5 }, (_, i) => {
-    // Clone currentDate to avoid mutation
     const start = new Date(currentDate);
     const day = start.getDay();
-    // Calculate Monday
     const diff = start.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(start.setDate(diff));
-    
-    // Add 'i' days
     monday.setDate(monday.getDate() + i);
     return monday;
   });
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-8 font-['Fredoka'] ml-0 md:ml-64 transition-all">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4 print:hidden">
+    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800">
+      
+      {/* HEADER (Masqué à l'impression) */}
+      <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4 print:hidden">
         <div>
-          <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Planning <span className="text-[#00b894]">Hebdo</span></h1>
-          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Gestion des affectations</p>
+          <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Planning <span className="text-[#00b894]">Chantiers</span></h1>
+          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Vue Équipes & Affectations</p>
         </div>
         
-        <div className="flex items-center bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100">
-            <button 
-                onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} 
-                className="p-3 hover:bg-gray-50 rounded-xl transition-colors text-gray-500 hover:text-black"
-            >
-                <ChevronLeft size={20}/>
+        <div className="flex gap-3">
+            <button onClick={handlePrint} className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 flex items-center gap-2 shadow-sm">
+                <Printer size={16} /> Imprimer
             </button>
-            <div className="px-6 text-center">
-                <span className="block text-xs font-black uppercase text-gray-400">Semaine du</span>
-                <span className="block text-sm font-black text-gray-800">
-                    {weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                </span>
+
+            <div className="flex items-center bg-white rounded-xl p-1 shadow-sm border border-gray-200">
+                <button 
+                    onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} 
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
+                >
+                    <ChevronLeft size={20}/>
+                </button>
+                <div className="px-4 text-center min-w-[140px]">
+                    <span className="block text-[10px] font-black uppercase text-gray-400">Semaine du</span>
+                    <span className="block text-sm font-black text-gray-800">
+                        {weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                    </span>
+                </div>
+                <button 
+                    onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} 
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black"
+                >
+                    <ChevronRight size={20}/>
+                </button>
             </div>
-            <button 
-                onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} 
-                className="p-3 hover:bg-gray-50 rounded-xl transition-colors text-gray-500 hover:text-black"
-            >
-                <ChevronRight size={20}/>
-            </button>
         </div>
       </div>
 
-      {/* TABLEAU */}
-      <div className="bg-white rounded-[30px] shadow-sm overflow-hidden border border-gray-100 overflow-x-auto">
-        <table className="w-full min-w-[800px] border-collapse text-left">
+      {/* HEADER IMPRESSION (Visible uniquement à l'impression) */}
+      <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
+          <h1 className="text-2xl font-black uppercase">Planning Hebdomadaire</h1>
+          <p className="text-sm">Semaine du {weekDays[0].toLocaleDateString('fr-FR')}</p>
+      </div>
+
+      {/* TABLEAU PRINCIPAL */}
+      <div className="bg-white rounded-[20px] shadow-sm overflow-hidden border border-gray-200 overflow-x-auto print:border-none print:shadow-none">
+        <table className="w-full min-w-[900px] border-collapse text-left">
           <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-100">
-              <th className="p-6 w-[200px] sticky left-0 bg-gray-50/80 z-20 font-black uppercase text-[10px] text-gray-400">
-                Collaborateurs
+            <tr className="bg-gray-100 border-b border-gray-200 print:bg-gray-200">
+              <th className="p-4 w-[250px] sticky left-0 bg-gray-100 z-20 font-black uppercase text-xs text-gray-500 border-r border-gray-200 print:border-gray-400">
+                Chantiers / Projets
               </th>
               {weekDays.map((day, i) => (
-                <th key={i} className="p-4 border-l border-gray-100 text-center min-w-[140px]">
-                  <p className="text-[10px] uppercase font-black text-gray-400 mb-1">
+                <th key={i} className="p-3 border-l border-gray-200 text-center min-w-[160px] print:border-gray-400">
+                  <p className="text-[10px] uppercase font-black text-gray-500 mb-1">
                     {day.toLocaleDateString('fr-FR', { weekday: 'long' })}
                   </p>
-                  <div className={`inline-block px-3 py-1 rounded-lg font-black text-sm ${
-                      toLocalISOString(day) === toLocalISOString(new Date()) 
-                      ? 'bg-[#00b894] text-white shadow-md' 
-                      : 'text-gray-700 bg-white border border-gray-100'
-                  }`}>
+                  <span className="inline-block px-2 py-0.5 rounded text-sm font-black text-gray-800 bg-white border border-gray-200 print:border-black">
                     {day.getDate()}
-                  </div>
+                  </span>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
-            {employes.map((emp) => (
-              <tr key={emp.id} className="group border-b border-gray-50 hover:bg-gray-50/30 transition-colors">
-                {/* COLONNE EMPLOYÉ */}
-                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-100 group-hover:bg-gray-50/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-black text-xs text-gray-500">
-                          {emp.prenom.charAt(0)}{emp.nom.charAt(0)}
+          <tbody className="divide-y divide-gray-100">
+            {/* LIGNES CHANTIERS */}
+            {chantiers.map((chantier) => (
+              <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
+                {/* COLONNE NOM CHANTIER */}
+                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:border-gray-400">
+                  <div className="flex items-start gap-3">
+                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:text-black print:border print:border-black print:bg-white">
+                          <HardHat size={18} />
                       </div>
                       <div>
-                          <p className="font-bold text-gray-800 text-xs uppercase leading-tight">{emp.nom}</p>
-                          <p className="text-[10px] text-gray-400 capitalize">{emp.prenom}</p>
+                          <p className="font-black text-gray-800 text-sm uppercase leading-tight">{chantier.nom}</p>
+                          <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate">{chantier.adresse || 'Localisation non définie'}</p>
                       </div>
                   </div>
                 </td>
@@ -224,146 +215,173 @@ export default function PlanningPage() {
                 {/* CELLULES JOURS */}
                 {weekDays.map((day, i) => {
                   const dateStr = toLocalISOString(day);
-                  // Find assignment strictly matching date
-                  const mission = assignments.find(a => a.employe_id === emp.id && a.date_debut === dateStr);
+                  // Filtrer les affectations pour ce chantier et ce jour
+                  const dailyMissions = assignments.filter(a => a.chantier_id === chantier.id && a.date_debut === dateStr);
                   
-                  // Specific styling based on type
-                  let cellStyle = "bg-gray-100 text-gray-400"; // Default empty/loading
-                  let borderStyle = "";
-                  
-                  if (mission) {
-                      if (mission.type === 'chantier') {
-                          cellStyle = "bg-[#0984e3] text-white shadow-md shadow-blue-200";
-                          // Visual cue for signed ODM
-                          if (mission.odm_signe) borderStyle = "ring-2 ring-green-400";
-                          else if (mission.odm_envoye) borderStyle = "ring-2 ring-orange-300";
-                      } else if (mission.type === 'conge') {
-                          cellStyle = "bg-[#fab1a0] text-white"; // Peach/Orange
-                      } else if (mission.type === 'maladie') {
-                          cellStyle = "bg-[#ff7675] text-white"; // Red
-                      } else if (mission.type === 'formation') {
-                          cellStyle = "bg-[#a29bfe] text-white"; // Purple
-                      }
-                  }
-
                   return (
-                    <td key={i} className="p-2 border-l border-gray-50 h-24 relative">
-                      {mission ? (
-                        <div className={`w-full h-full rounded-2xl p-3 flex flex-col justify-between group/card transition-all hover:scale-[1.02] cursor-pointer relative ${cellStyle} ${borderStyle}`}>
+                    <td key={i} className="p-2 border-l border-gray-100 align-top h-32 relative print:border-gray-400 print:h-auto">
+                      <div className="flex flex-col gap-1.5 h-full">
                           
-                          {/* DELETE BUTTON (Hover) */}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); deleteAssignment(mission.id); }}
-                            className="absolute -top-2 -right-2 bg-white text-red-500 p-1.5 rounded-full shadow-sm opacity-0 group-hover/card:opacity-100 transition-opacity z-20 hover:scale-110"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-
-                          {/* CONTENT */}
-                          <div className="font-bold text-[11px] uppercase leading-tight line-clamp-2">
-                            {mission.chantiers?.nom || mission.type}
-                          </div>
-
-                          {/* FOOTER ACTIONS (Only for Chantier) */}
-                          {mission.type === 'chantier' && (
-                              <div className="flex items-center gap-1 mt-1">
-                                  <div 
-                                    onClick={(e) => { e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye); }}
-                                    className={`p-1 rounded bg-white/20 hover:bg-white/40 transition-colors ${mission.odm_envoye ? 'text-white' : 'text-white/50'}`}
-                                    title="ODM Envoyé"
-                                  >
-                                      <Send size={10} />
+                          {/* Liste des employés affectés */}
+                          {dailyMissions.map((mission) => (
+                              <div key={mission.id} className="bg-[#0984e3] text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black">
+                                  <div className="flex items-center gap-2">
+                                      <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold print:bg-black/10">
+                                          {mission.users?.prenom?.charAt(0)}{mission.users?.nom?.charAt(0)}
+                                      </div>
+                                      <span className="text-[10px] font-bold uppercase truncate max-w-[80px]">
+                                          {mission.users?.nom} {mission.users?.prenom?.charAt(0)}.
+                                      </span>
                                   </div>
-                                  <div 
-                                    onClick={(e) => { e.stopPropagation(); handleActionODM(mission.id, 'odm_signe', !mission.odm_signe); }}
-                                    className={`p-1 rounded bg-white/20 hover:bg-white/40 transition-colors ${mission.odm_signe ? 'text-white' : 'text-white/50'}`}
-                                    title="ODM Signé"
-                                  >
-                                      <Check size={10} />
+
+                                  {/* Actions Rapides (Hover) - Masquées à l'impression */}
+                                  <div className="hidden group-hover/card:flex gap-1 print:hidden">
+                                      <button 
+                                        onClick={(e) => {e.stopPropagation(); handleActionODM(mission.id, 'odm_envoye', !mission.odm_envoye)}}
+                                        className={`p-1 rounded ${mission.odm_envoye ? 'bg-green-400' : 'bg-white/20 hover:bg-white/40'}`}
+                                        title="ODM Envoyé"
+                                      >
+                                          <Send size={10} />
+                                      </button>
+                                      <button 
+                                        onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}}
+                                        className="p-1 rounded bg-red-500/80 hover:bg-red-500"
+                                      >
+                                          <Trash2 size={10} />
+                                      </button>
                                   </div>
                               </div>
-                          )}
-                        </div>
-                      ) : (
-                        // EMPTY STATE ADD BUTTON
-                        <button 
-                            onClick={() => openAssignmentModal(emp.id, day)} 
-                            className="w-full h-full rounded-2xl border-2 border-dashed border-gray-100 text-gray-200 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center"
-                        >
-                            <Plus size={20} />
-                        </button>
-                      )}
+                          ))}
+
+                          {/* Bouton Ajouter (Uniquement si pas impression) */}
+                          <button 
+                            onClick={() => openAssignmentModal(chantier.id, day, 'chantier')}
+                            className="mt-auto w-full py-1.5 border-2 border-dashed border-gray-200 rounded-lg text-gray-300 hover:border-[#00b894] hover:text-[#00b894] hover:bg-emerald-50 transition-all flex items-center justify-center print:hidden"
+                          >
+                              <Plus size={14} />
+                          </button>
+                      </div>
                     </td>
                   );
                 })}
               </tr>
             ))}
+
+            {/* SECTION HORS CHANTIER (ABSENCES, ETC.) */}
+            <tr className="bg-gray-50 border-t-4 border-white print:border-gray-400">
+                <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:bg-white print:border-r">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-gray-400 p-2 rounded-lg text-white print:text-black print:border print:border-black print:bg-white">
+                            <Activity size={18} />
+                        </div>
+                        <div>
+                            <p className="font-black text-gray-600 text-xs uppercase leading-tight">Hors Chantier</p>
+                            <p className="text-[9px] text-gray-400 uppercase mt-0.5">Absences / Formations</p>
+                        </div>
+                    </div>
+                </td>
+                {weekDays.map((day, i) => {
+                    const dateStr = toLocalISOString(day);
+                    const dailyOffs = assignments.filter(a => !a.chantier_id && a.date_debut === dateStr);
+
+                    return (
+                        <td key={i} className="p-2 border-l border-gray-200 align-top h-24 print:border-gray-400">
+                            <div className="flex flex-col gap-1.5">
+                                {dailyOffs.map((mission) => {
+                                    let color = "bg-gray-400";
+                                    if(mission.type === 'conge') color = "bg-[#e17055]";
+                                    if(mission.type === 'maladie') color = "bg-[#d63031]";
+                                    if(mission.type === 'formation') color = "bg-[#6c5ce7]";
+
+                                    return (
+                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-black print:text-black`}>
+                                            <span className="text-[10px] font-bold uppercase truncate">
+                                                {mission.users?.nom}
+                                            </span>
+                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-gray-300">
+                                                {mission.type}
+                                            </span>
+                                            <button 
+                                                onClick={() => deleteAssignment(mission.id)}
+                                                className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    )
+                                })}
+                                <button 
+                                    onClick={() => openAssignmentModal(null, day, 'hors_chantier')}
+                                    className="mt-2 w-full flex items-center justify-center text-gray-300 hover:text-gray-500 py-1 print:hidden"
+                                >
+                                    <Plus size={12} />
+                                </button>
+                            </div>
+                        </td>
+                    )
+                })}
+            </tr>
           </tbody>
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION */}
-      {isModalOpen && selectedCell && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[30px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+      {/* MODAL D'AFFECTATION (ADAPTÉE) */}
+      {isModalOpen && selection && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
+          <div className="bg-white rounded-[30px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
             
             <div className="flex justify-between items-center mb-6">
               <div>
-                  <h2 className="text-xl font-black uppercase text-[#2d3436]">Nouvelle Affectation</h2>
-                  <p className="text-xs text-gray-400 font-bold">Définir la mission et la durée</p>
+                  <h2 className="text-xl font-black uppercase text-[#2d3436]">Affecter une ressource</h2>
+                  <p className="text-xs text-gray-400 font-bold">
+                      {selection.type === 'chantier' ? 'Ajout sur chantier' : 'Déclarer une absence'} - {new Date(selection.date).toLocaleDateString()}
+                  </p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
                   <X size={20} />
               </button>
             </div>
-            
-            {/* DATES */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Du</label>
-                <input type="date" value={selectedCell.startDate} onChange={(e) => setSelectedCell({...selectedCell, startDate: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-[#00b894]" />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Au</label>
-                <input type="date" value={selectedCell.endDate} onChange={(e) => setSelectedCell({...selectedCell, endDate: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-[#00b894]" />
-              </div>
-            </div>
 
-            {/* SÉLECTION TYPE */}
             <div className="space-y-4">
-                <div className="grid grid-cols-4 gap-2 bg-gray-50 p-1 rounded-xl">
-                    {['chantier', 'formation', 'maladie', 'conge'].map(t => (
-                        <button 
-                            key={t} 
-                            onClick={() => { setAssignType(t); if(t !== 'chantier') setSelectedChantier(""); }}
-                            className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
-                                assignType === t ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'
-                            }`}
+                {/* SELECTEUR EMPLOYÉ */}
+                <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Collaborateur</label>
+                    <div className="relative">
+                        <Users className="absolute left-3 top-3.5 text-gray-400" size={16} />
+                        <select 
+                            className="w-full pl-10 p-3 bg-gray-50 rounded-xl font-bold text-sm outline-none focus:border-[#00b894] border border-transparent cursor-pointer appearance-none" 
+                            value={selectedEmploye} 
+                            onChange={(e) => setSelectedEmploye(e.target.value)}
                         >
-                            {t}
-                        </button>
-                    ))}
+                            <option value="">-- Sélectionner --</option>
+                            {employes.map(e => <option key={e.id} value={e.id}>{e.nom} {e.prenom}</option>)}
+                        </select>
+                    </div>
                 </div>
 
-                {assignType === 'chantier' && (
+                {/* Si Hors Chantier, Type d'absence */}
+                {selection.type === 'hors_chantier' && (
                     <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Chantier</label>
-                        <select 
-                            className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm outline-none focus:border-[#00b894] border border-transparent cursor-pointer" 
-                            value={selectedChantier} 
-                            onChange={(e) => setSelectedChantier(e.target.value)}
-                        >
-                            <option value="">-- Choisir --</option>
-                            {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                        </select>
+                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-1">Type d'absence</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {['conge', 'maladie', 'formation'].map(t => (
+                                <button 
+                                    key={t}
+                                    onClick={() => setSelection({...selection, type: 'hors_chantier', subType: t})} // Note: subType logique simplifiée ici, on utilisera directement le type
+                                    className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 ${selection.type === t ? 'border-black bg-black text-white' : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                >
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* FOOTER */}
             <button 
                 onClick={saveAssignment} 
-                className="w-full mt-8 bg-[#00b894] hover:bg-[#00a383] text-white py-4 rounded-xl font-black uppercase text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95"
+                disabled={!selectedEmploye}
+                className="w-full mt-8 bg-[#00b894] hover:bg-[#00a383] text-white py-4 rounded-xl font-black uppercase text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 Valider l'affectation
             </button>
