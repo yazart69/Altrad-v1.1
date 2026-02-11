@@ -35,7 +35,7 @@ export default function ChantiersList() {
 
   // --- FONCTION SUPPRESSION ---
   const handleDelete = async (e: React.MouseEvent, id: string, nom: string) => {
-    e.preventDefault(); // Empêche d'entrer dans la fiche chantier
+    e.preventDefault(); 
     e.stopPropagation(); 
 
     const confirmation = window.confirm(`⚠️ Êtes-vous sûr de vouloir supprimer définitivement le chantier "${nom}" ?\nCette action est irréversible.`);
@@ -45,32 +45,32 @@ export default function ChantiersList() {
       if (error) {
         alert("Erreur lors de la suppression : " + error.message);
       } else {
-        // Mise à jour locale immédiate pour éviter de recharger
         setChantiers(chantiers.filter(c => c.id !== id));
       }
     }
   };
 
-  // --- CRÉATION RAPIDE & REDIRECTION ---
+  // --- CRÉATION RAPIDE ---
   const handleCreate = async () => {
     setCreating(true);
     
-    // ON CRÉE UNE COQUILLE VIDE (Juste le nom pour éviter les erreurs de colonnes manquantes)
-    // Le reste sera rempli dans la page de détail (Infos, ACQPA, etc.)
     const { data, error } = await supabase
       .from('chantiers')
       .insert([{ 
         nom: 'Nouveau Chantier (Brouillon)', 
-        statut: 'planifie'
+        statut: 'planifie',
+        // Initialisation des champs vides pour éviter les null
+        client_email: '',
+        client_telephone: '',
+        type_precision: ''
       }])
       .select()
       .single();
 
     if (error) {
-      alert("Erreur création (Vérifiez que la table 'chantiers' existe) : " + error.message);
+      alert("Erreur création : " + error.message);
       setCreating(false);
     } else if (data) {
-      // REDIRECTION IMMÉDIATE vers la page complète (HSE/ACQPA)
       router.push(`/chantier/${data.id}`);
     }
   };
