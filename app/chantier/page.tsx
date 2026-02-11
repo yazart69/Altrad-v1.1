@@ -54,15 +54,16 @@ export default function ChantiersList() {
   const handleCreate = async () => {
     setCreating(true);
     
+    // Initialisation robuste des nouveaux champs pour éviter les bugs d'affichage
     const { data, error } = await supabase
       .from('chantiers')
       .insert([{ 
         nom: 'Nouveau Chantier (Brouillon)', 
         statut: 'planifie',
-        // Initialisation des champs vides pour éviter les null
         client_email: '',
         client_telephone: '',
-        type_precision: ''
+        type_precision: '',
+        responsable: null
       }])
       .select()
       .single();
