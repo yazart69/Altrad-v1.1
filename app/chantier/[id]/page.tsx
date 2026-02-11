@@ -42,7 +42,7 @@ export default function ChantierDetail() {
   // DONNÉES LISTES
   const [tasks, setTasks] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
-  const [employes, setEmployes] = useState<any[]>([]); // Pour le select responsable
+  const [employes, setEmployes] = useState<any[]>([]); 
   
   // --- NOUVELLES DONNÉES LOGISTIQUES ---
   const [materielPrevu, setMaterielPrevu] = useState<any[]>([]); 
@@ -54,8 +54,7 @@ export default function ChantierDetail() {
   
   // TACHES & SOUS-TACHES
   const [newTaskLabel, setNewTaskLabel] = useState("");
-  const [newTaskHours, setNewTaskHours] = useState(""); // Ajouté pour compatibilité
-  const [activeParentTask, setActiveParentTask] = useState<string | null>(null); // Pour savoir où ajouter la sous-tâche
+  const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '' });
 
   // STATE FORMULAIRES
@@ -69,7 +68,7 @@ export default function ChantierDetail() {
     if (!id) return;
     setLoading(true);
 
-    // 0. Employés (Pour le select responsable)
+    // 0. Employés
     const { data: emp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
     if (emp) setEmployes(emp);
 
@@ -85,7 +84,10 @@ export default function ChantierDetail() {
             statut: c.statut || 'en_cours',
             risques: c.risques || [],
             epi: c.epi || [],
-            mesures_acqpa: c.mesures_acqpa || {}
+            mesures_acqpa: c.mesures_acqpa || {},
+            type_precision: c.type_precision || '', // Récupération du nouveau champ
+            client_email: c.client_email || '',
+            client_telephone: c.client_telephone || ''
         });
         
         const currentAcqpa = c.mesures_acqpa || {};
@@ -101,7 +103,7 @@ export default function ChantierDetail() {
         setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
     }
 
-    // 2. Tâches
+    // 2. Tâches (Avec sous-tâches JSONB)
     const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (t) {
         const formattedTasks = t.map(task => ({
@@ -119,6 +121,7 @@ export default function ChantierDetail() {
     const { data: m } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
     if (m) setMaterielPrevu(m);
 
+    // 5. Fournitures (Nouveau Fetch)
     const { data: f } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', id);
     if (f) setFournituresPrevu(f);
 
@@ -128,7 +131,7 @@ export default function ChantierDetail() {
     setLoading(false);
   }
 
-  // --- LOGIQUE CALCUL AVANCEMENT (Tâches + Sous-Tâches) ---
+  // --- LOGIQUE CALCUL AVANCEMENT ---
   const updateProgress = async (currentTasks: any[]) => {
     let totalConsumed = 0;
     
@@ -146,16 +149,17 @@ export default function ChantierDetail() {
     setChantier((prev: any) => ({ ...prev, heures_consommees: totalConsumed }));
   };
 
-  // --- SAUVEGARDE ---
+  // --- SAUVEGARDE GLOBALE ---
   const handleSave = async () => {
     const dateDebutSafe = chantier.date_debut === "" ? null : chantier.date_debut;
     const dateFinSafe = chantier.date_fin === "" ? null : chantier.date_fin;
 
+    // Payload complet avec nouveaux champs
     const toSave = {
         nom: chantier.nom,
         client: chantier.client,
         adresse: chantier.adresse,
-        responsable: chantier.responsable, 
+        responsable: chantier.responsable, // UUID
         client_email: chantier.client_email,
         client_telephone: chantier.client_telephone,
         type: chantier.type,
@@ -182,7 +186,7 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- LOGISTIQUE ---
+  // --- LOGISTIQUE (MATÉRIEL) ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
       const { error } = await supabase.from('chantier_materiel').insert([{
@@ -206,7 +210,8 @@ export default function ChantierDetail() {
   // --- FOURNITURES (NOUVEAU) ---
   const addFourniture = async () => {
       if(!newFourniture.nom) return;
-      await supabase.from('chantier_fournitures').insert([{
+      
+      const { error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
           nom: newFourniture.nom,
           qte_prevue: newFourniture.qte_prevue,
@@ -214,13 +219,19 @@ export default function ChantierDetail() {
           unite: newFourniture.unite,
           seuil_alerte: newFourniture.seuil
       }]);
-      setNewFourniture({ nom: '', qte_prevue: 0, unite: 'U', seuil: 5 });
-      fetchChantierData();
+
+      if(error) alert("Erreur ajout fourniture: " + error.message);
+      else {
+          setNewFourniture({ nom: '', qte_prevue: 0, unite: 'U', seuil: 5 });
+          fetchChantierData();
+      }
   };
 
   const updateStock = async (fournitureId: string, delta: number, current: number) => {
       const newVal = Math.max(0, current + delta);
+      // Optimistic UI
       setFournituresPrevu(prev => prev.map(f => f.id === fournitureId ? { ...f, qte_restante: newVal } : f));
+      // Save DB
       await supabase.from('chantier_fournitures').update({ qte_restante: newVal }).eq('id', fournitureId);
   };
 
@@ -228,7 +239,11 @@ export default function ChantierDetail() {
   const addTask = async () => {
     if (!newTaskLabel) return;
     const { data, error } = await supabase.from('chantier_tasks').insert([{ 
-        chantier_id: id, label: newTaskLabel, objectif_heures: 0, done: false, subtasks: [] 
+        chantier_id: id, 
+        label: newTaskLabel, 
+        objectif_heures: 0, 
+        done: false, 
+        subtasks: [] // Important pour éviter null
     }]).select();
 
     if (data) {
@@ -259,6 +274,7 @@ export default function ChantierDetail() {
 
       const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + curr.heures, 0);
 
+      // Sauvegarde dans colonne JSONB 'subtasks'
       await supabase.from('chantier_tasks').update({ 
           subtasks: updatedSubtasks,
           objectif_heures: newTotalHours
