@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ArrowLeft, Save, Bell, HardHat, GraduationCap, 
   Plus, Trash2, Car, FileUp, CheckCircle2, Loader2, FileText, X, Eye, 
-  Activity, FolderOpen, Calendar, AlertCircle, ClipboardList
+  Activity, FolderOpen, Calendar, AlertCircle, ClipboardList, Users
 } from 'lucide-react';
 
 export default function FicheEmploye() {
@@ -110,6 +110,7 @@ export default function FicheEmploye() {
         {/* COLONNE GAUCHE : IDENTITÉ & NOTES */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
           <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm relative overflow-hidden">
+            {/* LIGNE CORRIGÉE : Users est maintenant importé */}
             <div className="absolute top-0 right-0 p-6 opacity-5"><Users size={100}/></div>
             <h2 className="text-3xl font-black uppercase text-gray-900 leading-tight mb-1">{emp.nom} {emp.prenom}</h2>
             <p className="text-blue-500 font-bold uppercase text-[10px] tracking-widest bg-blue-50 inline-block px-2 py-1 rounded">{emp.role}</p>
