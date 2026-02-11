@@ -54,6 +54,7 @@ export default function ChantierDetail() {
   
   // TACHES & SOUS-TACHES
   const [newTaskLabel, setNewTaskLabel] = useState("");
+  const [newTaskHours, setNewTaskHours] = useState(""); // Ajouté pour compatibilité
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null); // Pour savoir où ajouter la sous-tâche
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '' });
 
@@ -100,12 +101,9 @@ export default function ChantierDetail() {
         setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
     }
 
-    // 2. Tâches (Avec sous-tâches JSONB si stockées ainsi, sinon structure relationnelle)
-    // Ici, on suppose que les sous-tâches sont stockées dans une colonne JSONB 'subtasks' de la table chantier_tasks
-    // ou alors on gère tout en local pour l'instant si la colonne n'existe pas.
+    // 2. Tâches
     const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
     if (t) {
-        // Normalisation : s'assurer que subtasks est un tableau
         const formattedTasks = t.map(task => ({
             ...task,
             subtasks: task.subtasks || [] 
@@ -132,31 +130,19 @@ export default function ChantierDetail() {
 
   // --- LOGIQUE CALCUL AVANCEMENT (Tâches + Sous-Tâches) ---
   const updateProgress = async (currentTasks: any[]) => {
-    // Calcul du total consommé (Somme des sous-tâches terminées ou tâches simples terminées)
     let totalConsumed = 0;
-    let totalBudget = 0;
-
+    
     currentTasks.forEach(t => {
         if (t.subtasks && t.subtasks.length > 0) {
-            // Si sous-tâches, on somme celles qui sont faites
             t.subtasks.forEach((st: any) => {
-                totalBudget += (parseFloat(st.heures) || 0);
                 if (st.done) totalConsumed += (parseFloat(st.heures) || 0);
             });
         } else {
-            // Sinon tâche simple
-            totalBudget += (t.objectif_heures || 0);
             if (t.done) totalConsumed += (t.objectif_heures || 0);
         }
     });
 
-    // Mise à jour DB
-    await supabase.from('chantiers').update({ 
-        heures_consommees: totalConsumed,
-        // Optionnel : on pourrait aussi mettre à jour le budget global automatiquement
-        // heures_budget: totalBudget 
-    }).eq('id', id);
-    
+    await supabase.from('chantiers').update({ heures_consommees: totalConsumed }).eq('id', id);
     setChantier((prev: any) => ({ ...prev, heures_consommees: totalConsumed }));
   };
 
@@ -169,7 +155,7 @@ export default function ChantierDetail() {
         nom: chantier.nom,
         client: chantier.client,
         adresse: chantier.adresse,
-        responsable: chantier.responsable, // ID de l'employé
+        responsable: chantier.responsable, 
         client_email: chantier.client_email,
         client_telephone: chantier.client_telephone,
         type: chantier.type,
@@ -224,7 +210,7 @@ export default function ChantierDetail() {
           chantier_id: id,
           nom: newFourniture.nom,
           qte_prevue: newFourniture.qte_prevue,
-          qte_restante: newFourniture.qte_prevue, // Au début, tout est là
+          qte_restante: newFourniture.qte_prevue, 
           unite: newFourniture.unite,
           seuil_alerte: newFourniture.seuil
       }]);
@@ -234,7 +220,6 @@ export default function ChantierDetail() {
 
   const updateStock = async (fournitureId: string, delta: number, current: number) => {
       const newVal = Math.max(0, current + delta);
-      // Optimistic UI
       setFournituresPrevu(prev => prev.map(f => f.id === fournitureId ? { ...f, qte_restante: newVal } : f));
       await supabase.from('chantier_fournitures').update({ qte_restante: newVal }).eq('id', fournitureId);
   };
@@ -252,29 +237,33 @@ export default function ChantierDetail() {
     setNewTaskLabel("");
   };
 
+  const toggleTask = async (task: any) => {
+    const updatedList = tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t);
+    setTasks(updatedList);
+    await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
+    updateProgress(updatedList);
+  };
+
   const addSubTask = async (parentId: string) => {
       if(!newSubTask.label) return;
       const parentTask = tasks.find(t => t.id === parentId);
       if(!parentTask) return;
 
       const updatedSubtasks = [...(parentTask.subtasks || []), {
-          id: Date.now(), // ID temporaire unique
+          id: Date.now(),
           label: newSubTask.label,
           heures: parseFloat(newSubTask.heures.toString()) || 0,
           date: newSubTask.date,
           done: false
       }];
 
-      // Calcul du nouveau total d'heures pour la tâche parente
       const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + curr.heures, 0);
 
-      // Mise à jour DB
       await supabase.from('chantier_tasks').update({ 
           subtasks: updatedSubtasks,
           objectif_heures: newTotalHours
       }).eq('id', parentId);
 
-      // Mise à jour locale
       const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
       setTasks(newTasks);
       updateProgress(newTasks);
@@ -291,8 +280,6 @@ export default function ChantierDetail() {
           st.id === subtaskId ? { ...st, done: !st.done } : st
       );
 
-      // Si toutes les sous-tâches sont faites, on coche la tâche principale ? (Optionnel, ici on laisse indépendant)
-      
       await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks }).eq('id', parentId);
       
       const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks } : t);
@@ -309,7 +296,7 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- ACQPA & DOCS (Inchangés mais conservés) ---
+  // --- ACQPA ---
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
   const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); };
   const updateCouche = (index: number, field: string, value: string) => { const n = [...acqpaData.couches]; n[index][field] = value; setAcqpaData({ ...acqpaData, couches: n }); };
@@ -317,6 +304,8 @@ export default function ChantierDetail() {
     const current = chantier[field] || [];
     setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] });
   };
+  
+  // --- DOCS ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     setUploading(true);
@@ -471,7 +460,10 @@ export default function ChantierDetail() {
                         {tasks.map((t) => (
                             <div key={t.id} className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
                                 <div className="flex justify-between items-center mb-2">
-                                    <span className="text-sm font-black uppercase text-[#ff9f43]">{t.label}</span>
+                                    <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => toggleTask(t)}>
+                                        {t.done ? <CheckCircle2 size={20} className="text-[#00b894] shrink-0" /> : <Circle size={20} className="text-[#ff9f43] shrink-0" />}
+                                        <span className={`text-sm font-black uppercase ${t.done ? 'line-through opacity-40' : 'text-[#ff9f43]'}`}>{t.label}</span>
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs bg-white/10 px-2 py-1 rounded font-bold">{t.objectif_heures}h</span>
                                         <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-white/50 hover:text-white"><Plus size={16}/></button>
@@ -704,7 +696,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* 6. ACQPA (Conservé) */}
+        {/* 6. ACQPA (RESTAURÉ ET COMPLET) */}
         {activeTab === 'acqpa' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 {!chantier.mesures_obligatoires ? (
@@ -724,6 +716,26 @@ export default function ChantierDetail() {
                                 Ouvrir / Modifier
                             </button>
                             <ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" />
+                        </div>
+                        
+                        {/* Aperçu rapide des données clés */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p>
+                                <p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p>
+                            </div>
+                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p>
+                                <p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p>
+                            </div>
+                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p>
+                                <p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p>
+                            </div>
+                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p>
+                                <p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -759,17 +771,181 @@ export default function ChantierDetail() {
 
       </div>
 
-      {/* MODALE ACQPA */}
+      {/* ================= MODALE ACQPA (POPUP COMPLETE) ================= */}
       {showACQPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+                
+                {/* Header Modal */}
                 <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0">
-                    <div><h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2></div>
-                    <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40"><X size={24} /></button>
+                    <div>
+                        <h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2>
+                        <p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture Industrielle</p>
+                    </div>
+                    <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors">
+                        <X size={24} />
+                    </button>
                 </div>
+
+                {/* Content Modal (Scrollable) */}
                 <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                    {/* Contenu ACQPA identique à avant... */}
-                    <p className="text-gray-400 italic">Formulaire complet disponible...</p>
+                    
+                    {/* SECTION 1 : AMBIANCE */}
+                    <section>
+                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
+                            <Thermometer className="text-[#0984e3]"/> Ambiance
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                            {[
+                                {label: 'Temp. Air (°C)', key: 'temp_air'},
+                                {label: 'Temp. Support (°C)', key: 'temp_support'},
+                                {label: 'Hygrométrie (%)', key: 'hygrometrie'},
+                                {label: 'Point Rosée (°C)', key: 'point_rosee'},
+                                {label: 'Delta T', key: 'delta_t'}
+                            ].map(f => (
+                                <div key={f.key}>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.label}</label>
+                                    <input 
+                                        type="number" 
+                                        className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors"
+                                        value={acqpaData[f.key] || ''}
+                                        onChange={(e) => setAcqpaData({...acqpaData, [f.key]: e.target.value})}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* SECTION 2 : SUPPORT */}
+                    <section>
+                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
+                            <Layers className="text-[#0984e3]"/> Préparation Support
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[
+                                {label: 'Degré de Soin', key: 'degre_soin', placeholder: 'ex: Sa 2.5'},
+                                {label: 'Propreté', key: 'proprete', placeholder: 'ex: OK'},
+                                {label: 'Rugosité (µm)', key: 'rugosite', type: 'number'},
+                                {label: 'Sels Solubles (µg/cm²)', key: 'sels', placeholder: 'µg/cm²'}
+                            ].map(f => (
+                                <div key={f.key}>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.label}</label>
+                                    <input 
+                                        type={f.type || 'text'}
+                                        placeholder={f.placeholder}
+                                        className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3] focus:bg-white transition-colors"
+                                        value={acqpaData[f.key] || ''}
+                                        onChange={(e) => setAcqpaData({...acqpaData, [f.key]: e.target.value})}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* SECTION 3 : PRODUITS (DYNAMIQUE) */}
+                    <section>
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+                            <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg">
+                                <Droplets className="text-[#0984e3]"/> Produits & Couches
+                            </h3>
+                            <button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors">
+                                <Plus size={14} /> Ajouter une couche
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            {acqpaData.couches && acqpaData.couches.map((couche: any, index: number) => (
+                                <div key={index} className="bg-gray-50 p-4 rounded-xl relative group">
+                                    <div className="absolute -top-3 left-3 bg-[#0984e3] text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                                        Couche {index + 1}
+                                    </div>
+                                    <button onClick={() => removeCouche(index)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Trash2 size={16} />
+                                    </button>
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Type Peinture</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.type} onChange={e => updateCouche(index, 'type', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Numéro Lot</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.lot} onChange={e => updateCouche(index, 'lot', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Méthode</label>
+                                            <input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" placeholder="ex: Airless" value={couche.methode} onChange={e => updateCouche(index, 'methode', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Dilution (%)</label>
+                                            <input type="number" className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={couche.dilution} onChange={e => updateCouche(index, 'dilution', e.target.value)} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                            <div className="col-span-2 md:col-span-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Date Appli</label>
+                                <input type="date" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_date || ''} onChange={e => setAcqpaData({...acqpaData, app_date: e.target.value})} />
+                            </div>
+                             <div className="col-span-2 md:col-span-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Applicateur</label>
+                                <input className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_nom || ''} onChange={e => setAcqpaData({...acqpaData, app_nom: e.target.value})} />
+                            </div>
+                             <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label>
+                                <input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} />
+                            </div>
+                        </div>
+                    </section>
+
+                     {/* SECTION 4 : CONTRÔLES */}
+                    <section>
+                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
+                            <Ruler className="text-[#0984e3]"/> Contrôles Finaux
+                        </h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            {[
+                                {label: 'Ép. Humide (µm)', key: 'ep_humide'}, // µm
+                                {label: 'Ép. Sèche (µm)', key: 'dft_mesure'}, // µm
+                                {label: 'Adhérence (MPa)', key: 'adherence'},
+                                {label: 'Défauts', key: 'defauts', type: 'text'},
+                                {label: 'Retouches ?', key: 'retouches', type: 'text'}
+                            ].map(f => (
+                                <div key={f.key}>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.label}</label>
+                                    <input 
+                                        type={f.type || 'number'} 
+                                        className={`w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors ${f.key === 'dft_mesure' ? 'bg-green-50 border-green-200' : ''}`}
+                                        value={acqpaData[f.key] || ''}
+                                        onChange={(e) => setAcqpaData({...acqpaData, [f.key]: e.target.value})}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                </div>
+
+                {/* Footer Modal */}
+                <div className="p-6 border-t border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between items-center shrink-0 gap-4">
+                    <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                         <div className="w-full md:w-auto">
+                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Inspecteur ACQPA</label>
+                             <input className="w-full md:w-64 bg-white p-3 rounded-xl border border-gray-200 font-bold text-sm outline-none focus:border-[#0984e3]" value={acqpaData.inspecteur_nom || ''} onChange={e => setAcqpaData({...acqpaData, inspecteur_nom: e.target.value})} />
+                         </div>
+                         <div className="w-full md:w-auto">
+                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Validation</label>
+                             <select className="w-full md:w-auto bg-white p-3 rounded-xl border border-gray-200 font-bold text-sm cursor-pointer outline-none focus:border-[#0984e3]" value={acqpaData.validation || 'En attente'} onChange={e => setAcqpaData({...acqpaData, validation: e.target.value})}>
+                                <option value="En attente">Validation en attente</option>
+                                <option value="Conforme">✅ Conforme</option>
+                                <option value="Non Conforme">❌ Non Conforme</option>
+                             </select>
+                         </div>
+                    </div>
+                    <button onClick={() => { setShowACQPAModal(false); handleSave(); }} className="w-full md:w-auto bg-[#0984e3] hover:bg-[#0074d9] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg transition-transform hover:scale-105">
+                        Enregistrer & Fermer
+                    </button>
                 </div>
             </div>
         </div>
