@@ -8,12 +8,14 @@ import {
   MapPin, Phone, Mail, User, Calendar, Printer, Save, 
   Plus, Trash2, Search, ArrowRight, Download, Eye,
   AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
-  ClipboardList, Stethoscope, Factory, Truck
+  ClipboardList, Stethoscope, Factory, Truck, Edit, ClipboardCheck
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
 } from 'recharts';
-import { jsPDF } from "jspdf"; 
+
+// Suppression de l'import statique pour éviter les erreurs de build SSR
+// import { jsPDF } from "jspdf"; 
 
 // On remplace './data' par le chemin absolu '@/'
 import { 
@@ -221,7 +223,7 @@ export default function HSEUltimateModule() {
             // ROUTEUR DE VUES
             <div className="max-w-7xl mx-auto pb-20">
               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
-              {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} />}
+              {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} users={users} />}
               {view === 'vgp' && <VGPTracker materiel={activeMateriel} />}
               {view === 'terrain' && <FieldVisits chantier={activeChantier!} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
@@ -289,7 +291,7 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
             </ResponsiveContainer>
             {/* Score central */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-               <span className="text-4xl font-black text-gray-800">{((materiel.length - vgpPerimees)/materiel.length * 100).toFixed(0)}%</span>
+               <span className="text-4xl font-black text-gray-800">{materiel.length > 0 ? ((materiel.length - vgpPerimees)/materiel.length * 100).toFixed(0) : 0}%</span>
                <span className="text-[10px] uppercase font-bold text-gray-400">Disponibilité</span>
             </div>
           </div>
@@ -401,7 +403,7 @@ function VGPTracker({ materiel }: { materiel: IMateriel[] }) {
 // =================================================================================================
 // MODULE 3: GÉNÉRATEUR INTELLIGENT (Moteurs de rendu distincts)
 // =================================================================================================
-function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier, equipe: IUser[], materiel: IMateriel[] }) {
+function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IChantier, equipe: IUser[], materiel: IMateriel[], users: IUser[] }) {
   const [docType, setDocType] = useState<'ppsps'|'modop'|'rex'|'causerie'>('ppsps');
   
   // États Formulaires
@@ -424,134 +426,132 @@ function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier
     }
   }, [equipe, chantier]);
 
-  // --- MOTEUR D'EXPORT PDF (Logique Distincte par Type) ---
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    const today = new Date().toLocaleDateString();
+  // --- MOTEUR D'EXPORT PDF (Logique Distincte par Type - CORRECTION BUILD SSR) ---
+  const generatePDF = async () => {
+    try {
+        // Importation dynamique de jsPDF uniquement côté client
+        const { jsPDF } = await import("jspdf");
+        const doc = new jsPDF();
+        const today = new Date().toLocaleDateString();
 
-    // En-tête Commun ALTRAD
-    doc.setFillColor(200, 200, 200);
-    doc.rect(0, 0, 210, 25, 'F');
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("ALTRAD SERVICES - Agence Sud-Est", 10, 15);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Projet: ${chantier.nom}`, 140, 10);
-    doc.text(`Date: ${today}`, 140, 15);
-    doc.text(`Réf: DOC-${docType.toUpperCase()}-${chantier.id}`, 140, 20);
-
-    // --- LOGIQUE SPÉCIFIQUE PPSPS ---
-    if (docType === 'ppsps') {
-      // Titre Rouge
-      doc.setFontSize(22);
-      doc.setTextColor(220, 0, 0); 
-      doc.text("PLAN PARTICULIER DE SÉCURITÉ (PPSPS)", 105, 45, { align: "center" });
-      
-      doc.setFontSize(12);
-      doc.setTextColor(0, 0, 0);
-      
-      // 1. Renseignements
-      doc.setFillColor(240, 240, 240);
-      doc.rect(10, 55, 190, 8, 'F');
-      doc.setFont("helvetica", "bold");
-      doc.text("1. RENSEIGNEMENTS GÉNÉRAUX", 12, 61);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.text(`Maître d'Ouvrage : ${chantier.client}`, 15, 75);
-      doc.text(`Adresse du site : ${chantier.adresse}`, 15, 82);
-      doc.text(`Effectif moyen : ${chantier.effectif_prevu} personnes`, 15, 89);
-      doc.text(`Responsable Chantier : ${users.find(u => u.id === chantier.responsable_id)?.nom || 'Non défini'}`, 15, 96);
-
-      // 2. Secours
-      doc.setFillColor(240, 240, 240);
-      doc.rect(10, 110, 190, 8, 'F');
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text("2. ORGANISATION DES SECOURS", 12, 116);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.text(`Hôpital de référence : ${secours.hopital}`, 15, 130);
-      doc.text(`Numéros d'urgence : Pompiers (18) - SAMU (15) - Interne (XXXX)`, 15, 137);
-      
-      doc.setFont("helvetica", "bold");
-      doc.text(`Sauveteurs Secouristes du Travail (SST) présents :`, 15, 147);
-      doc.setFont("helvetica", "normal");
-      (secours.sst as any).forEach((sst: string, i: number) => {
-        doc.text(`• ${sst}`, 20, 154 + (i*6));
-      });
-
-      // 3. Risques
-      doc.setFillColor(240, 240, 240);
-      doc.rect(10, 180, 190, 8, 'F');
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text("3. ANALYSE DES RISQUES SPÉCIFIQUES", 12, 186);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      selectedRisks.forEach((r, i) => {
-        doc.text(`- ${r}`, 15, 196 + (i*6));
-      });
-
-    } 
-    // --- LOGIQUE SPÉCIFIQUE MODE OPÉRATOIRE ---
-    else if (docType === 'modop') {
-      doc.setFontSize(22);
-      doc.setTextColor(0, 100, 200); 
-      doc.text("MODE OPÉRATOIRE TECHNIQUE", 105, 45, { align: "center" });
-      
-      // Info ACQPA
-      if (chantier.type_travaux.includes("Peinture")) {
-        doc.setFontSize(12);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`SYSTÈME PEINTURE : ${chantier.infos_acqpa?.systeme_homologue || 'Standard'} (${chantier.infos_acqpa?.epaisseur_totale_visee} µm)`, 105, 55, { align: "center" });
-      }
-
-      // Matériel
-      doc.setTextColor(0,0,0);
-      doc.setFont("helvetica", "bold");
-      doc.text("MATÉRIEL ENGAGÉ :", 10, 70);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      let matY = 80;
-      materiel.forEach((m) => {
-          doc.text(`• ${m.libelle} (${m.type})`, 15, matY);
-          matY += 6;
-      });
-
-      // Tableau Chronologique (Simulé)
-      let y = matY + 10;
-      doc.setFont("helvetica", "bold");
-      doc.text("PHASAGE DES OPÉRATIONS :", 10, y);
-      y += 10;
-      
-      modopSteps.forEach((step, i) => {
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(10, y, 190, 25); // Box
-        
+        // En-tête Commun ALTRAD
+        doc.setFillColor(200, 200, 200);
+        doc.rect(0, 0, 210, 25, 'F');
         doc.setFontSize(14);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`${i+1}`, 18, y+16); // Numéro
-        
-        doc.setFontSize(11);
-        doc.setTextColor(0, 0, 0);
-        doc.text(`${step.phase}`, 30, y+10);
-        
-        doc.setFontSize(9);
-        doc.setTextColor(200, 0, 0);
-        doc.text(`RISQUE: ${step.risque}`, 30, y+18);
-        
-        doc.setTextColor(0, 150, 0);
-        doc.text(`PRÉVENTION: ${step.prevention}`, 110, y+18);
-        
-        y += 30;
-      });
-    }
+        doc.setFont("helvetica", "bold");
+        doc.text("ALTRAD SERVICES - Agence Sud-Est", 10, 15);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Projet: ${chantier.nom}`, 140, 10);
+        doc.text(`Date: ${today}`, 140, 15);
+        doc.text(`Réf: DOC-${docType.toUpperCase()}-${chantier.id}`, 140, 20);
 
-    doc.save(`${docType}_${chantier.nom}.pdf`);
+        // --- LOGIQUE SPÉCIFIQUE PPSPS ---
+        if (docType === 'ppsps') {
+          doc.setFontSize(22);
+          doc.setTextColor(220, 0, 0); 
+          doc.text("PLAN PARTICULIER DE SÉCURITÉ (PPSPS)", 105, 45, { align: "center" });
+          
+          doc.setFontSize(12);
+          doc.setTextColor(0, 0, 0);
+          
+          doc.setFillColor(240, 240, 240);
+          doc.rect(10, 55, 190, 8, 'F');
+          doc.setFont("helvetica", "bold");
+          doc.text("1. RENSEIGNEMENTS GÉNÉRAUX", 12, 61);
+          
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.text(`Maître d'Ouvrage : ${chantier.client}`, 15, 75);
+          doc.text(`Adresse du site : ${chantier.adresse}`, 15, 82);
+          doc.text(`Effectif moyen : ${chantier.effectif_prevu} personnes`, 15, 89);
+          doc.text(`Responsable Chantier : ${users.find(u => u.id === chantier.responsable_id)?.nom || 'Non défini'}`, 15, 96);
+
+          doc.setFillColor(240, 240, 240);
+          doc.rect(10, 110, 190, 8, 'F');
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(12);
+          doc.text("2. ORGANISATION DES SECOURS", 12, 116);
+          
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.text(`Hôpital de référence : ${secours.hopital}`, 15, 130);
+          doc.text(`Numéros d'urgence : Pompiers (18) - SAMU (15) - Interne (XXXX)`, 15, 137);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(`Sauveteurs Secouristes du Travail (SST) présents :`, 15, 147);
+          doc.setFont("helvetica", "normal");
+          (secours.sst as any).forEach((sst: string, i: number) => {
+            doc.text(`• ${sst}`, 20, 154 + (i*6));
+          });
+
+          doc.setFillColor(240, 240, 240);
+          doc.rect(10, 180, 190, 8, 'F');
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(12);
+          doc.text("3. ANALYSE DES RISQUES SPÉCIFIQUES", 12, 186);
+          
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          selectedRisks.forEach((r, i) => {
+            doc.text(`- ${r}`, 15, 196 + (i*6));
+          });
+        } 
+        else if (docType === 'modop') {
+          doc.setFontSize(22);
+          doc.setTextColor(0, 100, 200); 
+          doc.text("MODE OPÉRATOIRE TECHNIQUE", 105, 45, { align: "center" });
+          
+          if (chantier.type_travaux.includes("Peinture")) {
+            doc.setFontSize(12);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`SYSTÈME PEINTURE : ${chantier.infos_acqpa?.systeme_homologue || 'Standard'} (${chantier.infos_acqpa?.epaisseur_totale_visee} µm)`, 105, 55, { align: "center" });
+          }
+
+          doc.setTextColor(0,0,0);
+          doc.setFont("helvetica", "bold");
+          doc.text("MATÉRIEL ENGAGÉ :", 10, 70);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          let matY = 80;
+          materiel.forEach((m) => {
+              doc.text(`• ${m.libelle} (${m.type})`, 15, matY);
+              matY += 6;
+          });
+
+          let y = matY + 10;
+          doc.setFont("helvetica", "bold");
+          doc.text("PHASAGE DES OPÉRATIONS :", 10, y);
+          y += 10;
+          
+          modopSteps.forEach((step, i) => {
+            doc.setDrawColor(200, 200, 200);
+            doc.rect(10, y, 190, 25); 
+            
+            doc.setFontSize(14);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`${i+1}`, 18, y+16); 
+            
+            doc.setFontSize(11);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`${step.phase}`, 30, y+10);
+            
+            doc.setFontSize(9);
+            doc.setTextColor(200, 0, 0);
+            doc.text(`RISQUE: ${step.risque}`, 30, y+18);
+            
+            doc.setTextColor(0, 150, 0);
+            doc.text(`PRÉVENTION: ${step.prevention}`, 110, y+18);
+            
+            y += 30;
+          });
+        }
+
+        doc.save(`${docType}_${chantier.nom}.pdf`);
+    } catch (err) {
+        console.error("Erreur génération PDF:", err);
+        alert("Une erreur est survenue lors de la génération du PDF.");
+    }
   };
 
   return (
@@ -600,11 +600,11 @@ function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier
               <h4 className="font-bold text-red-800 mb-4 flex items-center gap-2"><Siren size={20}/> Organisation des Secours (Automatique)</h4>
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="label-form">Hôpital de référence</label>
-                  <input type="text" className="input-form bg-white border-red-200" value={secours.hopital} onChange={e => setSecours({...secours, hopital: e.target.value})} />
+                  <label className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2 block">Hôpital de référence</label>
+                  <input type="text" className="w-full p-3 bg-white border border-red-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500 transition-all" value={secours.hopital} onChange={e => setSecours({...secours, hopital: e.target.value})} />
                 </div>
                 <div>
-                  <label className="label-form">SST sur le chantier (Détectés via Habilitations)</label>
+                  <label className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2 block">SST sur le chantier (Détectés via Habilitations)</label>
                   <div className="flex flex-wrap gap-2 mt-2 bg-white p-3 rounded-lg border border-red-200 min-h-[42px]">
                     {(secours.sst as any).map((s:string) => (
                       <span key={s} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200 flex items-center gap-1">
@@ -649,16 +649,16 @@ function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier
                 <div key={i} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm relative group">
                   <div className="col-span-1 font-black text-gray-300 text-center text-xl">{i+1}</div>
                   <div className="col-span-4">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phase</label>
-                      <input type="text" className="input-form bg-white" placeholder="Phase" value={step.phase} onChange={e => {const n=[...modopSteps]; n[i].phase=e.target.value; setModopSteps(n)}} />
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Phase</label>
+                      <input type="text" className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 outline-none" placeholder="Phase" value={step.phase} onChange={e => {const n=[...modopSteps]; n[i].phase=e.target.value; setModopSteps(n)}} />
                   </div>
                   <div className="col-span-3">
-                      <label className="text-[9px] font-bold text-red-400 uppercase">Risque Majeur</label>
-                      <input type="text" className="input-form bg-white border-red-200 text-red-700" placeholder="Risque" value={step.risque} onChange={e => {const n=[...modopSteps]; n[i].risque=e.target.value; setModopSteps(n)}} />
+                      <label className="text-[9px] font-bold text-red-400 uppercase tracking-widest block mb-1">Risque Majeur</label>
+                      <input type="text" className="w-full p-2 bg-white border border-red-200 rounded-lg text-sm font-bold text-red-700 outline-none" placeholder="Risque" value={step.risque} onChange={e => {const n=[...modopSteps]; n[i].risque=e.target.value; setModopSteps(n)}} />
                   </div>
                   <div className="col-span-3">
-                      <label className="text-[9px] font-bold text-green-400 uppercase">Prévention</label>
-                      <input type="text" className="input-form bg-white border-green-200 text-green-700" placeholder="Prévention" value={step.prevention} onChange={e => {const n=[...modopSteps]; n[i].prevention=e.target.value; setModopSteps(n)}} />
+                      <label className="text-[9px] font-bold text-green-400 uppercase tracking-widest block mb-1">Prévention</label>
+                      <input type="text" className="w-full p-2 bg-white border border-green-200 rounded-lg text-sm font-bold text-green-700 outline-none" placeholder="Prévention" value={step.prevention} onChange={e => {const n=[...modopSteps]; n[i].prevention=e.target.value; setModopSteps(n)}} />
                   </div>
                   <div className="col-span-1 text-center pt-4">
                       <button onClick={() => {const n=[...modopSteps]; n.splice(i,1); setModopSteps(n)}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
@@ -704,20 +704,19 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div><label className="label-form">Domaine</label><select className="input-form"><option>Sécurité</option><option>Qualité</option><option>Environnement</option></select></div>
-          <div><label className="label-form">N° OTP</label><input type="text" className="input-form" placeholder="Auto-Fill" value="OTP-2026-X" readOnly/></div>
+          <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Domaine</label><select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none"><option>Sécurité</option><option>Qualité</option><option>Environnement</option></select></div>
+          <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">N° OTP</label><input type="text" className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-400 outline-none" placeholder="Auto-Fill" value="OTP-2026-X" readOnly/></div>
           
           <div className="md:col-span-2">
-             <label className="label-form">Point de contrôle (Référentiel)</label>
-             <select className="input-form" value={checklist} onChange={e => setChecklist(e.target.value)}>
+             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Point de contrôle (Référentiel)</label>
+             <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none" value={checklist} onChange={e => setChecklist(e.target.value)}>
                 <option value="">-- Choisir un point de contrôle --</option>
-                {/* Importation dynamique depuis data.ts */}
                 {Q3SRE_REFERENTIAL.points_controle.map(p => <option key={p} value={p}>{p}</option>)}
              </select>
           </div>
 
           <div className="md:col-span-2 mt-2">
-            <label className="label-form mb-2">Preuve Photo (Tap to shoot)</label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Preuve Photo (Tap to shoot)</label>
             <div className="border-2 border-dashed border-gray-300 rounded-2xl h-48 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 transition-colors cursor-pointer relative overflow-hidden bg-gray-50">
               {photo ? <img src={photo} className="w-full h-full object-cover" /> : (
                 <>
@@ -741,7 +740,7 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
       
       {/* Historique Rapide */}
       <div className="hidden lg:block bg-white p-6 rounded-3xl shadow-sm border border-gray-200 h-fit">
-          <h3 className="font-bold text-gray-400 uppercase text-xs mb-4">Derniers Rapports</h3>
+          <h3 className="font-bold text-gray-400 uppercase text-[10px] tracking-widest mb-4">Derniers Rapports</h3>
           <div className="space-y-4">
               {[1,2,3].map(i => (
                   <div key={i} className="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
@@ -784,33 +783,33 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
 
       <div className="grid grid-cols-2 gap-8 mb-8">
         <div>
-          <label className="label-form">Thème abordé</label>
-          <select className="input-form" value={theme} onChange={e => setTheme(e.target.value)}>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Thème abordé</label>
+          <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none" value={theme} onChange={e => setTheme(e.target.value)}>
              <option value="">-- Sélectionner --</option>
              {CAUSERIE_THEMES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
-          <label className="label-form">Animateur</label>
-          <select className="input-form">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Animateur</label>
+          <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none">
             {equipe.map(u => <option key={u.id}>{u.nom} {u.prenom}</option>)}
           </select>
         </div>
       </div>
 
       <div className="mb-8">
-        <label className="label-form">Points clés discutés / Remontées terrain</label>
-        <textarea className="input-form h-32 bg-yellow-50 border-yellow-200 focus:border-yellow-400 focus:ring-yellow-100" placeholder="Notes de la séance..."></textarea>
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Points clés discutés / Remontées terrain</label>
+        <textarea className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm font-medium text-gray-700 h-32 outline-none focus:border-yellow-400 transition-all" placeholder="Notes de la séance..."></textarea>
       </div>
 
       <div>
-        <label className="label-form mb-4 block flex justify-between">
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 block flex justify-between">
             <span>Émargement des participants</span>
             <span className="text-gray-400 font-normal">{equipe.length} personnes convoquées</span>
         </label>
         <div className="border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-xs font-bold uppercase text-gray-500 border-b border-gray-200">
+            <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200">
               <tr><th className="p-4">Nom Prénom</th><th className="p-4">Fonction</th><th className="p-4 text-center">Présent</th></tr>
             </thead>
             <tbody className="text-sm bg-white">
