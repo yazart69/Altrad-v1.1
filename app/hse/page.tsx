@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ShieldCheck, AlertTriangle, FileText, HardHat, 
@@ -8,46 +8,56 @@ import {
   Search, Plus, Printer, QrCode, Download,
   CheckCircle2, XCircle, Clock, MapPin, Construction,
   Filter, FileCheck, ArrowRight, Table, LayoutDashboard,
-  Megaphone, FolderOpen, Save, Trash2, Edit
+  Megaphone, FolderOpen, Save, Trash2, Edit, CloudSun, Zap, Wind
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie 
 } from 'recharts';
 
-// --- BASE DE DONNÉES RISQUES COMPLETE (Issue de vos fichiers Excel) ---
+// --- BASE DE DONNÉES RISQUES COMPLETE (INTEGRATION MASSIVE) ---
 const RISK_DATABASE = [
-  // --- LOGISTIQUE & PRÉPARATION ---
+  // --- LOGISTIQUE & PRÉPARATION (TCA) ---
   { id: 'TCA-14', category: 'Logistique', task: "Approvisionnement / Préparation chantier", risks: ["Accident trajet", "Chute objet", "Choc/Coup", "Chute plain-pied", "Incidence musculaire"], measures: ["Respect code route", "Véhicule bon état", "Arrimage matériel", "Respect techniques manutention", "EPI obligatoires", "Balisage zone"] },
   { id: 'TCA-18', category: 'Logistique', task: "Déplacement sur chantier (Piéton/Véhicule)", risks: ["Accident trajet", "Choc/Coup", "Chute plain-pied", "Coactivité"], measures: ["Respect voies circulation", "Vigilance coactivité", "Port EPI (Casque/Chaussures)", "Ne pas courir", "Vigilance sol glissant"] },
   { id: 'TCA-17', category: 'Logistique', task: "Chargement / Déchargement", risks: ["Choc/Coup", "TMS", "Ecrasement", "Pollution"], measures: ["Protocole sécurité site", "Règle 3 points d'appuis", "Outils aide manutention", "Kit anti-pollution", "Gants protection 4542"] },
   { id: 'TCA-21', category: 'Logistique', task: "Circulation routière", risks: ["Accident routier", "Incendie", "Substance dangereuse"], measures: ["Véhicule contrôlé", "Arrimage charges", "Pas de téléphone au volant", "Extincteur ABC", "Kit urgence"] },
+  { id: 'TCA-15', category: 'Logistique', task: "Repli de chantier", risks: ["Poussière", "Choc/coup", "Chute plain-pied", "Incidence musculaire"], measures: ["Port masque/lunettes", "Matériel bon état", "Ordre et propreté", "Tri des déchets", "Gestes et postures"] },
+  { id: 'TCA-20', category: 'Logistique', task: "Manutention manuelle", risks: ["Choc/Coup", "Pincement/Ecrasement", "TMS", "Chute plain-pied"], measures: ["Gants manutention", "Gestes et postures", "Outils aide manutention", "Travail en binôme", "Dégager circulations"] },
 
-  // --- TRAVAUX EN HAUTEUR & ECHAFAUDAGE ---
+  // --- TRAVAUX EN HAUTEUR & ECHAFAUDAGE (ECH/TCA) ---
   { id: 'ECH-01', category: 'Hauteur', task: "Montage échafaudage", risks: ["Chute hauteur", "Chute objet", "Effondrement"], measures: ["Personnel habilité", "Harnais double longe", "Balisage zone montage", "Vérification stabilité sol", "Cales sous pieds", "Contrôle journalier"] },
   { id: 'ECH-02', category: 'Hauteur', task: "Démontage échafaudage", risks: ["Chute hauteur", "Chute objet", "Coincement"], measures: ["Zone interdite balisée", "Descente matériel à la poulie", "Ordre et propreté plateaux", "Harnais attaché en permanence"] },
   { id: 'TCA-05', category: 'Hauteur', task: "Travaux sur échafaudage fixe", risks: ["Chute hauteur", "Chute objet", "Encombrement"], measures: ["Trappes fermées", "Plinthes en place", "Respect charges admissibles", "Aucun stockage excessif"] },
   { id: 'TCA-06', category: 'Hauteur', task: "Travaux sur échafaudage roulant", risks: ["Renversement", "Chute hauteur"], measures: ["Roues bloquées", "Stabilisateurs sortis", "Pas de déplacement avec personnel", "Sol plan et stable"] },
   { id: 'TCA-09', category: 'Hauteur', task: "Travaux avec Nacelle (PEMP)", risks: ["Chute hauteur", "Ejection", "Heurt structure"], measures: ["CACES valide", "Harnais attaché dans panier", "Balisage sol", "Vérification VGP", "Surveillant au sol"] },
+  { id: 'TCA-11', category: 'Hauteur', task: "Travaux avec Filet / Ligne de vie", risks: ["Chute hauteur", "Chute objet"], measures: ["Personnel formé", "Réception filets", "Harnais double longe", "Accrochage permanent"] },
   { id: 'TCA-12', category: 'Hauteur', task: "Travaux à l'échelle / Escabeau", risks: ["Chute hauteur", "Déséquilibre"], measures: ["Travail ponctuel uniquement", "3 points d'appui", "Maintien par tiers", "Echelle attachée en tête"] },
   { id: 'TCA-25', category: 'Hauteur', task: "Utilisation PIR / PIRL", risks: ["Chute hauteur", "Basculement"], measures: ["Freins bloqués", "Stabilisateurs installés", "Gardes-corps fermés", "Inspection visuelle avant usage"] },
+  { id: 'CET-09', category: 'Hauteur', task: "Travaux sur toiture", risks: ["Chute hauteur", "Chute travers toiture", "Glissade"], measures: ["Stop-chute", "Ligne de vie", "Chemin de circulation", "Filet en sous-face"] },
 
-  // --- ISOLATION & CALORIFUGE ---
+  // --- ISOLATION & CALORIFUGE (ISO) ---
   { id: 'ISO-02', category: 'Isolation', task: "Décalorifugeage", risks: ["Coupure", "Poussière (Fibres)", "Chute plain-pied"], measures: ["Gants anti-coupure", "Masque P3", "Combinaison jetable", "Humidification", "Tri déchets"] },
   { id: 'ISO-03', category: 'Isolation', task: "Pose isolant / Tôle", risks: ["Coupure tôle", "Projection", "TMS"], measures: ["Gants manutention", "Lunettes protection", "Outils adaptés", "Etabli de découpe stable"] },
-  { id: 'ISO-01', category: 'Isolation', task: "Préfabrication atelier", risks: ["Coupure", "Bruit", "Poussière"], measures: ["Protections machines en place", "Aspiration locale", "EPI complets (Bouchons, Lunettes)"] },
+  { id: 'ISO-01', category: 'Isolation', task: "Préfabrication atelier (Tôlerie)", risks: ["Coupure", "Bruit", "Poussière", "Ecrasement doigts"], measures: ["Protections machines en place", "Aspiration locale", "EPI complets (Bouchons, Lunettes)", "Distance sécurité rouleaux"] },
+  { id: 'ISO-05', category: 'Isolation', task: "Pose plots / Aiguilles (Soudure)", risks: ["Brûlure", "Electrique", "Incendie", "Fumées"], measures: ["Permis de feu", "Extincteur à proximité", "EPI soudeur", "Bâches ignifugées", "Ventilation"] },
+  { id: 'PPI-04', category: 'Isolation', task: "Projection Mortier Anti-feu", risks: ["Projection", "Poussière", "Bruit", "Chute"], measures: ["Combinaison étanche", "Masque P3", "Lunettes étanches", "Balisage zone", "Protection des tiers"] },
 
-  // --- PEINTURE & TRAITEMENT DE SURFACE ---
+  // --- PEINTURE & TRAITEMENT DE SURFACE (PRS) ---
   { id: 'PRS-01', category: 'Peinture', task: "Brossage / Grattage manuel", risks: ["Coupure", "Poussière", "Projection"], measures: ["Gants adaptés", "Masque P1/P2", "Lunettes étanches"] },
   { id: 'PRS-06', category: 'Peinture', task: "Sablage / Grenaillage", risks: ["Projection abrasif", "Bruit", "Poussière", "Fouettement flexible"], measures: ["Heaume ventilé", "Combinaison sablage", "Câbles anti-fouettement", "Homme mort fonctionnel", "Balisage strict"] },
   { id: 'PRS-09', category: 'Peinture', task: "Application Peinture (Pistolet/Airless)", risks: ["Chimique", "Incendie", "Projection haute pression"], measures: ["Masque cartouche A2P3", "Combinaison étanche", "Extincteur zone", "Mise à la terre matériel", "FDS consultée"] },
-  { id: 'PRS-08', category: 'Peinture', task: "Mélange Peinture", risks: ["Emanations COV", "Eclaboussure"], measures: ["Local ventilé", "Bac rétention", "Lunettes + Gants néoprène/nitrile", "Kit lavage oculaire"] },
+  { id: 'PRS-08', category: 'Peinture', task: "Application Manuelle (Rouleau/Brosse)", risks: ["Chimique", "Eclaboussure", "TMS"], measures: ["Gants nitrile/néoprène", "Lunettes protection", "Vêtements couvrant", "Ventilation locale"] },
+  { id: 'PRS-08-B', category: 'Peinture', task: "Mélange Peinture", risks: ["Emanations COV", "Eclaboussure", "Renversement"], measures: ["Local ventilé", "Bac rétention", "Lunettes + Gants", "Kit lavage oculaire à proximité"] },
+  { id: 'PPI-05', category: 'Peinture', task: "Application Intumescent", risks: ["Chimique", "Incendie", "Projection"], measures: ["Masque A2P3", "Combinaison", "Respect épaisseurs", "FDS produits"] },
 
-  // --- RISQUES SPÉCIFIQUES & AMBIANCES ---
+  // --- RISQUES SPÉCIFIQUES & AMBIANCES (CET) ---
   { id: 'CET-04', category: 'Spécifique', task: "Travaux en capacité confinée", risks: ["Anoxie", "Intoxication", "Explosion"], measures: ["Permis de pénétrer", "Surveillant obligatoire", "Détecteur 4 gaz", "Ventilation mécanique", "Masque auto-sauveteur"] },
   { id: 'CET-10', category: 'Spécifique', task: "Zone ATEX", risks: ["Explosion", "Incendie"], measures: ["Matériel antidéflagrant", "Pas de téléphone/allumette", "Permis de feu", "Explosimètre permanent", "Vêtements antistatiques"] },
   { id: 'CET-08', category: 'Spécifique', task: "Voisinage électrique", risks: ["Electrisation", "Arc électrique"], measures: ["Habilitation H0/B0", "Respect distances sécurité", "Balisage physique", "Outillage isolé"] },
   { id: 'CET-09', category: 'Spécifique', task: "Travaux proximité eau", risks: ["Noyade", "Chute"], measures: ["Gilet sauvetage", "Bouée couronne", "Travail en binôme", "Balisage berge"] },
-  { id: 'TCA-23', category: 'Spécifique', task: "Utilisation outils coupants", risks: ["Coupure grave"], measures: ["Cutter lame rétractable OBLIGATOIRE", "Gants niveau 5", "Pas de coupe vers soi"] }
+  { id: 'CET-10-B', category: 'Spécifique', task: "Ambiances particulières (Chaud/Froid/Bruit)", risks: ["Coup de chaleur", "Hypothermie", "Surdité"], measures: ["Hydratation", "Pauses régulières", "EPI froid", "Protections auditives obligatoires"] },
+  { id: 'TCA-23', category: 'Spécifique', task: "Utilisation outils coupants", risks: ["Coupure grave"], measures: ["Cutter lame rétractable OBLIGATOIRE", "Gants niveau 5", "Pas de coupe vers soi"] },
+  { id: 'CMR', category: 'Spécifique', task: "Exposition Chrome VI / Plomb", risks: ["Cancer", "Intoxication"], measures: ["Confinement zone", "Aspiration TH", "Masque ventilé P3", "Combinaison Tyvek", "Sas décontamination", "Lingettes décontaminantes"] }
 ];
 
 export default function HSEPlatform() {
@@ -58,15 +68,16 @@ export default function HSEPlatform() {
   // Data
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [docs, setDocs] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]); // Causeries, Accidents
+  const [events, setEvents] = useState<any[]>([]); 
   const [staff, setStaff] = useState<any[]>([]);
   const [actions, setActions] = useState<any[]>([]);
 
   // Generator States
-  const [docType, setDocType] = useState("ppsps"); // ppsps, mode_op, analyse_risque
+  const [docType, setDocType] = useState("ppsps"); // ppsps, mode_op, analyse_risque, minirex
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
+  const [contextData, setContextData] = useState({ meteo: 'Soleil', coactivite: 'Non', atex: 'Non', permis: 'N/A' });
   
-  // Formulaires (Nouveau)
+  // Formulaires
   const [newEvent, setNewEvent] = useState<any>({ type: 'causerie', titre: '', date: '', description: '', participants: '' });
   const [newAction, setNewAction] = useState<any>({ description: '', responsable: '', echeance: '', priorite: 'moyenne' });
 
@@ -109,32 +120,58 @@ export default function HSEPlatform() {
 
     const chantier = chantiers.find(c => c.id === selectedChantier);
     const risks = RISK_DATABASE.filter(r => selectedTasks.includes(r.id));
-    const title = docType === 'ppsps' ? 'PPSPS SIMPLIFIÉ' : docType === 'mode_op' ? 'MODE OPÉRATOIRE' : 'ANALYSE DE RISQUES';
+    
+    let title = "DOCUMENT SÉCURITÉ";
+    if (docType === 'ppsps') title = "PLAN PARTICULIER DE SÉCURITÉ (PPSPS)";
+    else if (docType === 'mode_op') title = "MODE OPÉRATOIRE & ANALYSE RISQUES";
+    else if (docType === 'analyse_risque') title = "ANALYSE DE RISQUES (ADR)";
+    else if (docType === 'minirex') title = "MINI REX / RETOUR EXPÉRIENCE";
 
     const w = window.open('', '_blank');
     w?.document.write(`
       <html><head><title>${title}</title>
       <style>
-        body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:12px;}
-        h1{color:#e74c3c;border-bottom:2px solid #e74c3c;padding-bottom:10px;text-transform:uppercase;}
-        .header{background:#f5f5f5;padding:15px;margin-bottom:20px;border-radius:5px;}
-        table{width:100%;border-collapse:collapse;margin-top:15px;}
+        body{font-family:Arial,sans-serif;padding:40px;color:#333;font-size:12px;line-height:1.4;}
+        h1{color:#e74c3c;border-bottom:3px solid #e74c3c;padding-bottom:10px;text-transform:uppercase;font-size:24px;}
+        h2{background:#eee;padding:8px 15px;border-left:5px solid #2c3e50;margin-top:30px;text-transform:uppercase;font-size:16px;}
+        .header-box{border:1px solid #ccc;padding:15px;display:flex;justify-content:space-between;margin-bottom:30px;background:#f9f9f9;}
+        table{width:100%;border-collapse:collapse;margin-top:15px;font-size:11px;}
         th,td{border:1px solid #999;padding:8px;text-align:left;vertical-align:top;}
-        th{background:#2c3e50;color:white;font-size:11px;}
-        .cat{background:#eee;font-weight:bold;text-align:center;}
+        th{background:#2c3e50;color:white;}
         .danger{color:#c0392b;font-weight:bold;}
         .measure{color:#27ae60;}
+        .context-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;}
+        .context-item{border:1px solid #eee;padding:10px;text-align:center;font-weight:bold;}
+        .signature-box{margin-top:50px;display:flex;justify-content:space-between;border:1px solid #000;padding:20px;}
       </style></head><body>
       
-      <div class="header">
-        <h2 style="margin:0;">${title}</h2>
-        <p><strong>CHANTIER :</strong> ${chantier.nom} (${chantier.adresse})</p>
-        <p><strong>DATE :</strong> ${new Date().toLocaleDateString()}</p>
+      <div class="header-box">
+        <div>
+            <strong>ALTRAD SERVICES</strong><br>
+            Agence Sud-Est
+        </div>
+        <div style="text-align:right;">
+            <strong>Projet :</strong> ${chantier.nom}<br>
+            <strong>Date :</strong> ${new Date().toLocaleDateString()}<br>
+            <strong>Réf :</strong> HSE-${new Date().getFullYear()}-${Math.floor(Math.random()*1000)}
+        </div>
       </div>
 
-      <h3>1. ANALYSE DÉTAILLÉE DES TÂCHES & RISQUES</h3>
+      <h1>${title}</h1>
+
+      <div class="context-grid">
+         <div class="context-item">MÉTÉO : ${contextData.meteo}</div>
+         <div class="context-item">COACTIVITÉ : ${contextData.coactivite}</div>
+         <div class="context-item">ZONE ATEX : ${contextData.atex}</div>
+      </div>
+
+      <h2>1. DESCRIPTION DES TRAVAUX & MOYENS</h2>
+      <p><strong>Lieu :</strong> ${chantier.adresse}</p>
+      <p><strong>Description :</strong> Intervention sur site comprenant ${risks.map(r => r.task).join(', ')}.</p>
+
+      <h2>2. ANALYSE DÉTAILLÉE DES RISQUES</h2>
       <table>
-        <thead><tr><th width="25%">OPÉRATION / TÂCHE</th><th width="35%">RISQUES IDENTIFIÉS</th><th width="40%">MESURES DE PRÉVENTION OBLIGATOIRES</th></tr></thead>
+        <thead><tr><th width="25%">OPÉRATION</th><th width="35%">RISQUES IDENTIFIÉS</th><th width="40%">MESURES DE PRÉVENTION</th></tr></thead>
         <tbody>
           ${risks.map(r => `
             <tr>
@@ -146,13 +183,17 @@ export default function HSEPlatform() {
         </tbody>
       </table>
 
-      <h3>2. CONSIGNES SPÉCIFIQUES</h3>
-      <p><strong>URGENCES :</strong> En cas d'accident, appeler le 15 (SAMU) ou 18 (Pompiers). Le point de rassemblement est situé à l'entrée principale.</p>
-      <p><strong>COACTIVITÉ :</strong> Vigilance accrue lors des déplacements. Respect strict du balisage.</p>
+      <h2>3. SECOURS & URGENCES</h2>
+      <table style="width:50%;">
+         <tr><td><strong>Pompiers</strong></td><td>18</td></tr>
+         <tr><td><strong>SAMU</strong></td><td>15</td></tr>
+         <tr><td><strong>Responsable Chantier</strong></td><td>__________________</td></tr>
+      </table>
       
-      <br><br>
-      <div style="border:1px solid #000;padding:20px;width:300px;">
-        <strong>Visa Responsable Chantier :</strong><br><br><br>
+      <div class="signature-box">
+        <div><strong>Visa Rédateur :</strong><br><br></div>
+        <div><strong>Visa Responsable Chantier :</strong><br><br></div>
+        <div><strong>Visa Client (si requis) :</strong><br><br></div>
       </div>
 
       <script>window.print();</script>
@@ -160,7 +201,7 @@ export default function HSEPlatform() {
     `);
   };
 
-  // --- ACTIONS CRUD (Create/Read) ---
+  // --- ACTIONS CRUD ---
   const saveEvent = async () => {
     if (!selectedChantier) return alert("Sélectionnez un chantier.");
     if (!newEvent.titre || !newEvent.date) return alert("Remplissez les champs obligatoires.");
@@ -237,64 +278,96 @@ export default function HSEPlatform() {
                     
                     {!selectedChantier ? <div className="bg-orange-50 text-orange-600 p-4 rounded font-bold">⚠️ Sélectionnez un chantier pour commencer.</div> : (
                       <>
-                        <div className="mb-6 flex gap-4">
-                          {['ppsps', 'mode_op', 'analyse_risque'].map(t => (
-                            <button key={t} onClick={() => setDocType(t)} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase ${docType===t ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                        {/* TYPE DOCUMENT */}
+                        <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+                          {['ppsps', 'mode_op', 'analyse_risque', 'minirex'].map(t => (
+                            <button key={t} onClick={() => setDocType(t)} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap ${docType===t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                               {t.replace('_', ' ')}
                             </button>
                           ))}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2">
+                        {/* CONTEXTE CHANTIER */}
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 grid grid-cols-2 gap-4">
+                           <div>
+                               <label className="text-xs font-bold text-gray-400 block mb-1">Météo / Conditions</label>
+                               <select className="w-full p-2 bg-white rounded border" value={contextData.meteo} onChange={(e)=>setContextData({...contextData, meteo: e.target.value})}>
+                                   <option>Soleil / Normal</option><option>Pluie</option><option>Vent violent</option><option>Canicule</option><option>Grand Froid</option>
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-xs font-bold text-gray-400 block mb-1">Coactivité</label>
+                               <select className="w-full p-2 bg-white rounded border" value={contextData.coactivite} onChange={(e)=>setContextData({...contextData, coactivite: e.target.value})}>
+                                   <option>Non</option><option>Oui (Faible)</option><option>Oui (Forte)</option>
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-xs font-bold text-gray-400 block mb-1">Zone ATEX</label>
+                               <select className="w-full p-2 bg-white rounded border" value={contextData.atex} onChange={(e)=>setContextData({...contextData, atex: e.target.value})}>
+                                   <option>Non</option><option>Oui (Zone 1/21)</option><option>Oui (Zone 2/22)</option>
+                               </select>
+                           </div>
+                           <div>
+                               <label className="text-xs font-bold text-gray-400 block mb-1">Permis requis</label>
+                               <input type="text" className="w-full p-2 bg-white rounded border" placeholder="Feu, Pénétrer..." value={contextData.permis} onChange={(e)=>setContextData({...contextData, permis: e.target.value})}/>
+                           </div>
+                        </div>
+
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-2">Sélectionner les tâches à risques :</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                           {RISK_DATABASE.map(r => (
-                            <label key={r.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedTasks.includes(r.id) ? 'bg-blue-50 border-blue-500' : 'bg-white hover:bg-gray-50'}`}>
+                            <label key={r.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedTasks.includes(r.id) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-100'}`}>
                               <input type="checkbox" className="mt-1" checked={selectedTasks.includes(r.id)} onChange={(e) => {
                                 e.target.checked ? setSelectedTasks([...selectedTasks, r.id]) : setSelectedTasks(selectedTasks.filter(x => x !== r.id))
                               }}/>
                               <div>
-                                <div className="font-bold text-sm">{r.task}</div>
-                                <div className="text-xs text-gray-500">{r.category} • {r.risks.length} risques</div>
+                                <div className="font-bold text-sm text-gray-800">{r.task}</div>
+                                <div className="text-[10px] text-gray-500 font-bold uppercase mt-1">{r.category} • {r.risks.length} risques</div>
                               </div>
                             </label>
                           ))}
                         </div>
 
                         <button onClick={generateDocument} className="w-full mt-6 bg-green-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-700 flex items-center justify-center gap-2">
-                          <Printer size={20}/> GÉNÉRER {docType.toUpperCase().replace('_', ' ')}
+                          <Printer size={20}/> GÉNÉRER LE DOCUMENT
                         </button>
                       </>
                     )}
                   </div>
                   
-                  {/* Liste Documents Générés (Mockup pour l'instant) */}
+                  {/* Liste Documents Générés */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                    <h3 className="font-bold text-sm mb-4">DERNIERS DOCUMENTS</h3>
+                    <h3 className="font-bold text-sm mb-4">HISTORIQUE DOCUMENTS</h3>
                     <div className="space-y-3">
-                      {docs.slice(0,5).map(d => (
-                        <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      {docs.slice(0,10).map(d => (
+                        <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                           <div className="flex items-center gap-2">
-                            <FileText size={14} className="text-blue-500"/>
-                            <span className="text-xs font-bold">{d.nom}</span>
+                            <FileText size={16} className="text-blue-500"/>
+                            <div>
+                                <p className="text-xs font-bold text-gray-700">{d.nom}</p>
+                                <p className="text-[10px] text-gray-400">{new Date(d.created_at).toLocaleDateString()}</p>
+                            </div>
                           </div>
-                          <span className="text-[10px] bg-gray-200 px-2 py-1 rounded">{d.type}</span>
+                          <span className="text-[9px] bg-white border px-2 py-1 rounded font-bold uppercase">{d.type}</span>
                         </div>
                       ))}
+                      {docs.length === 0 && <p className="text-center text-gray-400 text-xs italic">Aucun document généré.</p>}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* VUE CAUSERIES & ACCIDENTS (ACTIVÉE) */}
+              {/* VUE CAUSERIES & ACCIDENTS */}
               {view === 'causeries' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Formulaire */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                    <h3 className="font-bold text-lg mb-4">NOUVEL ÉVÉNEMENT</h3>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2"><Megaphone/> DÉCLARATION ÉVÉNEMENT</h3>
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-bold text-gray-500">Type</label>
-                          <select className="w-full p-2 border rounded" value={newEvent.type} onChange={e => setNewEvent({...newEvent, type: e.target.value})}>
+                          <select className="w-full p-2 border rounded bg-gray-50" value={newEvent.type} onChange={e => setNewEvent({...newEvent, type: e.target.value})}>
                             <option value="causerie">Causerie / 1/4h Sécu</option>
                             <option value="accident">Accident</option>
                             <option value="presqu_accident">Presqu'accident</option>
@@ -303,31 +376,40 @@ export default function HSEPlatform() {
                         </div>
                         <div>
                           <label className="text-xs font-bold text-gray-500">Date</label>
-                          <input type="date" className="w-full p-2 border rounded" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                          <input type="date" className="w-full p-2 border rounded bg-gray-50" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
                         </div>
                       </div>
                       <div>
                         <label className="text-xs font-bold text-gray-500">Titre / Thème</label>
-                        <input type="text" className="w-full p-2 border rounded" placeholder="Ex: Port des EPI" value={newEvent.titre} onChange={e => setNewEvent({...newEvent, titre: e.target.value})} />
+                        <input type="text" className="w-full p-2 border rounded bg-gray-50" placeholder="Ex: Port des EPI" value={newEvent.titre} onChange={e => setNewEvent({...newEvent, titre: e.target.value})} />
                       </div>
                       <div>
                         <label className="text-xs font-bold text-gray-500">Description / Détails</label>
-                        <textarea className="w-full p-2 border rounded h-24" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})}></textarea>
+                        <textarea className="w-full p-2 border rounded bg-gray-50 h-24" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})}></textarea>
                       </div>
-                      <button onClick={saveEvent} className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg">ENREGISTRER</button>
+                      <div>
+                        <label className="text-xs font-bold text-gray-500">Participants (Noms)</label>
+                        <textarea className="w-full p-2 border rounded bg-gray-50 h-16" placeholder="Jean, Paul, Pierre..." value={newEvent.participants} onChange={e => setNewEvent({...newEvent, participants: e.target.value})}></textarea>
+                      </div>
+                      <button onClick={saveEvent} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow transition-colors">ENREGISTRER L'ÉVÉNEMENT</button>
                     </div>
                   </div>
 
                   {/* Liste */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 overflow-y-auto max-h-[600px]">
-                    <h3 className="font-bold text-lg mb-4">HISTORIQUE</h3>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800">HISTORIQUE</h3>
+                    {events.length === 0 && <p className="text-center text-gray-400 italic">Aucun événement enregistré.</p>}
                     {events.map(e => (
-                      <div key={e.id} className="p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <div key={e.id} className="p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${e.type==='accident'?'bg-red-100 text-red-600':'bg-blue-100 text-blue-600'}`}>{e.type}</span>
-                            <h4 className="font-bold mt-1">{e.titre}</h4>
-                            <p className="text-xs text-gray-500">{new Date(e.date_event).toLocaleDateString()} • {e.chantiers?.nom}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${e.type==='accident'?'bg-red-100 text-red-600':'bg-blue-100 text-blue-600'}`}>{e.type}</span>
+                                <span className="text-xs text-gray-400">{new Date(e.date_event).toLocaleDateString()}</span>
+                            </div>
+                            <h4 className="font-bold text-sm text-gray-800">{e.titre}</h4>
+                            <p className="text-xs text-gray-500 mt-1">{e.chantiers?.nom || 'Chantier Inconnu'}</p>
+                            <p className="text-xs text-gray-400 mt-2 italic line-clamp-2">{e.description}</p>
                           </div>
                         </div>
                       </div>
@@ -336,23 +418,25 @@ export default function HSEPlatform() {
                 </div>
               )}
 
-              {/* VUE PLAN D'ACTIONS (ACTIVÉE) */}
+              {/* VUE PLAN D'ACTIONS */}
               {view === 'actions' && (
                 <div className="space-y-6">
-                  <div className="bg-white p-4 rounded-xl border border-gray-200 flex gap-4 items-end">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-gray-500">Nouvelle Action</label>
-                      <input type="text" className="w-full p-2 border rounded" placeholder="Description de l'action..." value={newAction.description} onChange={e => setNewAction({...newAction, description: e.target.value})} />
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full">
+                      <label className="text-xs font-bold text-gray-500">Nouvelle Action Corrective</label>
+                      <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" placeholder="Description de l'action..." value={newAction.description} onChange={e => setNewAction({...newAction, description: e.target.value})} />
                     </div>
-                    <div className="w-40">
+                    <div className="w-full md:w-48">
                       <label className="text-xs font-bold text-gray-500">Responsable</label>
-                      <input type="text" className="w-full p-2 border rounded" value={newAction.responsable} onChange={e => setNewAction({...newAction, responsable: e.target.value})} />
+                      <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" value={newAction.responsable} onChange={e => setNewAction({...newAction, responsable: e.target.value})} />
                     </div>
-                    <div className="w-40">
+                    <div className="w-full md:w-40">
                       <label className="text-xs font-bold text-gray-500">Échéance</label>
-                      <input type="date" className="w-full p-2 border rounded" value={newAction.echeance} onChange={e => setNewAction({...newAction, echeance: e.target.value})} />
+                      <input type="date" className="w-full p-3 bg-gray-50 border rounded-lg" value={newAction.echeance} onChange={e => setNewAction({...newAction, echeance: e.target.value})} />
                     </div>
-                    <button onClick={saveAction} className="bg-emerald-500 text-white p-2 rounded-lg font-bold w-10 h-10 flex items-center justify-center">+</button>
+                    <button onClick={saveAction} className="bg-emerald-500 hover:bg-emerald-600 text-white p-3 rounded-lg font-bold w-full md:w-auto flex items-center justify-center shadow transition-colors">
+                        <Plus size={20}/> Ajouter
+                    </button>
                   </div>
 
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -362,16 +446,19 @@ export default function HSEPlatform() {
                       </thead>
                       <tbody>
                         {actions.map(a => (
-                          <tr key={a.id} className="border-b border-gray-50">
-                            <td className="p-4 font-bold text-sm">{a.description}</td>
-                            <td className="p-4 text-xs">{a.chantiers?.nom}</td>
-                            <td className="p-4 text-xs">{a.responsable}</td>
-                            <td className="p-4 text-xs">{new Date(a.echeance).toLocaleDateString()}</td>
+                          <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="p-4 font-bold text-sm text-gray-700">{a.description}</td>
+                            <td className="p-4 text-xs text-gray-500">{a.chantiers?.nom}</td>
+                            <td className="p-4 text-xs text-gray-500">{a.responsable}</td>
+                            <td className="p-4 text-xs text-gray-500">{new Date(a.echeance).toLocaleDateString()}</td>
                             <td className="p-4 text-center">
                               <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${a.statut==='en_cours'?'bg-orange-100 text-orange-600':'bg-green-100 text-green-600'}`}>{a.statut.replace('_', ' ')}</span>
                             </td>
                           </tr>
                         ))}
+                         {actions.length === 0 && (
+                            <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">Aucune action en cours.</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -380,9 +467,23 @@ export default function HSEPlatform() {
 
               {/* VUE DASHBOARD (Conservée) */}
               {view === 'dashboard' && (
-                <div className="text-center py-10">
-                  <h2 className="text-2xl font-bold mb-4">TABLEAU DE BORD SÉCURITÉ</h2>
-                  <p className="text-gray-500">Sélectionnez un module dans le menu de gauche pour commencer.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                        <div><p className="text-xs font-bold text-gray-400 uppercase">Accidents</p><p className="text-3xl font-black text-red-500">{events.filter(e=>e.type==='accident').length}</p></div>
+                        <Siren className="text-red-100" size={40}/>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                        <div><p className="text-xs font-bold text-gray-400 uppercase">Causeries</p><p className="text-3xl font-black text-blue-500">{events.filter(e=>e.type==='causerie').length}</p></div>
+                        <Megaphone className="text-blue-100" size={40}/>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                        <div><p className="text-xs font-bold text-gray-400 uppercase">Actions Ouvertes</p><p className="text-3xl font-black text-orange-500">{actions.filter(a=>a.statut==='en_cours').length}</p></div>
+                        <CheckCircle2 className="text-orange-100" size={40}/>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                        <div><p className="text-xs font-bold text-gray-400 uppercase">Habilitations Exp.</p><p className="text-3xl font-black text-purple-500">0</p></div>
+                        <Users className="text-purple-100" size={40}/>
+                    </div>
                 </div>
               )}
 
@@ -399,13 +500,3 @@ const NavBtn = ({id, icon: Icon, label, view, set}: any) => (
     <Icon size={18} /> {label}
   </button>
 );
-
-const StatCard = ({ label, val, icon: Icon, color }: any) => {
-  const themes: any = { red: "bg-red-50 text-red-600", orange: "bg-orange-50 text-orange-600", emerald: "bg-emerald-50 text-emerald-600", blue: "bg-blue-50 text-blue-600", gray: "bg-white text-gray-800" };
-  return (
-    <div className={`p-5 rounded-2xl border flex items-center justify-between shadow-sm ${themes[color] || themes.gray}`}>
-      <div><p className="text-[10px] font-black uppercase opacity-60 tracking-wider">{label}</p><p className="text-3xl font-black mt-1">{val}</p></div>
-      <div className="bg-white/50 p-3 rounded-xl backdrop-blur-sm"><Icon size={24}/></div>
-    </div>
-  )
-};
