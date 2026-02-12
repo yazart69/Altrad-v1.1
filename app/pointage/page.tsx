@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, Save, Printer, 
   Lock, Unlock, Copy, RotateCcw, AlertTriangle, 
   CheckCircle2, FileSpreadsheet, HardHat, Clock, AlertCircle,
-  MapPin, Signature as SignatureIcon, ShieldCheck, Play, CheckSquare, X
+  MapPin, Signature as SignatureIcon, ShieldCheck, Play, X, CheckSquare
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
@@ -26,7 +26,6 @@ const getWeekNumber = (d: Date) => {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
-// --- LOGIQUE GÉOFENCING ---
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371e3; // Rayon de la terre en mètres
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -43,7 +42,7 @@ export default function PointagePage() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [employes, setEmployes] = useState<any[]>([]);
   
-  // États Pointage Avancé
+  // États Pointage Précision (Nouveaux)
   const [showBriefing, setShowBriefing] = useState(false);
   const [currentGPS, setCurrentGPS] = useState<{lat: number, lng: number} | null>(null);
   const [activeTask, setActiveTask] = useState<any>(null);
@@ -144,13 +143,13 @@ export default function PointagePage() {
     ctx?.clearRect(0, 0, canvas?.width || 0, canvas?.height || 0);
   };
 
-  // --- 3. GÉOLOCALISATION ET VALIDATION ---
-  const handleStartPointage = (task: any) => {
+  // --- 3. GÉOLOCALISATION ET POINTAGE AVANCÉ ---
+  const handleStartPrecisionPointage = (task: any) => {
     if (isWeekLocked) return;
     setActiveTask(task);
 
     if (!navigator.geolocation) {
-      alert("La géolocalisation n'est pas supportée par votre navigateur.");
+      alert("La géolocalisation n'est pas supportée.");
       return;
     }
 
@@ -159,44 +158,40 @@ export default function PointagePage() {
         const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
         setCurrentGPS(coords);
 
-        // Vérification rayon (ex: 300m)
         if (task.chantiers?.latitude && task.chantiers?.longitude) {
           const dist = calculateDistance(coords.lat, coords.lng, task.chantiers.latitude, task.chantiers.longitude);
-          if (dist > 300) {
-            alert(`Attention : Vous êtes à ${Math.round(dist)}m du chantier. Le pointage doit être fait sur site.`);
+          if (dist > 500) {
+            alert(`🚨 HORS ZONE : Vous êtes à ${Math.round(dist)}m du chantier.`);
           }
         }
         setShowBriefing(true);
       },
-      () => alert("Impossible de récupérer votre position GPS. Veuillez l'activer."),
+      () => alert("Activez le GPS pour le pointage de précision."),
       { enableHighAccuracy: true }
     );
   };
 
   const submitBriefing = async () => {
     if (!briefingData.epi_ok || !briefingData.risques_ok || !briefingData.outils_ok || !briefingData.zone_ok) {
-      alert("Veuillez valider tous les points de sécurité avant de pointer.");
+      alert("Validez la checklist sécurité.");
       return;
     }
-
-    const signatureBase64 = canvasRef.current?.toDataURL();
+    const signature = canvasRef.current?.toDataURL();
     
-    // Envoi automatique vers module HSE
+    // Envoi HSE
     const { error } = await supabase.from('hse_briefings').insert([{
       planning_id: activeTask.id,
       employe_id: activeTask.employe_id,
       chantier_id: activeTask.chantier_id,
       gps_data: currentGPS,
-      signature: signatureBase64,
-      data: briefingData,
-      date: new Date().toISOString()
+      signature: signature,
+      data: briefingData
     }]);
 
     if (!error) {
       updateHours(activeTask.id, activeTask.heures.toString());
       setShowBriefing(false);
-      clearSignature();
-      alert("Check-in validé et signé. Bon poste !");
+      alert("Pointage de précision validé et archivé HSE.");
     }
   };
 
@@ -226,7 +221,7 @@ export default function PointagePage() {
       return Object.keys(data).map(key => ({ name: key, heures: data[key] }));
   }, [assignments]);
 
-  // --- 5. ACTIONS STANDARDS ---
+  // --- 5. ACTIONS ---
   const updateHours = async (id: string, value: string) => {
       if (isWeekLocked) return;
       const numValue = parseFloat(value) || 0;
@@ -298,77 +293,54 @@ export default function PointagePage() {
           </div>
       </div>
 
-      {/* MODAL PRE-JOB BRIEFING */}
+      {/* MODAL PRE-JOB BRIEFING (Pointage précision) */}
       {showBriefing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-orange-500 p-6 text-white flex justify-between items-center">
+            <div className="bg-orange-600 p-6 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <ShieldCheck size={28} />
-                <h2 className="text-xl font-black uppercase tracking-tight">Pre-job Briefing</h2>
+                <h2 className="text-xl font-black uppercase italic">Pre-job Briefing</h2>
               </div>
               <button onClick={() => setShowBriefing(false)}><X size={24} /></button>
             </div>
-            
             <div className="p-6 space-y-6">
               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Position Actuelle</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Localisation Pointage</p>
                 <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                  <MapPin size={14} className="text-orange-500" />
-                  {currentGPS ? `${currentGPS.lat.toFixed(4)}, ${currentGPS.lng.toFixed(4)}` : "Localisation..."}
+                  <MapPin size={14} className="text-orange-600" />
+                  {currentGPS ? `${currentGPS.lat.toFixed(5)}, ${currentGPS.lng.toFixed(5)}` : "Position..."}
                 </div>
               </div>
-
               <div className="space-y-3">
                 {[
                   { id: 'epi_ok', label: 'EPI portés et conformes' },
-                  { id: 'outils_ok', label: 'Matériel et outils vérifiés' },
-                  { id: 'zone_ok', label: 'Zone de travail balisée' },
+                  { id: 'outils_ok', label: 'Matériel vérifié et en bon état' },
+                  { id: 'zone_ok', label: 'Zone de travail sécurisée' },
                   { id: 'risques_ok', label: 'Risques identifiés et compris' }
                 ].map(item => (
                   <label key={item.id} className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
                     <span className="font-bold text-gray-700">{item.label}</span>
-                    <input 
-                      type="checkbox" 
-                      className="w-5 h-5 rounded text-orange-500 focus:ring-orange-400"
-                      checked={(briefingData as any)[item.id]}
-                      onChange={e => setBriefingData({...briefingData, [item.id]: e.target.checked})}
-                    />
+                    <input type="checkbox" className="w-5 h-5 rounded text-orange-600 focus:ring-orange-500" checked={(briefingData as any)[item.id]} onChange={e => setBriefingData({...briefingData, [item.id]: e.target.checked})} />
                   </label>
                 ))}
               </div>
-
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                    <SignatureIcon size={12} /> Signature Employé
-                  </label>
-                  <button onClick={clearSignature} className="text-[10px] font-bold text-red-500 uppercase">Effacer</button>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><SignatureIcon size={12} /> Signature Digitale</label>
+                  <button onClick={clearSignature} className="text-[10px] font-black text-red-500 uppercase">Effacer</button>
                 </div>
-                <canvas 
-                  ref={canvasRef}
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={() => setIsDrawing(false)}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={() => setIsDrawing(false)}
-                  className="w-full h-32 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl cursor-crosshair touch-none"
-                />
+                <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={() => setIsDrawing(false)} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={() => setIsDrawing(false)} className="w-full h-32 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl cursor-crosshair touch-none" />
               </div>
-
-              <button 
-                onClick={submitBriefing}
-                className="w-full bg-black text-white py-4 rounded-2xl font-black uppercase shadow-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
-              >
-                <Play size={18} fill="currentColor" /> Valider et Pointer
+              <button onClick={submitBriefing} className="w-full bg-black text-white py-4 rounded-2xl font-black uppercase shadow-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2">
+                <CheckCircle2 size={18} /> Valider & Pointer
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* TABLEAU PRINCIPAL */}
+      {/* TABLEAU PRINCIPAL (ORIGINAL MAINTENU) */}
       <div className="bg-white rounded-[25px] shadow-sm border border-gray-200 overflow-hidden mb-6 print:border-none print:shadow-none">
           <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full min-w-[1000px] border-collapse">
@@ -400,39 +372,27 @@ export default function PointagePage() {
                                   {weekDays.map((day, i) => {
                                       const dateStr = toLocalISOString(day);
                                       const dayTasks = empTasks.filter(a => a.date_debut === dateStr);
-                                      
                                       return (
                                           <td key={i} className="p-2 border-l border-gray-100 align-top h-20">
                                               <div className="flex flex-col gap-1">
                                                   {dayTasks.map(task => {
                                                       const isAbsence = ['maladie', 'conge', 'formation', 'absence'].includes(task.type);
-                                                      
                                                       if (isAbsence) {
                                                           let badgeColor = "bg-gray-100 text-gray-500";
                                                           if(task.type === 'maladie') badgeColor = "bg-red-100 text-red-500";
                                                           if(task.type === 'conge') badgeColor = "bg-orange-100 text-orange-500";
-                                                          
                                                           return (
-                                                              <div key={task.id} className={`text-[10px] font-black uppercase text-center p-1 rounded ${badgeColor}`}>
-                                                                  {task.type}
-                                                              </div>
+                                                              <div key={task.id} className={`text-[10px] font-black uppercase text-center p-1 rounded ${badgeColor}`}>{task.type}</div>
                                                           );
                                                       }
-
                                                       const isAuto = task.isAuto;
                                                       return (
                                                           <div key={task.id} className="flex flex-col group/item relative">
                                                               <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
-                                                                  <span className="text-[9px] font-bold uppercase truncate max-w-[60px] text-blue-800">
-                                                                      {task.chantiers?.nom || 'Chantier'}
-                                                                  </span>
-                                                                  <button 
-                                                                    onClick={() => handleStartPointage(task)}
-                                                                    className="text-blue-500 hover:text-blue-700 transition-colors"
-                                                                    title="Démarrer Pointage Avancé"
-                                                                  >
-                                                                    <Play size={10} fill="currentColor" />
-                                                                  </button>
+                                                                  <span className="text-[9px] font-bold uppercase truncate max-w-[60px] text-blue-800">{task.chantiers?.nom || 'Chantier'}</span>
+                                                                  {/* BOUTON POINTAGE AVANCÉ */}
+                                                                  <button onClick={() => handleStartPrecisionPointage(task)} className="text-blue-500 hover:text-blue-700 opacity-0 group-hover/item:opacity-100 transition-opacity" title="Pointage GPS + Briefing"><Play size={10} fill="currentColor" /></button>
+                                                                  {isAuto && <span className="text-[8px] text-blue-300 italic">auto</span>}
                                                               </div>
                                                               <input 
                                                                   type="number" 
@@ -466,7 +426,7 @@ export default function PointagePage() {
           </div>
       </div>
 
-      {/* GRAPHIQUES */}
+      {/* GRAPHIQUES ORIGINAUX MAINTENUS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
           <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-none print:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -489,14 +449,11 @@ export default function PointagePage() {
                   </ResponsiveContainer>
               </div>
           </div>
-
           <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 flex flex-col justify-center gap-4">
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                   <div>
                       <p className="text-xs font-bold text-gray-400 uppercase">Total Heures Semaine</p>
-                      <p className="text-3xl font-black text-[#2d3436]">
-                          {Object.values(employeeTotals).reduce((a, b) => a + b, 0)}h
-                      </p>
+                      <p className="text-3xl font-black text-[#2d3436]">{Object.values(employeeTotals).reduce((a, b) => a + b, 0)}h</p>
                   </div>
                   <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400"><Clock size={24}/></div>
               </div>
@@ -509,6 +466,10 @@ export default function PointagePage() {
               </div>
           </div>
       </div>
+
+      <style jsx global>{`
+        canvas { touch-action: none; background-color: #f9fafb; }
+      `}</style>
     </div>
   );
 }
