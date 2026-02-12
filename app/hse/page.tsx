@@ -23,7 +23,7 @@ import {
   Q3SRE_REFERENTIAL, 
   OST_THEMES, 
   CAUSERIE_THEMES 
-} from './data';
+} from '@/data';
 
 // =================================================================================================
 // 1. DÉFINITION DES TYPES & INTERFACES (Modèle de Données)
