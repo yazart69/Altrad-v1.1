@@ -7,7 +7,7 @@ import {
   Lock, Unlock, Copy, RotateCcw, AlertTriangle, 
   CheckCircle2, FileSpreadsheet, HardHat, Clock, AlertCircle,
   MapPin, Play, Square, ShieldCheck, Signature as SignatureIcon,
-  Info, UserCheck, X, Camera
+  Info, UserCheck, X, Camera, LayoutDashboard, Smartphone, Navigation
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
@@ -50,7 +50,7 @@ export default function PointagePage() {
   const [employes, setEmployes] = useState<any[]>([]);
   
   // --- ÉTATS POUR LE NOUVEAU MODULE DE TERRAIN ---
-  const [viewMode, setViewMode] = useState<'admin' | 'terrain'>('terrain'); // Par défaut sur terrain
+  const [viewMode, setViewMode] = useState<'admin' | 'terrain'>('terrain'); 
   const [activeChantier, setActiveChantier] = useState<any>(null);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [distanceToSite, setDistanceToSite] = useState<number | null>(null);
@@ -126,7 +126,6 @@ export default function PointagePage() {
         });
         setAssignments(enrichedPlan);
 
-        // Détection auto du chantier du jour pour le mode terrain
         const todayStr = toLocalISOString(new Date());
         const todayTask = enrichedPlan.find(a => a.date_debut === todayStr);
         if (todayTask?.chantiers) setActiveChantier(todayTask.chantiers);
@@ -176,11 +175,9 @@ export default function PointagePage() {
 
   const submitCheckIn = async () => {
     if (!briefing.epi_ok || !briefing.risques_lus) return alert("Veuillez valider tous les points de sécurité.");
-    
     const canvas = canvasRef.current;
     const signature = canvas?.toDataURL();
     
-    // Logique d'envoi vers Supabase (Table pointages_hSE)
     const { error } = await supabase.from('pointages_hse').insert([{
       chantier_id: activeChantier.id,
       gps_lat: gpsLocation?.lat,
@@ -193,7 +190,55 @@ export default function PointagePage() {
     if (!error) setWorkflowStatus('active');
   };
 
-  // --- CALCULS STATS (ADMIN) ---
+  // --- ACTIONS ADMIN (CORRECTED) ---
+  const updateHours = async (id: string, value: string) => {
+      if (isWeekLocked) return;
+      const numValue = parseFloat(value) || 0;
+      setAssignments(prev => prev.map(a => a.id === id ? { ...a, heures: numValue, isAuto: false } : a));
+      await supabase.from('planning').update({ heures: numValue }).eq('id', id);
+  };
+
+  const toggleLockWeek = async () => {
+      const newState = !isWeekLocked;
+      const ids = assignments.map(a => a.id);
+      if (ids.length > 0) {
+          await supabase.from('planning').update({ valide: newState }).in('id', ids);
+          fetchData();
+      }
+  };
+
+  const copyPreviousWeek = async () => {
+      if (isWeekLocked) return;
+      if (!confirm("Copier S-1 ?")) return;
+      const prevStart = new Date(currentDate); prevStart.setDate(prevStart.getDate() - 7);
+      const prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + 6);
+      const { data: prevData } = await supabase.from('planning')
+          .select('*')
+          .gte('date_debut', toLocalISOString(prevStart))
+          .lte('date_debut', toLocalISOString(prevEnd));
+      if (!prevData?.length) { alert("Aucune donnée S-1"); return; }
+      const newEntries = prevData.map(item => {
+          const d = new Date(item.date_debut); d.setDate(d.getDate() + 7);
+          return {
+              employe_id: item.employe_id, chantier_id: item.chantier_id, type: item.type,
+              date_debut: toLocalISOString(d), date_fin: toLocalISOString(d),
+              heures: item.heures, valide: false
+          };
+      });
+      const { error } = await supabase.from('planning').insert(newEntries);
+      if (error) alert("Erreur: " + error.message);
+      else fetchData();
+  };
+
+  const resetWeek = async () => {
+      if (isWeekLocked) return;
+      if (!confirm("Remettre à zéro ?")) return;
+      const ids = assignments.map(a => a.id);
+      await supabase.from('planning').update({ heures: 0 }).in('id', ids);
+      fetchData();
+  };
+
+  // --- CALCULS STATS ---
   const weekDays = Array.from({ length: 5 }, (_, i) => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + i);
@@ -219,29 +264,12 @@ export default function PointagePage() {
       return Object.keys(data).map(key => ({ name: key, heures: data[key] }));
   }, [assignments]);
 
-  // --- ACTIONS ADMIN ---
-  const updateHours = async (id: string, value: string) => {
-      if (isWeekLocked) return;
-      const numValue = parseFloat(value) || 0;
-      setAssignments(prev => prev.map(a => a.id === id ? { ...a, heures: numValue, isAuto: false } : a));
-      await supabase.from('planning').update({ heures: numValue }).eq('id', id);
-  };
-
-  const toggleLockWeek = async () => {
-      const newState = !isWeekLocked;
-      const ids = assignments.map(a => a.id);
-      if (ids.length > 0) {
-          await supabase.from('planning').update({ valide: newState }).in('id', ids);
-          fetchData();
-      }
-  };
-
   if (loading) return <div className="h-screen flex items-center justify-center font-black animate-pulse text-gray-400">CHARGEMENT DU POINTAGE...</div>;
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] p-4 md:p-6 text-gray-800 print:bg-white print:p-0">
       
-      {/* SWITCHER DE VUE (Tactile) */}
+      {/* SWITCHER DE VUE */}
       <div className="max-w-7xl mx-auto mb-6 flex bg-white p-1 rounded-2xl shadow-sm border border-gray-200 print:hidden">
         <button 
           onClick={() => setViewMode('terrain')} 
@@ -257,13 +285,9 @@ export default function PointagePage() {
         </button>
       </div>
 
-      {/* ============================================================================================ */}
-      {/* VUE 1 : MODE TERRAIN (HAUTE PRÉCISION)                                                     */}
-      {/* ============================================================================================ */}
+      {/* VUE TERRAIN */}
       {viewMode === 'terrain' && (
         <div className="max-w-xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          
-          {/* CARTE CHANTIER ACTUEL */}
           <div className="bg-white p-6 rounded-[35px] shadow-sm border border-gray-200 relative overflow-hidden">
             <div className="relative z-10">
               <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Aujourd'hui</span>
@@ -273,10 +297,9 @@ export default function PointagePage() {
             <HardHat size={120} className="absolute -right-8 -bottom-8 text-gray-50 opacity-50" />
           </div>
 
-          {/* INDICATEUR GÉOFENCING */}
           <div className={`p-5 rounded-3xl flex items-center gap-4 border-2 transition-all ${distanceToSite && distanceToSite <= GEOFENCE_RADIUS_METERS ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
             <div className={`p-3 rounded-2xl ${distanceToSite && distanceToSite <= GEOFENCE_RADIUS_METERS ? 'bg-emerald-500' : 'bg-red-500'} text-white shadow-md`}>
-              <Navigation size={24} className={distanceToSite && distanceToSite <= GEOFENCE_RADIUS_METERS ? '' : 'animate-pulse'}/>
+              <Navigation size={24}/>
             </div>
             <div className="flex-1">
               <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Status Géolocalisation</p>
@@ -287,117 +310,50 @@ export default function PointagePage() {
             </div>
           </div>
 
-          {/* WORKFLOW DE POINTAGE */}
           <div className="bg-white p-8 rounded-[40px] shadow-xl border border-gray-100">
             {workflowStatus === 'idle' && (
               <div className="text-center space-y-6">
-                <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-inner">
-                  <Clock size={40} className="text-gray-300" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black uppercase">Prêt pour le service ?</h3>
-                  <p className="text-gray-400 text-sm font-bold">Votre pointage nécessite un briefing de sécurité.</p>
-                </div>
-                <button 
-                  onClick={handleStartBriefing}
-                  className="w-full bg-red-600 text-white py-6 rounded-[25px] font-black uppercase text-lg shadow-lg shadow-red-100 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
-                >
-                  <Play fill="white" size={24}/> Démarrer ma journée
-                </button>
+                <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-inner"><Clock size={40} className="text-gray-300" /></div>
+                <div><h3 className="text-xl font-black uppercase">Prêt pour le service ?</h3><p className="text-gray-400 text-sm font-bold">Votre pointage nécessite un briefing de sécurité.</p></div>
+                <button onClick={handleStartBriefing} className="w-full bg-red-600 text-white py-6 rounded-[25px] font-black uppercase text-lg shadow-lg shadow-red-100 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"><Play fill="white" size={24}/> Démarrer ma journée</button>
               </div>
             )}
 
             {workflowStatus === 'briefing' && (
               <div className="space-y-6 animate-in zoom-in-95">
-                <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
-                  <ShieldCheck className="text-red-600" size={28}/>
-                  <h3 className="text-xl font-black uppercase italic">Pre-job Briefing</h3>
-                </div>
-
+                <div className="flex items-center gap-3 border-b border-gray-100 pb-4"><ShieldCheck className="text-red-600" size={28}/><h3 className="text-xl font-black uppercase italic">Pre-job Briefing</h3></div>
                 <div className="space-y-3">
-                  {[
-                    { id: 'epi_ok', label: 'EPI complets et conformes ?' },
-                    { id: 'outils_ok', label: 'Outils vérifiés et en bon état ?' },
-                    { id: 'zone_balisee', label: 'Zone de travail sécurisée/balisée ?' },
-                    { id: 'risques_lus', label: 'Risques du jour compris ?' },
-                  ].map(item => (
+                  {[{ id: 'epi_ok', label: 'EPI complets et conformes ?' },{ id: 'outils_ok', label: 'Outils vérifiés et en bon état ?' },{ id: 'zone_balisee', label: 'Zone de travail sécurisée/balisée ?' },{ id: 'risques_lus', label: 'Risques du jour compris ?' }].map(item => (
                     <label key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl cursor-pointer hover:bg-gray-100 transition-all border border-transparent active:border-red-200">
                       <span className="font-bold text-gray-700 text-sm">{item.label}</span>
-                      <input 
-                        type="checkbox" 
-                        checked={(briefing as any)[item.id]} 
-                        onChange={e => setBriefing({...briefing, [item.id]: e.target.checked})}
-                        className="w-6 h-6 rounded-lg text-red-600 focus:ring-red-500 border-gray-300" 
-                      />
+                      <input type="checkbox" checked={(briefing as any)[item.id]} onChange={e => setBriefing({...briefing, [item.id]: e.target.checked})} className="w-6 h-6 rounded-lg text-red-600 focus:ring-red-500 border-gray-300" />
                     </label>
                   ))}
                 </div>
-
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><SignatureIcon size={12}/> Signature Digitale</label>
-                    <button onClick={clearCanvas} className="text-[10px] font-black text-red-500 uppercase">Effacer</button>
-                  </div>
+                  <div className="flex justify-between items-center"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><SignatureIcon size={12}/> Signature Digitale</label><button onClick={clearCanvas} className="text-[10px] font-black text-red-500 uppercase">Effacer</button></div>
                   <div className="border-2 border-gray-100 rounded-2xl bg-gray-50 overflow-hidden touch-none">
-                    <canvas 
-                      ref={canvasRef}
-                      width={400}
-                      height={150}
-                      className="w-full cursor-crosshair"
-                      onMouseDown={startDrawing}
-                      onMouseUp={() => setIsDrawing(false)}
-                      onMouseMove={draw}
-                      onTouchStart={startDrawing}
-                      onTouchEnd={() => setIsDrawing(false)}
-                      onTouchMove={draw}
-                    />
+                    <canvas ref={canvasRef} width={400} height={150} className="w-full cursor-crosshair" onMouseDown={startDrawing} onMouseUp={() => setIsDrawing(false)} onMouseMove={draw} onTouchStart={startDrawing} onTouchEnd={() => setIsDrawing(false)} onTouchMove={draw}/>
                   </div>
                 </div>
-
-                <button 
-                  onClick={submitCheckIn}
-                  className="w-full bg-black text-white py-6 rounded-2xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-2"
-                >
-                  <UserCheck size={20}/> Valider Briefing & Pointer
-                </button>
+                <button onClick={submitCheckIn} className="w-full bg-black text-white py-6 rounded-2xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-2"><UserCheck size={20}/> Valider Briefing & Pointer</button>
               </div>
             )}
 
             {workflowStatus === 'active' && (
-              <div className="text-center space-y-6 py-4 animate-in heart-beat">
-                <div className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-100">
-                  <CheckCircle2 size={48} className="text-white" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-black uppercase text-emerald-600 italic">Pointage Validé</h3>
-                  <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">En poste depuis {new Date().toLocaleTimeString()}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 inline-block w-full">
-                  <p className="text-xs font-bold text-gray-500 uppercase">Prochain Briefing</p>
-                  <p className="text-sm font-black">Check-out de fin de mission</p>
-                </div>
-                <button className="w-full bg-gray-100 text-gray-400 py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
-                  <Square size={16}/> Déclarer Fin de Poste
-                </button>
+              <div className="text-center space-y-6 py-4 animate-in">
+                <div className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-100"><CheckCircle2 size={48} className="text-white" /></div>
+                <div className="space-y-1"><h3 className="text-2xl font-black uppercase text-emerald-600 italic">Pointage Validé</h3><p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">En poste depuis {new Date().toLocaleTimeString()}</p></div>
+                <button className="w-full bg-gray-100 text-gray-400 py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2"><Square size={16}/> Déclarer Fin de Poste</button>
               </div>
             )}
-          </div>
-
-          <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-start gap-4">
-            <Info className="text-blue-500 shrink-0" size={20}/>
-            <p className="text-[11px] text-blue-700 font-bold leading-relaxed">
-              Vos coordonnées GPS et votre briefing de sécurité sont transmis en temps réel au module HSE pour conformité réglementaire.
-            </p>
           </div>
         </div>
       )}
 
-      {/* ============================================================================================ */}
-      {/* VUE 2 : MODE ADMIN (EXISTANT ENRICHI)                                                       */}
-      {/* ============================================================================================ */}
+      {/* VUE ADMIN */}
       {viewMode === 'admin' && (
         <div className="animate-in fade-in">
-          {/* BANDEAU HAUT ADMIN */}
           <div className="bg-white rounded-[25px] p-4 mb-6 shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 print:hidden">
               <div className="flex items-center gap-4">
                   <div className="bg-orange-100 p-3 rounded-2xl text-orange-600"><Clock size={24} /></div>
@@ -439,7 +395,6 @@ export default function PointagePage() {
                               const isOverload = total > 39;
                               const empTasks = assignments.filter(a => a.employe_id === emp.id);
                               if(empTasks.length === 0) return null;
-
                               return (
                                   <tr key={emp.id} className="group hover:bg-gray-50 transition-colors">
                                       <td className="p-4 sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-100">
@@ -452,48 +407,20 @@ export default function PointagePage() {
                                           return (
                                               <td key={i} className="p-2 border-l border-gray-100 align-top h-20">
                                                   <div className="flex flex-col gap-1">
-                                                      {dayTasks.map(task => {
-                                                          const isAbsence = ['maladie', 'conge', 'formation', 'absence'].includes(task.type);
-                                                          if (isAbsence) {
-                                                              let badgeColor = "bg-gray-100 text-gray-500";
-                                                              if(task.type === 'maladie') badgeColor = "bg-red-100 text-red-500";
-                                                              if(task.type === 'conge') badgeColor = "bg-orange-100 text-orange-500";
-                                                              return (
-                                                                  <div key={task.id} className={`text-[10px] font-black uppercase text-center p-1 rounded ${badgeColor}`}>
-                                                                      {task.type}
-                                                                  </div>
-                                                              );
-                                                          }
-                                                          return (
-                                                              <div key={task.id} className="flex flex-col">
-                                                                  <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
-                                                                      <span className="text-[9px] font-bold uppercase truncate max-w-[80px] text-blue-800">{task.chantiers?.nom || 'Chantier'}</span>
-                                                                      {task.isAuto && <span className="text-[8px] text-blue-300 italic">auto</span>}
-                                                                  </div>
-                                                                  <input 
-                                                                      type="number" 
-                                                                      disabled={isWeekLocked}
-                                                                      className={`w-full p-1 text-center font-bold text-sm outline-none border-b-2 transition-colors ${
-                                                                          task.heures > (day.getDay() === 5 ? 4 : 8.5) ? 'border-red-400 bg-red-50 text-red-600' : 
-                                                                          task.heures > 0 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white'
-                                                                      }`}
-                                                                      value={task.heures}
-                                                                      onChange={(e) => {
-                                                                          const val = e.target.value;
-                                                                          setAssignments(prev => prev.map(a => a.id === task.id ? { ...a, heures: val } : a));
-                                                                      }}
-                                                                      onBlur={(e) => updateHours(task.id, e.target.value)}
-                                                                  />
+                                                      {dayTasks.map(task => (
+                                                          <div key={task.id} className="flex flex-col">
+                                                              <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
+                                                                  <span className="text-[9px] font-bold uppercase truncate max-w-[80px] text-blue-800">{task.chantiers?.nom || 'Chantier'}</span>
+                                                                  {task.isAuto && <span className="text-[8px] text-blue-300 italic">auto</span>}
                                                               </div>
-                                                          );
-                                                      })}
+                                                              <input type="number" disabled={isWeekLocked} className={`w-full p-1 text-center font-bold text-sm outline-none border-b-2 transition-colors ${task.heures > (day.getDay() === 5 ? 4 : 8.5) ? 'border-red-400 bg-red-50 text-red-600' : task.heures > 0 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white'}`} value={task.heures} onChange={(e) => { const val = e.target.value; setAssignments(prev => prev.map(a => a.id === task.id ? { ...a, heures: val } : a)); }} onBlur={(e) => updateHours(task.id, e.target.value)} />
+                                                          </div>
+                                                      ))}
                                                   </div>
                                               </td>
                                           );
                                       })}
-                                      <td className={`p-4 text-center font-black sticky right-0 bg-white group-hover:bg-gray-50 z-10 border-l border-gray-200 ${isOverload ? 'text-red-500' : 'text-gray-800'}`}>
-                                          {total}h
-                                      </td>
+                                      <td className={`p-4 text-center font-black sticky right-0 bg-white group-hover:bg-gray-50 z-10 border-l border-gray-200 ${isOverload ? 'text-red-500' : 'text-gray-800'}`}>{total}h</td>
                                   </tr>
                               );
                           })}
@@ -501,69 +428,13 @@ export default function PointagePage() {
                   </table>
               </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
-              <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-none print:shadow-none">
-                  <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-black uppercase text-gray-700 text-sm">Répartition Heures / Chantier</h3>
-                      <FileSpreadsheet size={18} className="text-gray-400"/>
-                  </div>
-                  <div className="h-[200px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f2f6"/>
-                              <XAxis type="number" hide />
-                              <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
-                              <Tooltip cursor={{fill: 'transparent'}}/>
-                              <Bar dataKey="heures" fill="#0984e3" radius={[0, 4, 4, 0]} barSize={20}>
-                                  {chartData.map((entry: any, index: number) => (
-                                      <Cell key={`cell-${index}`} fill={["#0984e3", "#00b894", "#6c5ce7", "#e17055"][index % 4]} />
-                                  ))}
-                              </Bar>
-                          </BarChart>
-                      </ResponsiveContainer>
-                  </div>
-              </div>
-              <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 flex flex-col justify-center gap-4">
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                      <div>
-                          <p className="text-xs font-bold text-gray-400 uppercase">Total Heures Semaine</p>
-                          <p className="text-3xl font-black text-[#2d3436]">{Object.values(employeeTotals).reduce((a, b) => a + b, 0)}h</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm text-gray-400"><Clock size={24}/></div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                      <div>
-                          <p className="text-xs font-bold text-gray-400 uppercase">Employés Actifs</p>
-                          <p className="text-3xl font-black text-[#00b894]">{Object.keys(employeeTotals).length}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm text-[#00b894]"><HardHat size={24}/></div>
-                  </div>
-              </div>
-          </div>
         </div>
       )}
 
-      {/* STYLES POUR CANVAS SIGNATURE */}
       <style jsx global>{`
-        canvas {
-            touch-action: none;
-            background-color: #f9fafb;
-        }
-        .heart-beat {
-            animation: heart-beat 1s infinite;
-        }
-        @keyframes heart-beat {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.02); }
-          100% { transform: scale(1); }
-        }
+        canvas { touch-action: none; background-color: #f9fafb; }
+        @keyframes heart-beat { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
       `}</style>
     </div>
   );
 }
-
-// --- NOUVEAUX COMPOSANTS UI ---
-const LayoutDashboard = ({ size, className }: { size?: number, className?: string }) => <FileSpreadsheet size={size} className={className} />;
-const Smartphone = ({ size, className }: { size?: number, className?: string }) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>;
-const Navigation = ({ size, className }: { size?: number, className?: string }) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
