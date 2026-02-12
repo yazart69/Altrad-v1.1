@@ -1,20 +1,21 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, 
   ShieldCheck, AlertTriangle, CheckCircle2, XCircle, Clock, 
   MapPin, Phone, Mail, User, Calendar, Printer, Save, 
   Plus, Trash2, Search, ArrowRight, Download, Eye,
-  AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight
+  AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
+  ClipboardList, Stethoscope, Factory, Truck
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
 } from 'recharts';
 import { jsPDF } from "jspdf"; 
 
-// IMPORTATION DES DONNÉES MÉTIERS (Connexion avec votre fichier data.ts)
+// --- IMPORTATION DES RÉFÉRENTIELS MÉTIERS (Votre fichier data.ts) ---
 import { 
   RISK_DATABASE, 
   VGP_RULES, 
@@ -24,7 +25,9 @@ import {
   CAUSERIE_THEMES 
 } from './data';
 
-// --- TYPAGE STRICT DES DONNÉES ---
+// =================================================================================================
+// 1. DÉFINITION DES TYPES & INTERFACES (Modèle de Données)
+// =================================================================================================
 
 interface IChantier {
   id: string;
@@ -46,45 +49,53 @@ interface IUser {
   prenom: string;
   role: string;
   telephone: string;
-  habilitations: string[];
+  email: string;
+  habilitations: string[]; // ex: ["SST", "CACES R486"]
   chantier_affecte_id: string;
 }
 
 interface IMateriel {
   id: string;
   libelle: string;
-  type: string; 
+  type: string; // 'location' | 'interne'
+  categorie: string; // Clef pour VGP_RULES
   numero_serie: string;
   derniere_vgp: string;
-  frequence_vgp_mois: number;
   statut: 'operationnel' | 'maintenance' | 'rebut';
   chantier_actuel_id: string;
 }
 
-// --- COMPOSANT PRINCIPAL ---
+interface IVisite {
+  id: string;
+  date: string;
+  type: 'VMT' | 'Q3SRE' | 'OST';
+  auteur: string;
+  conformite_globale: number; // %
+}
+
+// =================================================================================================
+// 2. COMPOSANT MAÎTRE (Layout & Navigation)
+// =================================================================================================
 
 export default function HSEUltimateModule() {
-  // Navigation & État Global
+  // --- STATE GLOBAL ---
   const [view, setView] = useState<'dashboard'|'generator'|'vgp'|'terrain'|'causerie'>('dashboard');
   const [loading, setLoading] = useState(true);
-  
-  // Données "Vives" (Simulées ou Fetchées)
+  const [activeChantierId, setActiveChantierId] = useState<string>("");
+
+  // --- DATA STORES (Simulés pour l'instant, à remplacer par fetch Supabase) ---
   const [chantiers, setChantiers] = useState<IChantier[]>([]);
   const [users, setUsers] = useState<IUser[]>([]);
   const [materiel, setMateriel] = useState<IMateriel[]>([]);
-  
-  // Contexte Actuel
-  const [activeChantierId, setActiveChantierId] = useState<string>("");
-  
-  // Calculs dérivés
+
+  // --- CALCUL DES DONNÉES CONTEXTUELLES ---
   const activeChantier = chantiers.find(c => c.id === activeChantierId);
   const activeEquipe = users.filter(u => u.chantier_affecte_id === activeChantierId);
   const activeMateriel = materiel.filter(m => m.chantier_actuel_id === activeChantierId);
 
-  // --- INITIALISATION ---
+  // --- CHARGEMENT INITIAL (Simulation API) ---
   useEffect(() => {
-    // Simulation du chargement des données depuis Supabase
-    // Dans la réalité, remplacez par : const { data } = await supabase.from('...').select('*');
+    // Simulation d'un appel API vers Supabase
     setTimeout(() => {
       setChantiers([{
         id: "CH-2026-001",
@@ -101,35 +112,44 @@ export default function HSEUltimateModule() {
       }]);
 
       setUsers([
-        { id: "USR-004", nom: "Dupont", prenom: "Jean", role: "employe", telephone: "06 12 34 56 78", habilitations: ["SST", "CACES R486", "Travail en hauteur"], chantier_affecte_id: "CH-2026-001" },
-        { id: "USR-001", nom: "Martin", prenom: "Paul", role: "chef_chantier", telephone: "06 99 88 77 66", habilitations: ["SST", "Encadrement"], chantier_affecte_id: "CH-2026-001" }
+        { id: "USR-004", nom: "Dupont", prenom: "Jean", role: "employe", email: "j.dupont@altrad.os", telephone: "06 12 34 56 78", habilitations: ["SST", "CACES R486", "Travail en hauteur"], chantier_affecte_id: "CH-2026-001" },
+        { id: "USR-001", nom: "Martin", prenom: "Paul", role: "chef_chantier", email: "p.martin@altrad.os", telephone: "06 99 88 77 66", habilitations: ["SST", "Encadrement"], chantier_affecte_id: "CH-2026-001" }
       ]);
 
       setMateriel([
-        { id: "MAT-882", libelle: "Nacelle Élévatrice Haulotte", type: "Levage", numero_serie: "HX-99827-B", derniere_vgp: "2025-11-20", frequence_vgp_mois: 6, statut: "operationnel", chantier_actuel_id: "CH-2026-001" },
-        { id: "MAT-102", libelle: "Compresseur Atlas", type: "Pression", numero_serie: "CP-2022-X", derniere_vgp: "2024-01-15", frequence_vgp_mois: 12, statut: "operationnel", chantier_actuel_id: "CH-2026-001" }
+        { id: "MAT-882", libelle: "Nacelle Élévatrice Haulotte", type: "location", categorie: "Levage", numero_serie: "HX-99827-B", derniere_vgp: "2025-11-20", statut: "operationnel", chantier_actuel_id: "CH-2026-001" },
+        { id: "MAT-102", libelle: "Compresseur Atlas", type: "interne", categorie: "Pression", numero_serie: "CP-2022-X", derniere_vgp: "2024-01-15", statut: "operationnel", chantier_actuel_id: "CH-2026-001" },
+        { id: "MAT-303", libelle: "Harnais Sécurité", type: "interne", categorie: "EPI_Harnais", numero_serie: "PZL-99", derniere_vgp: "2025-06-01", statut: "operationnel", chantier_actuel_id: "CH-2026-001" }
       ]);
 
       setLoading(false);
-    }, 500);
+    }, 800);
   }, []);
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-bold">Chargement du Système HSE...</div>;
+  if (loading) return (
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 text-gray-500">
+      <div className="animate-spin mb-4"><ShieldCheck size={48} className="text-red-600"/></div>
+      <p className="font-bold text-lg animate-pulse">Initialisation du Module HSE...</p>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen bg-[#f3f4f6] font-sans text-gray-800">
       
-      {/* SIDEBAR NAVIGATION */}
+      {/* SIDEBAR NAVIGATION (Fixe) */}
       <aside className="w-72 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0 z-50">
         <div className="p-6 border-b border-gray-100">
-          <h1 className="text-xl font-black uppercase text-gray-900 leading-none">ALTRAD<span className="text-red-600">.HSE</span></h1>
-          <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1">SÉCURITÉ & QUALITÉ</p>
+          <h1 className="text-xl font-black uppercase text-gray-900 leading-none">ALTRAD<span className="text-red-600">.OS</span></h1>
+          <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1">MODULE HSE ULTIME v3.0</p>
         </div>
 
-        <div className="p-4">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 block">Contexte Chantier</label>
+        {/* Sélecteur de Contexte (Critique pour l'héritage) */}
+        <div className="p-4 bg-gray-50/50 border-b border-gray-100">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 block flex items-center gap-1">
+            <Factory size={12}/> Contexte Chantier
+          </label>
           <select 
-            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-100 transition-all" 
+            className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm"
             value={activeChantierId}
             onChange={(e) => setActiveChantierId(e.target.value)}
           >
@@ -138,50 +158,74 @@ export default function HSEUltimateModule() {
           </select>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={view} set={setView} />
-          <div className="pt-4 pb-1"><p className="text-[10px] font-black text-gray-300 uppercase">Bureau des Méthodes</p></div>
+          
+          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Bureau des Méthodes</p></div>
           <NavBtn id="generator" icon={FileText} label="Générateur Documents" active={view} set={setView} disabled={!activeChantierId} />
           <NavBtn id="vgp" icon={Wrench} label="Suivi Matériel & VGP" active={view} set={setView} disabled={!activeChantierId} />
-          <div className="pt-4 pb-1"><p className="text-[10px] font-black text-gray-300 uppercase">Terrain & Ops</p></div>
+          
+          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Terrain & Opérations</p></div>
           <NavBtn id="terrain" icon={Camera} label="Visites (VMT / Q3SRE)" active={view} set={setView} disabled={!activeChantierId} />
           <NavBtn id="causerie" icon={Megaphone} label="Causeries & Accueil" active={view} set={setView} disabled={!activeChantierId} />
         </nav>
+
+        <div className="p-4 border-t border-gray-100 text-center">
+          <p className="text-[10px] text-gray-300 font-medium">© 2026 Altrad Services</p>
+        </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 h-screen overflow-hidden flex flex-col relative">
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
-          <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-3">
-            {view === 'dashboard' && <LayoutDashboard className="text-gray-400"/>}
-            {view === 'generator' && <FileText className="text-blue-500"/>}
-            {view === 'vgp' && <Wrench className="text-orange-500"/>}
-            {view === 'terrain' && <Camera className="text-emerald-500"/>}
-            {view === 'causerie' && <Megaphone className="text-purple-500"/>}
-            {view === 'dashboard' ? 'Vue Globale' : view.replace('_', ' ')}
-          </h2>
+      {/* ZONE DE CONTENU PRINCIPALE */}
+      <main className="flex-1 h-screen overflow-hidden flex flex-col relative bg-[#f8f9fa]">
+        
+        {/* HEADER CONTEXTUEL */}
+        <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0 shadow-sm z-40">
+          <div>
+            <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-3">
+              {view === 'dashboard' && <LayoutDashboard className="text-gray-400"/>}
+              {view === 'generator' && <FileText className="text-blue-500"/>}
+              {view === 'vgp' && <Wrench className="text-orange-500"/>}
+              {view === 'terrain' && <Camera className="text-emerald-500"/>}
+              {view === 'causerie' && <Megaphone className="text-purple-500"/>}
+              {view === 'dashboard' ? 'Tableau de Bord HSE' : view.replace('_', ' ')}
+            </h2>
+            <p className="text-xs text-gray-400 font-medium mt-1">Pilotage de la performance sécurité</p>
+          </div>
+
           {activeChantier && (
-            <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
-              <span className="flex items-center gap-1"><MapPin size={14}/> {activeChantier.adresse}</span>
-              <span className="flex items-center gap-1"><Users size={14}/> {activeEquipe.length} Pers.</span>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <p className="text-xs font-bold text-gray-900">{activeChantier.client}</p>
+                <div className="flex items-center gap-1 justify-end text-xs text-gray-500">
+                  <MapPin size={12}/> {activeChantier.adresse}
+                </div>
+              </div>
+              <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200 shadow-sm">
+                <span className="font-bold text-xs text-gray-600">{activeChantier.nom.substring(0,2).toUpperCase()}</span>
+              </div>
             </div>
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        {/* CONTENU SCROLLABLE */}
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
+          
+          {/* EMPTY STATE (Si aucun chantier sélectionné) */}
           {!activeChantierId && view !== 'dashboard' ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-40">
-              <HardHat size={64} className="mb-4 text-gray-400"/>
-              <p className="text-lg font-bold">Veuillez sélectionner un chantier dans le menu latéral.</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center opacity-40 select-none pointer-events-none">
+              <HardHat size={80} className="mb-6 text-gray-300"/>
+              <h3 className="text-2xl font-black text-gray-400 mb-2">AUCUN CHANTIER SÉLECTIONNÉ</h3>
+              <p className="text-gray-400 font-medium">Veuillez sélectionner un projet dans le menu latéral pour accéder aux outils.</p>
             </div>
           ) : (
-            <>
+            // ROUTEUR DE VUES
+            <div className="max-w-7xl mx-auto pb-20">
               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
               {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} />}
               {view === 'vgp' && <VGPTracker materiel={activeMateriel} />}
               {view === 'terrain' && <FieldVisits chantier={activeChantier!} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
-            </>
+            </div>
           )}
         </div>
       </main>
@@ -189,213 +233,321 @@ export default function HSEUltimateModule() {
   );
 }
 
-// ============================================================================
-// MODULE 1: DASHBOARD (Indicateurs Clés)
-// ============================================================================
+// =================================================================================================
+// MODULE 1: DASHBOARD (Indicateurs Clés & KPI)
+// =================================================================================================
 function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], materiel: IMateriel[] }) {
+  // Calculs KPI réels
   const vgpPerimees = materiel.filter(m => {
-    const nextDate = new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + m.frequence_vgp_mois));
+    const freq = VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12;
+    const nextDate = new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + freq));
     return nextDate < new Date();
   }).length;
 
-  const chartData = [{name: 'Jan', TF: 4.2}, {name: 'Fév', TF: 3.8}, {name: 'Mar', TF: 2.5}, {name: 'Avr', TF: 0.0}, {name: 'Mai', TF: 1.2}];
+  const chartData = [{n:'Jan', v:4.2}, {n:'Fev', v:3.8}, {n:'Mar', v:2.1}, {n:'Avr', v:0.0}, {n:'Mai', v:1.2}];
   const pieData = [
-    {name: 'VGP OK', value: materiel.length - vgpPerimees, color: '#10b981'}, 
-    {name: 'VGP HS', value: vgpPerimees, color: '#ef4444'}
+    {name: 'VGP Conformes', value: materiel.length - vgpPerimees, color: '#10b981'}, 
+    {name: 'VGP Périmées', value: vgpPerimees, color: '#ef4444'}
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard label="Taux de Fréquence" val="2.1" sub="-0.5 vs N-1" icon={AlertOctagon} color="blue" />
-        <StatCard label="Chantiers Actifs" val={chantiers.length} sub="En cours" icon={HardHat} color="indigo" />
-        <StatCard label="VGP Périmées" val={vgpPerimees} sub="Action requise" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
-        <StatCard label="Causeries / Mois" val="8" sub="Objectif: 12" icon={Megaphone} color="orange" />
+        <StatCard label="Taux de Fréquence (TF)" val="2.1" sub="-0.5 vs N-1" icon={AlertOctagon} color="blue" />
+        <StatCard label="Chantiers Actifs" val={chantiers.length} sub="En cours de prod." icon={HardHat} color="indigo" />
+        <StatCard label="Matériel Non Conforme" val={vgpPerimees} sub="Action immédiate requise" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
+        <StatCard label="Causeries Réalisées" val="12" sub="Objectif Mensuel: 15" icon={Megaphone} color="orange" />
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-96">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-bold text-gray-700 mb-4">Évolution Accidentologie</h3>
+      {/* Graphiques */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+          <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2"><ArrowRight size={16} className="text-red-500"/> Évolution Taux de Fréquence (12 mois)</h3>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-              <XAxis dataKey="name"/>
-              <YAxis allowDecimals={false}/>
-              <RechartsTooltip/>
-              <Bar dataKey="TF" fill="#ef4444" radius={[4,4,0,0]} barSize={40}/>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/>
+              <XAxis dataKey="n" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+              <RechartsTooltip cursor={{fill: '#f9fafb'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}/>
+              <Bar dataKey="v" fill="#ef4444" radius={[4,4,0,0]} barSize={50}/>
             </BarChart>
           </ResponsiveContainer>
         </div>
+
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-bold text-gray-700 mb-4">État du Parc Matériel</h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-              </Pie>
-              <RechartsTooltip />
-              <Legend verticalAlign="bottom"/>
-            </PieChart>
-          </ResponsiveContainer>
+          <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2"><ArrowRight size={16} className="text-emerald-500"/> Conformité Parc Matériel</h3>
+          <div className="flex-1 relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <RechartsTooltip />
+                <Legend verticalAlign="bottom" height={36}/>
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Score central */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
+               <span className="text-4xl font-black text-gray-800">{((materiel.length - vgpPerimees)/materiel.length * 100).toFixed(0)}%</span>
+               <span className="text-[10px] uppercase font-bold text-gray-400">Disponibilité</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ============================================================================
-// MODULE 2: SUIVI VGP & MATÉRIEL
-// ============================================================================
+// =================================================================================================
+// MODULE 2: SUIVI MATÉRIEL & VGP (Calcul Automatique)
+// =================================================================================================
 function VGPTracker({ materiel }: { materiel: IMateriel[] }) {
-  // Calcul VGP status
-  const getStatus = (last: string, freq: number) => {
+  
+  // Algorithme de calcul d'état VGP
+  const getStatus = (last: string, cat: string) => {
+    // Récupération de la fréquence dans le fichier data.ts via la catégorie
+    const freq = VGP_RULES[cat as keyof typeof VGP_RULES] || 12; // 12 mois par défaut
+    
     const lastDate = new Date(last);
     const nextDate = new Date(lastDate.setMonth(lastDate.getMonth() + freq));
     const now = new Date();
+    
     const diffTime = nextDate.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return { label: 'PÉRIMÉ', color: 'bg-red-100 text-red-700 border-red-200', days: diffDays };
-    if (diffDays < 30) return { label: 'URGENT', color: 'bg-orange-100 text-orange-700 border-orange-200', days: diffDays };
-    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', days: diffDays };
+    if (diffDays < 0) return { label: 'PÉRIMÉ', color: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-200', days: diffDays, urgent: true };
+    if (diffDays < 30) return { label: 'URGENT', color: 'bg-orange-100 text-orange-700 border-orange-200 ring-1 ring-orange-200', days: diffDays, urgent: false };
+    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', days: diffDays, urgent: false };
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
-      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+      
+      {/* En-tête Module */}
+      <div className="flex justify-between items-end">
         <div>
-          <h3 className="font-black text-gray-800 text-lg flex items-center gap-2"><Wrench className="text-orange-500"/> REGISTRE DE SÉCURITÉ</h3>
-          <p className="text-xs text-gray-500 mt-1">Calcul automatique des échéances réglementaires.</p>
+          <h3 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-3">
+            <Wrench className="text-orange-500" size={28}/> Registre de Sécurité
+          </h3>
+          <p className="text-gray-500 font-medium mt-1">Suivi réglementaire des équipements affectés au chantier.</p>
         </div>
-        <button className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center gap-2">
-          <Plus size={16}/> Ajouter Équipement
+        <button className="bg-black text-white px-6 py-3 rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg">
+          <Plus size={16}/> Ajouter un équipement
         </button>
       </div>
 
-      <table className="w-full text-left">
-        <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider">
-          <tr>
-            <th className="p-4">Équipement / Série</th>
-            <th className="p-4">Catégorie</th>
-            <th className="p-4">Dernière VGP</th>
-            <th className="p-4">Échéance</th>
-            <th className="p-4 text-center">État</th>
-            <th className="p-4 text-center">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 text-sm">
-          {materiel.map(m => {
-            const status = getStatus(m.derniere_vgp, m.frequence_vgp_mois);
-            return (
-              <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                <td className="p-4">
-                  <div className="font-bold text-gray-800">{m.libelle}</div>
-                  <div className="text-xs text-gray-400 font-mono mt-0.5">{m.numero_serie}</div>
-                </td>
-                <td className="p-4">
-                  <span className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-600 border">
-                    {m.type}
-                  </span>
-                </td>
-                <td className="p-4 text-gray-600">{new Date(m.derniere_vgp).toLocaleDateString()}</td>
-                <td className="p-4 font-medium">
-                  {new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + m.frequence_vgp_mois)).toLocaleDateString()}
-                </td>
-                <td className="p-4 text-center">
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-black border inline-flex items-center gap-1 ${status.color}`}>
-                    {status.days < 0 ? <XCircle size={12}/> : <CheckCircle2 size={12}/>}
-                    {status.label} ({status.days > 0 ? `J+${status.days}` : `J${status.days}`})
-                  </span>
-                </td>
-                <td className="p-4 text-center">
-                  <button className="text-gray-400 hover:text-blue-600 transition-colors"><Eye size={18}/></button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {/* Tableau de suivi */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider border-b border-gray-100">
+            <tr>
+              <th className="p-5">Équipement / Série</th>
+              <th className="p-5">Catégorie (Règle VGP)</th>
+              <th className="p-5">Dernière VGP</th>
+              <th className="p-5">Prochaine Échéance</th>
+              <th className="p-5 text-center">Statut Réglementaire</th>
+              <th className="p-5 text-center">Rapport</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 text-sm">
+            {materiel.length === 0 && (
+              <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic">Aucun matériel affecté à ce chantier.</td></tr>
+            )}
+            {materiel.map(m => {
+              const status = getStatus(m.derniere_vgp, m.categorie);
+              return (
+                <tr key={m.id} className="hover:bg-gray-50/80 transition-colors group">
+                  <td className="p-5">
+                    <div className="font-bold text-gray-800 text-base">{m.libelle}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
+                      <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600">S/N: {m.numero_serie}</span>
+                      {m.type === 'location' && <span className="text-purple-500 font-bold bg-purple-50 px-2 py-0.5 rounded">LOXAM</span>}
+                    </div>
+                  </td>
+                  <td className="p-5">
+                    <span className="px-3 py-1 rounded-lg text-xs font-bold uppercase bg-white border border-gray-200 text-gray-600 shadow-sm">
+                      {m.categorie}
+                    </span>
+                  </td>
+                  <td className="p-5 text-gray-600 font-medium">{new Date(m.derniere_vgp).toLocaleDateString()}</td>
+                  <td className="p-5 font-bold text-gray-800">
+                    {new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + (VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12))).toLocaleDateString()}
+                  </td>
+                  <td className="p-5 text-center">
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black inline-flex items-center gap-2 shadow-sm ${status.color}`}>
+                      {status.days < 0 ? <XCircle size={14}/> : <CheckCircle2 size={14}/>}
+                      {status.label}
+                      <span className="opacity-60 border-l pl-2 ml-1 border-current">
+                        {status.days > 0 ? `J+${status.days}` : `J${status.days}`}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="p-5 text-center">
+                    <button className="p-2 hover:bg-gray-200 rounded-lg text-gray-400 hover:text-blue-600 transition-colors">
+                      <Download size={20}/>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-// ============================================================================
-// MODULE 3: GÉNÉRATEUR INTELLIGENT
-// ============================================================================
+// =================================================================================================
+// MODULE 3: GÉNÉRATEUR INTELLIGENT (Moteurs de rendu distincts)
+// =================================================================================================
 function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier, equipe: IUser[], materiel: IMateriel[] }) {
   const [docType, setDocType] = useState<'ppsps'|'modop'|'rex'|'causerie'>('ppsps');
+  
+  // États Formulaires
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
-  const [modopSteps, setModopSteps] = useState([{ phase: "Préparation", risque: "Chute", prevention: "Harnais" }]);
+  const [modopSteps, setModopSteps] = useState([{ phase: "Préparation", risque: "Chute de hauteur", prevention: "Harnais double longe" }]);
   const [secours, setSecours] = useState({ sst: [], hopital: "Hôpital Edouard Herriot (Lyon)", pompier: "18" });
 
+  // --- AUTOMATISME: Héritage des données (Data Mapping) ---
   useEffect(() => {
-    // Auto-détection SST
+    // 1. Détection des SST dans l'équipe
     const sstMembers = equipe.filter(u => u.habilitations.includes("SST")).map(u => `${u.nom} ${u.prenom}`);
     setSecours(prev => ({ ...prev, sst: sstMembers as any }));
-  }, [equipe]);
 
+    // 2. Pré-cochage des risques selon les travaux
+    if (chantier) {
+        const autoRisks: string[] = [];
+        if (chantier.type_travaux.includes("Peinture")) autoRisks.push("Inhalation solvants", "Projection");
+        if (chantier.type_travaux.includes("Échafaudage")) autoRisks.push("Chute de hauteur", "Chute d'objet");
+        setSelectedRisks(prev => [...new Set([...prev, ...autoRisks])]);
+    }
+  }, [equipe, chantier]);
+
+  // --- MOTEUR D'EXPORT PDF (Logique Distincte par Type) ---
   const generatePDF = () => {
     const doc = new jsPDF();
     const today = new Date().toLocaleDateString();
 
+    // En-tête Commun ALTRAD
+    doc.setFillColor(200, 200, 200);
+    doc.rect(0, 0, 210, 25, 'F');
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("ALTRAD SERVICES - Agence Sud-Est", 10, 15);
     doc.setFontSize(10);
-    doc.text("ALTRAD SERVICES - Agence Sud-Est", 10, 10);
-    doc.text(`Projet: ${chantier.nom}`, 150, 10);
-    doc.text(`Date: ${today}`, 150, 15);
-    doc.line(10, 20, 200, 20);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Projet: ${chantier.nom}`, 140, 10);
+    doc.text(`Date: ${today}`, 140, 15);
+    doc.text(`Réf: DOC-${docType.toUpperCase()}-${chantier.id}`, 140, 20);
 
+    // --- LOGIQUE SPÉCIFIQUE PPSPS ---
     if (docType === 'ppsps') {
-      doc.setFontSize(18);
-      doc.setTextColor(220, 0, 0);
-      doc.text("PLAN PARTICULIER DE SÉCURITÉ (PPSPS)", 105, 35, { align: "center" });
+      // Titre Rouge
+      doc.setFontSize(22);
+      doc.setTextColor(220, 0, 0); 
+      doc.text("PLAN PARTICULIER DE SÉCURITÉ (PPSPS)", 105, 45, { align: "center" });
       
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
-      doc.text("1. RENSEIGNEMENTS GÉNÉRAUX", 10, 50);
+      
+      // 1. Renseignements
+      doc.setFillColor(240, 240, 240);
+      doc.rect(10, 55, 190, 8, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.text("1. RENSEIGNEMENTS GÉNÉRAUX", 12, 61);
+      
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`Maître d'Ouvrage : ${chantier.client}`, 15, 60);
-      doc.text(`Adresse du site : ${chantier.adresse}`, 15, 65);
-      doc.text(`Responsable : ${users.find(u => u.id === chantier.responsable_id)?.nom || 'Non défini'}`, 15, 70);
+      doc.text(`Maître d'Ouvrage : ${chantier.client}`, 15, 75);
+      doc.text(`Adresse du site : ${chantier.adresse}`, 15, 82);
+      doc.text(`Effectif moyen : ${chantier.effectif_prevu} personnes`, 15, 89);
+      doc.text(`Responsable Chantier : ${users.find(u => u.id === chantier.responsable_id)?.nom || 'Non défini'}`, 15, 96);
 
+      // 2. Secours
+      doc.setFillColor(240, 240, 240);
+      doc.rect(10, 110, 190, 8, 'F');
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("2. ORGANISATION DES SECOURS", 10, 90);
+      doc.text("2. ORGANISATION DES SECOURS", 12, 116);
+      
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`Hôpital : ${secours.hopital}`, 15, 100);
-      doc.text(`SST présents :`, 15, 105);
+      doc.text(`Hôpital de référence : ${secours.hopital}`, 15, 130);
+      doc.text(`Numéros d'urgence : Pompiers (18) - SAMU (15) - Interne (XXXX)`, 15, 137);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text(`Sauveteurs Secouristes du Travail (SST) présents :`, 15, 147);
+      doc.setFont("helvetica", "normal");
       (secours.sst as any).forEach((sst: string, i: number) => {
-        doc.text(`- ${sst}`, 20, 112 + (i*5));
+        doc.text(`• ${sst}`, 20, 154 + (i*6));
       });
 
+      // 3. Risques
+      doc.setFillColor(240, 240, 240);
+      doc.rect(10, 180, 190, 8, 'F');
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("3. RISQUES & PRÉVENTION", 10, 140);
+      doc.text("3. ANALYSE DES RISQUES SPÉCIFIQUES", 12, 186);
+      
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       selectedRisks.forEach((r, i) => {
-        doc.text(`- ${r}`, 15, 150 + (i*5));
+        doc.text(`- ${r}`, 15, 196 + (i*6));
       });
 
-    } else if (docType === 'modop') {
-      doc.setFontSize(18);
-      doc.setTextColor(0, 100, 200);
-      doc.text("MODE OPÉRATOIRE TECHNIQUE", 105, 35, { align: "center" });
+    } 
+    // --- LOGIQUE SPÉCIFIQUE MODE OPÉRATOIRE ---
+    else if (docType === 'modop') {
+      doc.setFontSize(22);
+      doc.setTextColor(0, 100, 200); 
+      doc.text("MODE OPÉRATOIRE TECHNIQUE", 105, 45, { align: "center" });
       
+      // Info ACQPA
       if (chantier.type_travaux.includes("Peinture")) {
-        doc.setFontSize(10);
+        doc.setFontSize(12);
         doc.setTextColor(100, 100, 100);
-        doc.text(`SYSTÈME PEINTURE : ${chantier.infos_acqpa?.systeme_homologue || 'Standard'}`, 105, 45, { align: "center" });
+        doc.text(`SYSTÈME PEINTURE : ${chantier.infos_acqpa?.systeme_homologue || 'Standard'} (${chantier.infos_acqpa?.epaisseur_totale_visee} µm)`, 105, 55, { align: "center" });
       }
 
+      // Matériel
       doc.setTextColor(0,0,0);
-      doc.text("PHASAGE DES OPÉRATIONS :", 10, 60);
+      doc.setFont("helvetica", "bold");
+      doc.text("MATÉRIEL ENGAGÉ :", 10, 70);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      let matY = 80;
+      materiel.forEach((m) => {
+          doc.text(`• ${m.libelle} (${m.type})`, 15, matY);
+          matY += 6;
+      });
+
+      // Tableau Chronologique (Simulé)
+      let y = matY + 10;
+      doc.setFont("helvetica", "bold");
+      doc.text("PHASAGE DES OPÉRATIONS :", 10, y);
+      y += 10;
       
-      let y = 70;
       modopSteps.forEach((step, i) => {
-        doc.rect(10, y, 190, 20);
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(10, y, 190, 25); // Box
+        
+        doc.setFontSize(14);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`${i+1}`, 18, y+16); // Numéro
+        
         doc.setFontSize(11);
-        doc.text(`Phase ${i+1} : ${step.phase}`, 15, y+8);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`${step.phase}`, 30, y+10);
+        
         doc.setFontSize(9);
-        doc.text(`Risque: ${step.risque}`, 15, y+15);
-        doc.text(`Prévention: ${step.prevention}`, 100, y+15);
-        y += 25;
+        doc.setTextColor(200, 0, 0);
+        doc.text(`RISQUE: ${step.risque}`, 30, y+18);
+        
+        doc.setTextColor(0, 150, 0);
+        doc.text(`PRÉVENTION: ${step.prevention}`, 110, y+18);
+        
+        y += 30;
       });
     }
 
@@ -403,94 +555,119 @@ function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier
   };
 
   return (
-    <div className="grid grid-cols-12 gap-6 h-full animate-in fade-in">
+    <div className="grid grid-cols-12 gap-6 h-full animate-in fade-in slide-in-from-bottom-4">
+      {/* GAUCHE : SÉLECTEUR & ACTIONS */}
       <div className="col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-        <h3 className="font-black text-gray-700 mb-6 uppercase">Type de Document</h3>
+        <h3 className="font-black text-gray-700 mb-6 uppercase flex items-center gap-2"><FileText size={20}/> Type de Document</h3>
         <div className="space-y-3">
           {[
-            {id: 'ppsps', label: 'PPSPS', color: 'border-red-500 bg-red-50 text-red-700'},
-            {id: 'modop', label: 'Mode Opératoire', color: 'border-blue-500 bg-blue-50 text-blue-700'},
-            {id: 'rex', label: 'Bilan Fin Chantier (REX)', color: 'border-purple-500 bg-purple-50 text-purple-700'},
-            {id: 'causerie', label: 'Fiche Causerie', color: 'border-orange-500 bg-orange-50 text-orange-700'},
+            {id: 'ppsps', label: 'PPSPS', desc: 'Plan Particulier Sécurité', color: 'border-red-500 bg-red-50 text-red-700'},
+            {id: 'modop', label: 'Mode Opératoire', desc: 'Fiche technique de tâche', color: 'border-blue-500 bg-blue-50 text-blue-700'},
+            {id: 'rex', label: 'Bilan Fin Chantier (REX)', desc: 'Retour expérience', color: 'border-purple-500 bg-purple-50 text-purple-700'},
+            {id: 'causerie', label: 'Fiche Causerie', desc: 'Animation sécurité', color: 'border-orange-500 bg-orange-50 text-orange-700'},
           ].map((t: any) => (
             <button 
               key={t.id} 
               onClick={() => setDocType(t.id)}
-              className={`w-full text-left p-4 rounded-xl border-l-4 transition-all ${docType === t.id ? t.color + ' shadow-md' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+              className={`w-full text-left p-4 rounded-xl border-l-4 transition-all group ${docType === t.id ? t.color + ' shadow-md' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
             >
-              <div className="font-bold">{t.label}</div>
+              <div className="font-bold flex justify-between">
+                  {t.label}
+                  {docType === t.id && <CheckCircle2 size={16}/>}
+              </div>
+              <div className="text-[10px] opacity-70 group-hover:opacity-100">{t.desc}</div>
             </button>
           ))}
         </div>
-        <div className="mt-auto">
-          <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95">
+        <div className="mt-auto pt-6 border-t border-gray-100">
+          <button onClick={generatePDF} className="w-full bg-black text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-transform active:scale-95">
             <Download size={20}/> TÉLÉCHARGER PDF
           </button>
         </div>
       </div>
 
+      {/* DROITE : FORMULAIRE CONTEXTUEL */}
       <div className="col-span-9 bg-white p-8 rounded-2xl shadow-sm border border-gray-100 overflow-y-auto">
-        <h3 className="text-xl font-black text-gray-800 uppercase mb-6 flex items-center gap-2">
+        <h3 className="text-xl font-black text-gray-800 uppercase mb-6 flex items-center gap-2 border-b border-gray-100 pb-4">
           <Edit className="text-gray-400"/> Édition : {docType.toUpperCase()}
         </h3>
 
+        {/* --- FORMULAIRE PPSPS --- */}
         {docType === 'ppsps' && (
-          <div className="space-y-8">
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Siren className="text-red-500"/> Organisation des Secours (Pré-rempli)</h4>
+          <div className="space-y-8 animate-in fade-in">
+            {/* Bloc Secours Pré-rempli */}
+            <div className="bg-red-50 p-6 rounded-xl border border-red-100">
+              <h4 className="font-bold text-red-800 mb-4 flex items-center gap-2"><Siren size={20}/> Organisation des Secours (Automatique)</h4>
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="label-form">Hôpital de référence</label>
-                  <input type="text" className="input-form" value={secours.hopital} onChange={e => setSecours({...secours, hopital: e.target.value})} />
+                  <input type="text" className="input-form bg-white border-red-200" value={secours.hopital} onChange={e => setSecours({...secours, hopital: e.target.value})} />
                 </div>
                 <div>
-                  <label className="label-form">SST sur le chantier (Auto-détectés)</label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <label className="label-form">SST sur le chantier (Détectés via Habilitations)</label>
+                  <div className="flex flex-wrap gap-2 mt-2 bg-white p-3 rounded-lg border border-red-200 min-h-[42px]">
                     {(secours.sst as any).map((s:string) => (
                       <span key={s} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200 flex items-center gap-1">
                         <CheckCircle2 size={12}/> {s}
                       </span>
                     ))}
-                    {(secours.sst as any).length === 0 && <span className="text-red-500 text-xs font-bold italic">Aucun SST détecté dans l'équipe !</span>}
+                    {(secours.sst as any).length === 0 && <span className="text-red-500 text-xs font-bold italic flex items-center gap-1"><AlertTriangle size={12}/> Aucun SST dans l'équipe actuelle !</span>}
                   </div>
                 </div>
               </div>
             </div>
             
-            <h4 className="font-bold text-gray-700 mt-6 border-b pb-2">Sélection des Risques (Base de Données)</h4>
-            <div className="grid grid-cols-2 gap-3 mt-4">
-               {RISK_DATABASE.slice(0, 10).map(r => (
-                 <label key={r.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 border border-gray-200">
-                   <input type="checkbox" onChange={(e) => e.target.checked ? setSelectedRisks([...selectedRisks, r.task]) : setSelectedRisks(selectedRisks.filter(x => x !== r.task))} />
-                   <div>
-                     <div className="text-xs font-bold text-gray-800">{r.task}</div>
-                     <div className="text-[10px] text-gray-500">{r.category}</div>
-                   </div>
-                 </label>
-               ))}
+            {/* Sélection Risques (Base de Données) */}
+            <div>
+                <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2"><ShieldCheck size={20}/> Risques Spécifiques (Cocher pour inclure)</h4>
+                <div className="grid grid-cols-2 gap-3 mt-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                {RISK_DATABASE.slice(0, 12).map(r => (
+                    <label key={r.id} className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${selectedRisks.includes(r.task) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'}`}>
+                    <input type="checkbox" className="mt-1" checked={selectedRisks.includes(r.task)} onChange={(e) => e.target.checked ? setSelectedRisks([...selectedRisks, r.task]) : setSelectedRisks(selectedRisks.filter(x => x !== r.task))} />
+                    <div>
+                        <div className="text-xs font-bold text-gray-800">{r.task}</div>
+                        <div className="text-[10px] text-gray-500 uppercase mt-0.5">{r.category}</div>
+                    </div>
+                    </label>
+                ))}
+                </div>
             </div>
           </div>
         )}
 
+        {/* --- FORMULAIRE MODE OPÉRATOIRE --- */}
         {docType === 'modop' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in">
             <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800 text-sm font-medium flex items-center gap-3">
               <HardHat size={20}/>
-              Le système a détecté des travaux de type : <strong>{chantier.type_travaux.join(', ')}</strong>. Les risques associés ont été pré-chargés.
+              Détection auto : Travaux de <strong>{chantier.type_travaux.join(', ')}</strong>. Les risques génériques ont été pré-chargés.
             </div>
 
             <div className="space-y-4">
-              <h4 className="font-bold text-gray-700">Chronologie des Tâches</h4>
+              <h4 className="font-bold text-gray-700 flex items-center gap-2"><ClipboardList/> Chronologie des Opérations</h4>
               {modopSteps.map((step, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                  <div className="col-span-1 font-black text-gray-300 text-center text-lg">{i+1}</div>
-                  <div className="col-span-4"><input type="text" className="input-form" placeholder="Phase" value={step.phase} onChange={e => {const n=[...modopSteps]; n[i].phase=e.target.value; setModopSteps(n)}} /></div>
-                  <div className="col-span-3"><input type="text" className="input-form border-red-200" placeholder="Risque" value={step.risque} onChange={e => {const n=[...modopSteps]; n[i].risque=e.target.value; setModopSteps(n)}} /></div>
-                  <div className="col-span-3"><input type="text" className="input-form border-green-200" placeholder="Prévention" value={step.prevention} onChange={e => {const n=[...modopSteps]; n[i].prevention=e.target.value; setModopSteps(n)}} /></div>
-                  <div className="col-span-1 text-center"><button onClick={() => {const n=[...modopSteps]; n.splice(i,1); setModopSteps(n)}} className="text-red-400 hover:text-red-600"><Trash2 size={18}/></button></div>
+                <div key={i} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm relative group">
+                  <div className="col-span-1 font-black text-gray-300 text-center text-xl">{i+1}</div>
+                  <div className="col-span-4">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">Phase</label>
+                      <input type="text" className="input-form bg-white" placeholder="Phase" value={step.phase} onChange={e => {const n=[...modopSteps]; n[i].phase=e.target.value; setModopSteps(n)}} />
+                  </div>
+                  <div className="col-span-3">
+                      <label className="text-[9px] font-bold text-red-400 uppercase">Risque Majeur</label>
+                      <input type="text" className="input-form bg-white border-red-200 text-red-700" placeholder="Risque" value={step.risque} onChange={e => {const n=[...modopSteps]; n[i].risque=e.target.value; setModopSteps(n)}} />
+                  </div>
+                  <div className="col-span-3">
+                      <label className="text-[9px] font-bold text-green-400 uppercase">Prévention</label>
+                      <input type="text" className="input-form bg-white border-green-200 text-green-700" placeholder="Prévention" value={step.prevention} onChange={e => {const n=[...modopSteps]; n[i].prevention=e.target.value; setModopSteps(n)}} />
+                  </div>
+                  <div className="col-span-1 text-center pt-4">
+                      <button onClick={() => {const n=[...modopSteps]; n.splice(i,1); setModopSteps(n)}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                  </div>
                 </div>
               ))}
-              <button onClick={() => setModopSteps([...modopSteps, {phase:"", risque:"", prevention:""}])} className="text-blue-600 font-bold text-sm flex items-center gap-1 hover:underline">+ Ajouter une étape</button>
+              <button onClick={() => setModopSteps([...modopSteps, {phase:"", risque:"", prevention:""}])} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 font-bold uppercase text-xs hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center gap-2">
+                  <Plus size={16}/> Ajouter une étape
+              </button>
             </div>
           </div>
         )}
@@ -499,27 +676,27 @@ function DocumentGenerator({ chantier, equipe, materiel }: { chantier: IChantier
   );
 }
 
-// ============================================================================
-// MODULE 4: FIELD VISITS (Mobile First)
-// ============================================================================
+// =================================================================================================
+// MODULE 4: FIELD VISITS (Mobile First & Tactile)
+// =================================================================================================
 function FieldVisits({ chantier }: { chantier: IChantier }) {
   const [visitType, setVisitType] = useState('vmt');
   const [photo, setPhoto] = useState<string | null>(null);
-  // Utilisation de la liste des points de contrôle depuis data.ts
   const [checklist, setChecklist] = useState<string>(''); 
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
+      {/* Tab Bar interne pour mobile */}
       <div className="lg:col-span-3 flex gap-2 overflow-x-auto pb-2">
         {[{id:'vmt', l:'VMT Manager'}, {id:'q3sre', l:'Contrôle Q3SRE'}, {id:'ost', l:'Observation (OST)'}].map(t => (
-          <button key={t.id} onClick={()=>setVisitType(t.id)} className={`px-6 py-3 rounded-xl font-black uppercase text-sm flex-1 lg:flex-none ${visitType===t.id ? 'bg-black text-white shadow-lg' : 'bg-white border text-gray-500'}`}>
+          <button key={t.id} onClick={()=>setVisitType(t.id)} className={`px-6 py-4 rounded-xl font-black uppercase text-xs flex-1 lg:flex-none transition-all ${visitType===t.id ? 'bg-black text-white shadow-lg scale-105' : 'bg-white border border-gray-200 text-gray-500'}`}>
             {t.l}
           </button>
         ))}
       </div>
 
-      <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <h3 className="font-bold text-lg mb-6 flex items-center gap-2 uppercase">
+      <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
+        <h3 className="font-bold text-lg mb-6 flex items-center gap-2 uppercase text-gray-800">
           {visitType === 'vmt' && <Camera className="text-blue-500"/>}
           {visitType === 'q3sre' && <ClipboardCheck className="text-emerald-500"/>}
           {visitType === 'ost' && <Eye className="text-orange-500"/>}
@@ -528,54 +705,80 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div><label className="label-form">Domaine</label><select className="input-form"><option>Sécurité</option><option>Qualité</option><option>Environnement</option></select></div>
-          <div><label className="label-form">N° OTP</label><input type="text" className="input-form" placeholder="Auto-Fill" value="OTP-2026-X"/></div>
+          <div><label className="label-form">N° OTP</label><input type="text" className="input-form" placeholder="Auto-Fill" value="OTP-2026-X" readOnly/></div>
           
           <div className="md:col-span-2">
              <label className="label-form">Point de contrôle (Référentiel)</label>
              <select className="input-form" value={checklist} onChange={e => setChecklist(e.target.value)}>
-                <option value="">-- Choisir --</option>
-                {/* Utilisation dynamique des données importées */}
+                <option value="">-- Choisir un point de contrôle --</option>
+                {/* Importation dynamique depuis data.ts */}
                 {Q3SRE_REFERENTIAL.points_controle.map(p => <option key={p} value={p}>{p}</option>)}
              </select>
           </div>
 
-          <div className="md:col-span-2 mt-4">
-            <label className="label-form">Preuve Photo</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 transition-colors cursor-pointer relative">
-              <Camera size={32} className="mb-2"/>
-              <p className="text-xs font-bold uppercase">Prendre une photo</p>
+          <div className="md:col-span-2 mt-2">
+            <label className="label-form mb-2">Preuve Photo (Tap to shoot)</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-2xl h-48 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 transition-colors cursor-pointer relative overflow-hidden bg-gray-50">
+              {photo ? <img src={photo} className="w-full h-full object-cover" /> : (
+                <>
+                  <div className="h-16 w-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-3">
+                      <Camera size={32} className="text-gray-400"/>
+                  </div>
+                  <p className="text-xs font-black uppercase tracking-wider">Ajouter une photo</p>
+                </>
+              )}
               <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => {
                 if (e.target.files && e.target.files[0]) setPhoto(URL.createObjectURL(e.target.files[0]));
               }}/>
             </div>
-            {photo && <div className="mt-2 h-32 rounded-lg overflow-hidden border border-gray-200"><img src={photo} className="w-full h-full object-cover"/></div>}
           </div>
         </div>
 
-        <button className="w-full mt-8 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+        <button className="w-full mt-8 bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 active:scale-95">
           <Save size={20}/> ENREGISTRER LA VISITE
         </button>
+      </div>
+      
+      {/* Historique Rapide */}
+      <div className="hidden lg:block bg-white p-6 rounded-3xl shadow-sm border border-gray-200 h-fit">
+          <h3 className="font-bold text-gray-400 uppercase text-xs mb-4">Derniers Rapports</h3>
+          <div className="space-y-4">
+              {[1,2,3].map(i => (
+                  <div key={i} className="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center font-bold text-xs border text-gray-500">{i}</div>
+                      <div>
+                          <p className="text-xs font-bold text-gray-800">Visite Q3SRE</p>
+                          <p className="text-[10px] text-gray-400">{new Date().toLocaleDateString()}</p>
+                      </div>
+                  </div>
+              ))}
+          </div>
       </div>
     </div>
   );
 }
 
-// ============================================================================
+// =================================================================================================
 // MODULE 5: CAUSERIES (Template Word Strict)
-// ============================================================================
+// =================================================================================================
 function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
   const [theme, setTheme] = useState("");
 
   return (
-    <div className="max-w-4xl mx-auto bg-white p-10 rounded-2xl shadow-sm border border-gray-100 animate-in fade-in">
+    <div className="max-w-4xl mx-auto bg-white p-10 rounded-2xl shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex justify-between items-start border-b-2 border-gray-100 pb-6 mb-8">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 uppercase">Causerie Sécurité</h1>
-          <p className="text-sm text-gray-500 font-medium">Ref: HSE-FORM-042 (Rev C)</p>
+          <h1 className="text-2xl font-black text-gray-900 uppercase flex items-center gap-3">
+              <Megaphone className="text-orange-500" size={32}/> Causerie Sécurité
+          </h1>
+          <p className="text-sm text-gray-500 font-medium mt-1">Ref: HSE-FORM-042 (Rev C)</p>
         </div>
         <div className="text-right">
-          <p className="font-bold text-gray-800">{chantier.nom}</p>
-          <p className="text-sm text-gray-500">{new Date().toLocaleDateString()}</p>
+          <p className="font-bold text-gray-800 text-lg">{chantier.nom}</p>
+          <div className="flex items-center justify-end gap-2 text-gray-500 mt-1">
+              <Calendar size={14}/>
+              <p className="text-sm">{new Date().toLocaleDateString()}</p>
+          </div>
         </div>
       </div>
 
@@ -597,22 +800,25 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
 
       <div className="mb-8">
         <label className="label-form">Points clés discutés / Remontées terrain</label>
-        <textarea className="input-form h-32 bg-yellow-50 border-yellow-200" placeholder="Notes de la séance..."></textarea>
+        <textarea className="input-form h-32 bg-yellow-50 border-yellow-200 focus:border-yellow-400 focus:ring-yellow-100" placeholder="Notes de la séance..."></textarea>
       </div>
 
       <div>
-        <label className="label-form mb-4 block">Émargement des participants</label>
-        <div className="border rounded-xl overflow-hidden">
+        <label className="label-form mb-4 block flex justify-between">
+            <span>Émargement des participants</span>
+            <span className="text-gray-400 font-normal">{equipe.length} personnes convoquées</span>
+        </label>
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-xs font-bold uppercase text-gray-500">
-              <tr><th className="p-3">Nom Prénom</th><th className="p-3">Fonction</th><th className="p-3 text-center">Présent</th></tr>
+            <thead className="bg-gray-50 text-xs font-bold uppercase text-gray-500 border-b border-gray-200">
+              <tr><th className="p-4">Nom Prénom</th><th className="p-4">Fonction</th><th className="p-4 text-center">Présent</th></tr>
             </thead>
-            <tbody className="text-sm">
+            <tbody className="text-sm bg-white">
               {equipe.map(u => (
-                <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                  <td className="p-3 font-bold">{u.nom} {u.prenom}</td>
-                  <td className="p-3 text-gray-500">{u.role}</td>
-                  <td className="p-3 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600"/></td>
+                <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                  <td className="p-4 font-bold text-gray-800">{u.nom} {u.prenom}</td>
+                  <td className="p-4 text-gray-500">{u.role}</td>
+                  <td className="p-4 text-center"><input type="checkbox" className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"/></td>
                 </tr>
               ))}
             </tbody>
@@ -620,22 +826,27 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
         </div>
       </div>
       
-      <div className="mt-10 flex justify-end">
-        <button className="bg-black text-white px-8 py-3 rounded-xl font-bold uppercase hover:bg-gray-800">Clôturer & Archiver</button>
+      <div className="mt-10 flex justify-end pt-6 border-t border-gray-100">
+        <button className="bg-black text-white px-8 py-4 rounded-xl font-bold uppercase hover:bg-gray-800 transition-all shadow-lg flex items-center gap-2">
+            <Save size={18}/> Clôturer & Archiver
+        </button>
       </div>
     </div>
   );
 }
 
-// --- UI UTILS ---
+// --- COMPOSANTS UI UTILITAIRES ---
+
 const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
   <button 
     onClick={() => !disabled && set(id)} 
     disabled={disabled}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase transition-all ${active === id ? 'bg-red-50 text-red-600 shadow-sm ring-1 ring-red-100' : 'text-gray-500 hover:bg-gray-50 hover:text-black'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase transition-all 
+      ${active === id ? 'bg-red-50 text-red-600 shadow-sm ring-1 ring-red-100' : 'text-gray-500 hover:bg-gray-50 hover:text-black'} 
+      ${disabled ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}
   >
     <Icon size={18} /> {label}
-    {disabled ? null : <ChevronRight size={14} className="ml-auto opacity-30"/>}
+    {!disabled && active === id && <ChevronRight size={14} className="ml-auto opacity-50"/>}
   </button>
 );
 
@@ -648,13 +859,13 @@ const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
     orange: "bg-orange-50 text-orange-600 border-orange-100" 
   };
   return (
-    <div className={`p-5 rounded-2xl border flex items-start justify-between shadow-sm ${themes[color]}`}>
+    <div className={`p-5 rounded-2xl border flex items-start justify-between shadow-sm hover:shadow-md transition-shadow cursor-default bg-white ${themes[color].split(' ')[2]}`}>
       <div>
-        <p className="text-[10px] font-black uppercase opacity-60 tracking-wider">{label}</p>
-        <p className="text-3xl font-black mt-1">{val}</p>
-        <p className="text-xs font-bold opacity-80 mt-1">{sub}</p>
+        <p className="text-[10px] font-black uppercase opacity-60 tracking-wider text-gray-500">{label}</p>
+        <p className="text-3xl font-black mt-1 text-gray-800">{val}</p>
+        <p className={`text-xs font-bold mt-1 ${themes[color].split(' ')[1]}`}>{sub}</p>
       </div>
-      <div className="bg-white/60 p-2 rounded-lg backdrop-blur-sm"><Icon size={24}/></div>
+      <div className={`p-3 rounded-xl ${themes[color].split(' ').slice(0,2).join(' ')}`}><Icon size={24}/></div>
     </div>
   )
 };
