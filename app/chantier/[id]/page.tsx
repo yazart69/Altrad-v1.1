@@ -36,7 +36,8 @@ import {
   Phone, 
   BarChart2, 
   CornerDownRight,
-  AlertCircle
+  AlertCircle,
+  UserPlus
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -102,7 +103,7 @@ export default function ChantierDetail() {
     statut: 'en_cours',
     heures_budget: 0, 
     heures_consommees: 0, 
-    effectif_prevu: 0, 
+    effectif_prevu: 0, // Nombre de personnes total prévu
     taux_reussite: 100, // Pondération par défaut
     risques: [], 
     epi: [],
@@ -128,7 +129,7 @@ export default function ChantierDetail() {
   // Tâches
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
-  const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '' });
+  const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
 
   // Matériel
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
@@ -138,7 +139,7 @@ export default function ChantierDetail() {
 
 
   // =================================================================================================
-  //                                      INITIALISATION & FETCH
+  //                                       INITIALISATION & FETCH
   // =================================================================================================
 
   useEffect(() => { 
@@ -227,7 +228,7 @@ export default function ChantierDetail() {
   }
 
   // =================================================================================================
-  //                                      LOGIQUE MÉTIER
+  //                                       LOGIQUE MÉTIER
   // =================================================================================================
 
   // --- CALCUL AVANCEMENT (Tâches + Sous-Tâches) ---
@@ -384,6 +385,7 @@ export default function ChantierDetail() {
           id: Date.now(), // ID temporaire unique
           label: newSubTask.label,
           heures: parseFloat(newSubTask.heures.toString()) || 0,
+          effectif: parseInt(newSubTask.effectif.toString()) || 1, // Ajout effectif par sous-tâche
           date: newSubTask.date,
           done: false
       }];
@@ -402,7 +404,7 @@ export default function ChantierDetail() {
       updateProgress(newTasks);
       
       // Reset form
-      setNewSubTask({ label: '', heures: 0, date: '' });
+      setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 });
       setActiveParentTask(null);
   };
 
@@ -633,11 +635,20 @@ export default function ChantierDetail() {
                                 </div>
                             </div>
 
-                            <div className="col-span-2">
+                            <div>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
                                     <Clock size={16} className="text-gray-400 mr-2"/>
                                     <input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none" />
+                                </div>
+                            </div>
+
+                            {/* NOUVEAU : EFFECTIF PRÉVU GLOBAL */}
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Total Prévu</label>
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
+                                    <Users size={16} className="text-gray-400 mr-2"/>
+                                    <input type="number" value={chantier.effectif_prevu || 0} onChange={e => setChantier({...chantier, effectif_prevu: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none text-blue-600" />
                                 </div>
                             </div>
                         </div>
@@ -691,7 +702,11 @@ export default function ChantierDetail() {
                                                 {st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}
                                                 <span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span>
                                             </div>
-                                            <div className="flex gap-2 text-white/50">
+                                            <div className="flex gap-2 text-white/50 items-center">
+                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu pour cette étape">
+                                                    <Users size={10} className="text-blue-300"/>
+                                                    <span className="font-black text-blue-200">{st.effectif || 1}p</span>
+                                                </div>
                                                 <span>{st.date ? new Date(st.date).toLocaleDateString() : ''}</span>
                                                 <span className="font-bold text-white">{st.heures}h</span>
                                             </div>
@@ -703,9 +718,19 @@ export default function ChantierDetail() {
                                 {activeParentTask === t.id && (
                                     <div className="mt-3 bg-black/20 p-3 rounded-lg flex flex-col gap-2 animate-in fade-in">
                                         <input type="text" placeholder="Nom de la sous-tâche..." className="bg-transparent text-xs text-white placeholder-white/30 outline-none border-b border-white/10 p-1" value={newSubTask.label} onChange={e => setNewSubTask({...newSubTask, label: e.target.value})} />
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 items-center">
                                             <input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} />
-                                            <input type="number" placeholder="Heures" className="bg-transparent text-xs text-white outline-none w-16 text-center border-b border-white/10 p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} />
+                                            
+                                            <div className="flex items-center gap-1 bg-white/5 rounded px-2">
+                                                <Users size={12} className="text-blue-400"/>
+                                                <input type="number" placeholder="Pers." title="Nombre de personnes" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} />
+                                            </div>
+
+                                            <div className="flex items-center gap-1 bg-white/5 rounded px-2">
+                                                <Clock size={12} className="text-orange-400"/>
+                                                <input type="number" placeholder="H" title="Heures" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} />
+                                            </div>
+
                                             <button onClick={() => addSubTask(t.id)} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase ml-auto hover:bg-green-600 transition-colors">Ajouter</button>
                                         </div>
                                     </div>
@@ -772,7 +797,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 3 : FOURNITURES (NOUVEAU)                               */}
+        {/* ONGLET 3 : FOURNITURES                                         */}
         {/* ============================================================================================ */}
         {activeTab === 'fournitures' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
@@ -858,11 +883,18 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 4 : PLANNING GANTT (NOUVEAU)                            */}
+        {/* ONGLET 4 : PLANNING GANTT                                      */}
         {/* ============================================================================================ */}
         {activeTab === 'planning' && (
             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
-                <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3>
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3>
+                    <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl">
+                        <Users size={18} className="text-blue-600"/>
+                        <span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span>
+                    </div>
+                </div>
+
                 <div className="space-y-6">
                     {tasks.map((t, idx) => (
                         <div key={t.id} className="relative">
@@ -880,14 +912,17 @@ export default function ChantierDetail() {
                             {t.subtasks && t.subtasks.map((st: any) => (
                                 <div key={st.id} className="flex items-center gap-4 mb-1 pl-8 relative group">
                                     <CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/>
-                                    <div className="w-40 text-xs text-gray-500 truncate">{st.label}</div>
+                                    <div className="w-40 text-xs text-gray-500 truncate flex justify-between pr-4">
+                                        <span>{st.label}</span>
+                                        <span className="font-black text-blue-500">{st.effectif || 1}p</span>
+                                    </div>
                                     <div className="flex-1 bg-gray-50 h-6 rounded-full relative">
-                                        <div className={`absolute top-0 h-full rounded-full flex items-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} 
+                                        <div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} 
                                              style={{ 
-                                                 left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, // Simulation position temporelle
-                                                 width: `${Math.max(5, st.heures * 2)}%` 
+                                                 left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, 
+                                                 width: `${Math.max(8, st.heures * 2)}%` 
                                              }}>
-                                            {st.date ? new Date(st.date).toLocaleDateString() : 'N/A'}
+                                            {st.heures}h | {st.effectif || 1}p
                                         </div>
                                     </div>
                                 </div>
