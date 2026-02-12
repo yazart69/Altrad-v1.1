@@ -10,55 +10,7 @@ import {
   Filter, FileCheck, ArrowRight, Table, LayoutDashboard,
   Megaphone, FolderOpen, Save, Trash2, Edit, CloudSun, Zap, Wind
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie 
-} from 'recharts';
-
-// --- BASE DE DONNÉES RISQUES COMPLETE (INTEGRATION MASSIVE) ---
-const RISK_DATABASE = [
-  // --- LOGISTIQUE & PRÉPARATION (TCA) ---
-  { id: 'TCA-14', category: 'Logistique', task: "Approvisionnement / Préparation chantier", risks: ["Accident trajet", "Chute objet", "Choc/Coup", "Chute plain-pied", "Incidence musculaire"], measures: ["Respect code route", "Véhicule bon état", "Arrimage matériel", "Respect techniques manutention", "EPI obligatoires", "Balisage zone"] },
-  { id: 'TCA-18', category: 'Logistique', task: "Déplacement sur chantier (Piéton/Véhicule)", risks: ["Accident trajet", "Choc/Coup", "Chute plain-pied", "Coactivité"], measures: ["Respect voies circulation", "Vigilance coactivité", "Port EPI (Casque/Chaussures)", "Ne pas courir", "Vigilance sol glissant"] },
-  { id: 'TCA-17', category: 'Logistique', task: "Chargement / Déchargement", risks: ["Choc/Coup", "TMS", "Ecrasement", "Pollution"], measures: ["Protocole sécurité site", "Règle 3 points d'appuis", "Outils aide manutention", "Kit anti-pollution", "Gants protection 4542"] },
-  { id: 'TCA-21', category: 'Logistique', task: "Circulation routière", risks: ["Accident routier", "Incendie", "Substance dangereuse"], measures: ["Véhicule contrôlé", "Arrimage charges", "Pas de téléphone au volant", "Extincteur ABC", "Kit urgence"] },
-  { id: 'TCA-15', category: 'Logistique', task: "Repli de chantier", risks: ["Poussière", "Choc/coup", "Chute plain-pied", "Incidence musculaire"], measures: ["Port masque/lunettes", "Matériel bon état", "Ordre et propreté", "Tri des déchets", "Gestes et postures"] },
-  { id: 'TCA-20', category: 'Logistique', task: "Manutention manuelle", risks: ["Choc/Coup", "Pincement/Ecrasement", "TMS", "Chute plain-pied"], measures: ["Gants manutention", "Gestes et postures", "Outils aide manutention", "Travail en binôme", "Dégager circulations"] },
-
-  // --- TRAVAUX EN HAUTEUR & ECHAFAUDAGE (ECH/TCA) ---
-  { id: 'ECH-01', category: 'Hauteur', task: "Montage échafaudage", risks: ["Chute hauteur", "Chute objet", "Effondrement"], measures: ["Personnel habilité", "Harnais double longe", "Balisage zone montage", "Vérification stabilité sol", "Cales sous pieds", "Contrôle journalier"] },
-  { id: 'ECH-02', category: 'Hauteur', task: "Démontage échafaudage", risks: ["Chute hauteur", "Chute objet", "Coincement"], measures: ["Zone interdite balisée", "Descente matériel à la poulie", "Ordre et propreté plateaux", "Harnais attaché en permanence"] },
-  { id: 'TCA-05', category: 'Hauteur', task: "Travaux sur échafaudage fixe", risks: ["Chute hauteur", "Chute objet", "Encombrement"], measures: ["Trappes fermées", "Plinthes en place", "Respect charges admissibles", "Aucun stockage excessif"] },
-  { id: 'TCA-06', category: 'Hauteur', task: "Travaux sur échafaudage roulant", risks: ["Renversement", "Chute hauteur"], measures: ["Roues bloquées", "Stabilisateurs sortis", "Pas de déplacement avec personnel", "Sol plan et stable"] },
-  { id: 'TCA-09', category: 'Hauteur', task: "Travaux avec Nacelle (PEMP)", risks: ["Chute hauteur", "Ejection", "Heurt structure"], measures: ["CACES valide", "Harnais attaché dans panier", "Balisage sol", "Vérification VGP", "Surveillant au sol"] },
-  { id: 'TCA-11', category: 'Hauteur', task: "Travaux avec Filet / Ligne de vie", risks: ["Chute hauteur", "Chute objet"], measures: ["Personnel formé", "Réception filets", "Harnais double longe", "Accrochage permanent"] },
-  { id: 'TCA-12', category: 'Hauteur', task: "Travaux à l'échelle / Escabeau", risks: ["Chute hauteur", "Déséquilibre"], measures: ["Travail ponctuel uniquement", "3 points d'appui", "Maintien par tiers", "Echelle attachée en tête"] },
-  { id: 'TCA-25', category: 'Hauteur', task: "Utilisation PIR / PIRL", risks: ["Chute hauteur", "Basculement"], measures: ["Freins bloqués", "Stabilisateurs installés", "Gardes-corps fermés", "Inspection visuelle avant usage"] },
-  { id: 'CET-09', category: 'Hauteur', task: "Travaux sur toiture", risks: ["Chute hauteur", "Chute travers toiture", "Glissade"], measures: ["Stop-chute", "Ligne de vie", "Chemin de circulation", "Filet en sous-face"] },
-
-  // --- ISOLATION & CALORIFUGE (ISO) ---
-  { id: 'ISO-02', category: 'Isolation', task: "Décalorifugeage", risks: ["Coupure", "Poussière (Fibres)", "Chute plain-pied"], measures: ["Gants anti-coupure", "Masque P3", "Combinaison jetable", "Humidification", "Tri déchets"] },
-  { id: 'ISO-03', category: 'Isolation', task: "Pose isolant / Tôle", risks: ["Coupure tôle", "Projection", "TMS"], measures: ["Gants manutention", "Lunettes protection", "Outils adaptés", "Etabli de découpe stable"] },
-  { id: 'ISO-01', category: 'Isolation', task: "Préfabrication atelier (Tôlerie)", risks: ["Coupure", "Bruit", "Poussière", "Ecrasement doigts"], measures: ["Protections machines en place", "Aspiration locale", "EPI complets (Bouchons, Lunettes)", "Distance sécurité rouleaux"] },
-  { id: 'ISO-05', category: 'Isolation', task: "Pose plots / Aiguilles (Soudure)", risks: ["Brûlure", "Electrique", "Incendie", "Fumées"], measures: ["Permis de feu", "Extincteur à proximité", "EPI soudeur", "Bâches ignifugées", "Ventilation"] },
-  { id: 'PPI-04', category: 'Isolation', task: "Projection Mortier Anti-feu", risks: ["Projection", "Poussière", "Bruit", "Chute"], measures: ["Combinaison étanche", "Masque P3", "Lunettes étanches", "Balisage zone", "Protection des tiers"] },
-
-  // --- PEINTURE & TRAITEMENT DE SURFACE (PRS) ---
-  { id: 'PRS-01', category: 'Peinture', task: "Brossage / Grattage manuel", risks: ["Coupure", "Poussière", "Projection"], measures: ["Gants adaptés", "Masque P1/P2", "Lunettes étanches"] },
-  { id: 'PRS-06', category: 'Peinture', task: "Sablage / Grenaillage", risks: ["Projection abrasif", "Bruit", "Poussière", "Fouettement flexible"], measures: ["Heaume ventilé", "Combinaison sablage", "Câbles anti-fouettement", "Homme mort fonctionnel", "Balisage strict"] },
-  { id: 'PRS-09', category: 'Peinture', task: "Application Peinture (Pistolet/Airless)", risks: ["Chimique", "Incendie", "Projection haute pression"], measures: ["Masque cartouche A2P3", "Combinaison étanche", "Extincteur zone", "Mise à la terre matériel", "FDS consultée"] },
-  { id: 'PRS-08', category: 'Peinture', task: "Application Manuelle (Rouleau/Brosse)", risks: ["Chimique", "Eclaboussure", "TMS"], measures: ["Gants nitrile/néoprène", "Lunettes protection", "Vêtements couvrant", "Ventilation locale"] },
-  { id: 'PRS-08-B', category: 'Peinture', task: "Mélange Peinture", risks: ["Emanations COV", "Eclaboussure", "Renversement"], measures: ["Local ventilé", "Bac rétention", "Lunettes + Gants", "Kit lavage oculaire à proximité"] },
-  { id: 'PPI-05', category: 'Peinture', task: "Application Intumescent", risks: ["Chimique", "Incendie", "Projection"], measures: ["Masque A2P3", "Combinaison", "Respect épaisseurs", "FDS produits"] },
-
-  // --- RISQUES SPÉCIFIQUES & AMBIANCES (CET) ---
-  { id: 'CET-04', category: 'Spécifique', task: "Travaux en capacité confinée", risks: ["Anoxie", "Intoxication", "Explosion"], measures: ["Permis de pénétrer", "Surveillant obligatoire", "Détecteur 4 gaz", "Ventilation mécanique", "Masque auto-sauveteur"] },
-  { id: 'CET-10', category: 'Spécifique', task: "Zone ATEX", risks: ["Explosion", "Incendie"], measures: ["Matériel antidéflagrant", "Pas de téléphone/allumette", "Permis de feu", "Explosimètre permanent", "Vêtements antistatiques"] },
-  { id: 'CET-08', category: 'Spécifique', task: "Voisinage électrique", risks: ["Electrisation", "Arc électrique"], measures: ["Habilitation H0/B0", "Respect distances sécurité", "Balisage physique", "Outillage isolé"] },
-  { id: 'CET-09', category: 'Spécifique', task: "Travaux proximité eau", risks: ["Noyade", "Chute"], measures: ["Gilet sauvetage", "Bouée couronne", "Travail en binôme", "Balisage berge"] },
-  { id: 'CET-10-B', category: 'Spécifique', task: "Ambiances particulières (Chaud/Froid/Bruit)", risks: ["Coup de chaleur", "Hypothermie", "Surdité"], measures: ["Hydratation", "Pauses régulières", "EPI froid", "Protections auditives obligatoires"] },
-  { id: 'TCA-23', category: 'Spécifique', task: "Utilisation outils coupants", risks: ["Coupure grave"], measures: ["Cutter lame rétractable OBLIGATOIRE", "Gants niveau 5", "Pas de coupe vers soi"] },
-  { id: 'CMR', category: 'Spécifique', task: "Exposition Chrome VI / Plomb", risks: ["Cancer", "Intoxication"], measures: ["Confinement zone", "Aspiration TH", "Masque ventilé P3", "Combinaison Tyvek", "Sas décontamination", "Lingettes décontaminantes"] }
-];
+import { RISK_DATABASE } from './data'; // IMPORTATION DE LA DATA
 
 export default function HSEPlatform() {
   const [view, setView] = useState('dashboard');
@@ -113,7 +65,7 @@ export default function HSEPlatform() {
     setLoading(false);
   };
 
-  // --- GENERATEUR DOCUMENTAIRE PUISSANT ---
+  // --- GENERATEUR DOCUMENTAIRE ---
   const generateDocument = () => {
     if (!selectedChantier) return alert("Sélectionnez un chantier.");
     if (selectedTasks.length === 0) return alert("Sélectionnez au moins une tâche.");
