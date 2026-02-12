@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import { jsPDF } from "jspdf"; 
 
-// --- IMPORTATION DES RÉFÉRENTIELS MÉTIERS (Votre fichier data.ts) ---
+// On remplace './data' par le chemin absolu '@/'
 import { 
   RISK_DATABASE, 
   VGP_RULES, 
@@ -23,7 +23,7 @@ import {
   Q3SRE_REFERENTIAL, 
   OST_THEMES, 
   CAUSERIE_THEMES 
-} from '@/data';
+} from '@/app/hse/data';
 
 // =================================================================================================
 // 1. DÉFINITION DES TYPES & INTERFACES (Modèle de Données)
