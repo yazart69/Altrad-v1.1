@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Fredoka } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
-import Link from "next/link"; // Nécessaire pour la nav mobile
-import { Home, Users, HardHat, ClipboardList, Menu } from "lucide-react"; // Icônes pour le mobile
+import Link from "next/link"; 
+import { Home, Users, HardHat, ClipboardList } from "lucide-react"; 
 
 const fredoka = Fredoka({
   subsets: ["latin"],
@@ -29,7 +29,8 @@ export default function RootLayout({
         <div className="flex h-screen w-full flex-col md:flex-row">
           
           {/* 1. MENU LATÉRAL (Visible uniquement sur PC/Tablette) */}
-          <aside className="hidden md:block shrink-0 h-full w-64 border-r border-gray-200 bg-white">
+          {/* CORRECTION CRITIQUE : Suppression de 'w-64' au profit de 'w-auto' */}
+          <aside className="hidden md:block shrink-0 h-full w-auto bg-white z-50 shadow-sm relative">
              <Sidebar />
           </aside>
 
