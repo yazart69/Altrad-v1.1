@@ -144,7 +144,6 @@ export const EQUIPMENT_TYPES = [
 // -----------------------------------------------------------------------------
 // 3. RÉFÉRENTIEL Q3SRE (Visites Terrain)
 // -----------------------------------------------------------------------------
-// Utilisé pour peupler les listes déroulantes du formulaire Q3SRE
 export const Q3SRE_REFERENTIAL = {
   lignes_defense: [
     "Technique (Matériel, EPC, EPI)",
