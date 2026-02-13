@@ -596,7 +596,7 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
           <div className="md:col-span-2">
              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Point de contrôle (Référentiel Altrad)</label>
              <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black" value={checklist} onChange={e => setChecklist(e.target.value)}>
-                <option value="">-- Choisir un item à auditer --</option>
+                <option value="">-- Choisir un point de contrôle --</option>
                 {Q3SRE_REFERENTIAL.points_controle.map(p => <option key={p} value={p}>{p}</option>)}
              </select>
           </div>
@@ -648,6 +648,46 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
 // =================================================================================================
 function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
   const [theme, setTheme] = useState("");
+  const [notes, setNotes] = useState("");
+  const [animateurId, setAnimateurId] = useState("");
+  const [participants, setParticipants] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const toggleParticipant = (userId: string) => {
+    setParticipants(prev => 
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleArchive = async () => {
+    if (!theme || !animateurId) {
+      alert("Veuillez sélectionner un thème et un animateur.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('causeries_archives').insert([{
+        chantier_id: chantier.id,
+        animateur_id: animateurId,
+        theme: theme,
+        notes: notes,
+        participants: participants,
+        date: new Date().toISOString()
+      }]);
+
+      if (error) throw error;
+      alert("✅ Causerie archivée avec succès !");
+      // Reset form
+      setTheme("");
+      setNotes("");
+      setParticipants([]);
+    } catch (e: any) {
+      alert("Erreur lors de l'archivage : " + e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto bg-white p-12 rounded-[50px] shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
@@ -670,22 +710,36 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
       <div className="grid grid-cols-2 gap-10 mb-10">
         <div>
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Thématique du Jour</label>
-          <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner" value={theme} onChange={e => setTheme(e.target.value)}>
+          <select 
+            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner" 
+            value={theme} 
+            onChange={e => setTheme(e.target.value)}
+          >
              <option value="">-- Sélectionner un thème --</option>
              {CAUSERIE_THEMES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Animateur / Chef de Chantier</label>
-          <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner">
-            {equipe.map(u => <option key={u.id}>{u.nom} {u.prenom}</option>)}
+          <select 
+            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner"
+            value={animateurId}
+            onChange={e => setAnimateurId(e.target.value)}
+          >
+            <option value="">-- Sélectionner l'animateur --</option>
+            {equipe.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}
           </select>
         </div>
       </div>
 
       <div className="mb-10">
         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Notes de séance / Remontées des opérateurs</label>
-        <textarea className="w-full p-6 bg-orange-50/30 border-2 border-orange-100 rounded-[30px] text-sm font-bold text-gray-700 h-40 outline-none focus:border-orange-300 transition-all placeholder:text-orange-200" placeholder="Saisir les échanges et les points de vigilance identifiés par l'équipe..."></textarea>
+        <textarea 
+          className="w-full p-6 bg-orange-50/30 border-2 border-orange-100 rounded-[30px] text-sm font-bold text-gray-700 h-40 outline-none focus:border-orange-300 transition-all placeholder:text-orange-200" 
+          placeholder="Saisir les échanges et les points de vigilance identifiés par l'équipe..."
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+        ></textarea>
       </div>
 
       <div>
@@ -716,7 +770,12 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
                     </div>
                   </td>
                   <td className="p-5 text-center">
-                    <input type="checkbox" className="w-7 h-7 rounded-xl text-red-600 focus:ring-red-500 border-gray-200 cursor-pointer shadow-sm" />
+                    <input 
+                      type="checkbox" 
+                      className="w-7 h-7 rounded-xl text-red-600 focus:ring-red-500 border-gray-200 cursor-pointer shadow-sm" 
+                      checked={participants.includes(u.id)}
+                      onChange={() => toggleParticipant(u.id)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -730,8 +789,13 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
       
       <div className="mt-12 flex justify-between items-center pt-8 border-t-2 border-gray-50">
         <p className="text-[10px] font-bold text-gray-300 max-w-xs uppercase italic">L'archivage de ce document vaut pour validation des consignes de sécurité journalières.</p>
-        <button className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl shadow-red-100 flex items-center gap-3 active:scale-95">
-            <Save size={24}/> Finaliser & Archiver
+        <button 
+          onClick={handleArchive}
+          disabled={isSaving}
+          className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl shadow-red-100 flex items-center gap-3 active:scale-95 disabled:opacity-50"
+        >
+            {isSaving ? <Clock className="animate-spin" size={24}/> : <Save size={24}/>}
+            Finaliser & Archiver
         </button>
       </div>
     </div>
@@ -755,11 +819,11 @@ const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
 
 const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
   const themes:any = { 
-    red: "bg-red-50 text-red-600 border-red-100", 
-    blue: "bg-blue-50 text-blue-600 border-blue-100", 
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100", 
-    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
-    orange: "bg-orange-50 text-orange-600 border-orange-100" 
+    red: "bg-red-50 text-red-600 border-red-100 shadow-red-50", 
+    blue: "bg-blue-50 text-blue-600 border-blue-100 shadow-blue-50", 
+    green: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-50", 
+    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-indigo-50",
+    orange: "bg-orange-50 text-orange-600 border-orange-100 shadow-orange-50" 
   };
   return (
     <div className={`p-6 rounded-[30px] border flex items-start justify-between shadow-sm hover:shadow-xl transition-all cursor-default bg-white ${themes[color].split(' ')[2]}`}>
