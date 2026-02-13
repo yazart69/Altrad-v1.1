@@ -5,7 +5,7 @@ import {
   FileText, Plus, Calculator, PencilRuler, Save, 
   Trash2, ChevronRight, CheckCircle2, AlertTriangle, 
   Settings, Layers, Pipette, Share2, Wifi, WifiOff,
-  User, Calendar, Briefcase, Ruler, X
+  User, Calendar, Briefcase, Ruler, X, AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
@@ -120,7 +120,7 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
 };
 
 // =================================================================================================
-// 4. COMPOSANT PRINCIPAL (RESTE INCHANGÉ MAIS SÉCURISÉ)
+// 4. COMPOSANT PRINCIPAL
 // =================================================================================================
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
