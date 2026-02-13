@@ -5,14 +5,13 @@ import {
   FileText, Plus, Calculator, PencilRuler, Save, 
   Trash2, ChevronRight, CheckCircle2, AlertTriangle, 
   Settings, Layers, Pipette, Share2, Wifi, WifiOff,
-  User, Calendar, Briefcase, Ruler
+  User, Calendar, Briefcase, Ruler, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import rough from 'roughjs';
 import Dexie, { Table } from 'dexie';
 
 // =================================================================================================
-// 1. BASE DE DONNÉES LOCALE (OFFLINE FIRST)
+// 1. BASE DE DONNÉES LOCALE (SÉCURISÉE POUR LE SSR)
 // =================================================================================================
 class OfflineDB extends Dexie {
   reports!: Table<any>;
@@ -23,7 +22,9 @@ class OfflineDB extends Dexie {
     });
   }
 }
-const db = new OfflineDB();
+
+// Initialisation sécurisée (ne s'exécute que côté client)
+const db = typeof window !== 'undefined' ? new OfflineDB() : null;
 
 // =================================================================================================
 // 2. MOTEUR DE CALCUL TECHNIQUE (SCIENTIFIC ENGINE)
@@ -37,64 +38,67 @@ const ScientificEngine = {
     }
   },
   calculatePaint: (surface: number, microns: number, rendement: number) => {
-    // Formule : (Surface * Epaisseur_voulue) / (Rendement_théorique * 10)
     if (!rendement) return 0;
     return (surface * microns) / (rendement * 10);
   },
   calculateAbrasive: (surface: number, degree: string) => {
     const factors: any = { 'Sa1': 15, 'Sa2': 25, 'Sa2.5': 40, 'Sa3': 55 };
-    return (surface * (factors[degree] || 0)) / 1000; // en Tonnes
+    return (surface * (factors[degree] || 0)) / 1000;
   }
 };
 
 // =================================================================================================
-// 3. COMPOSANT CROQUIS SVG COTÉ (ROUGH.JS)
+// 3. COMPOSANT CROQUIS SVG COTÉ (IMPORT DYNAMIQUE ROUGH.JS)
 // =================================================================================================
 const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (!svgRef.current) return;
-    const rc = rough.svg(svgRef.current);
-    const node = svgRef.current;
-    while (node.firstChild) node.removeChild(node.firstChild);
-
-    if (type === 'rectangle') {
-      const w = dims.L * 10; 
-      const h = dims.l * 10;
-      const x = 50; const y = 50;
-
-      // Dessin de la forme
-      const rect = rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 });
-      node.appendChild(rect);
-
-      // Cotes Horizontales
-      const lineH = rc.line(x, y - 20, x + w, y - 20, { stroke: '#0984e3', strokeWidth: 1 });
-      node.appendChild(lineH);
+    const renderSketch = async () => {
+      if (!svgRef.current || typeof window === 'undefined') return;
       
-      // Texte de cote L
-      const textL = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      textL.setAttribute("x", (x + w / 2 - 10).toString());
-      textL.setAttribute("y", (y - 25).toString());
-      textL.setAttribute("fill", "#0984e3");
-      textL.setAttribute("font-size", "12");
-      textL.setAttribute("font-weight", "bold");
-      textL.textContent = `${dims.L}m`;
-      node.appendChild(textL);
-
-      // Cotes Verticales
-      const lineV = rc.line(x + w + 20, y, x + w + 20, y + h, { stroke: '#d63031', strokeWidth: 1 });
-      node.appendChild(lineV);
+      // Importation dynamique de roughjs pour éviter l'erreur au build
+      const rough = (await import('roughjs')).default;
+      const rc = rough.svg(svgRef.current);
+      const node = svgRef.current;
       
-      const textl = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      textl.setAttribute("x", (x + w + 25).toString());
-      textl.setAttribute("y", (y + h / 2).toString());
-      textl.setAttribute("fill", "#d63031");
-      textl.setAttribute("font-size", "12");
-      textl.setAttribute("font-weight", "bold");
-      textl.textContent = `${dims.l}m`;
-      node.appendChild(textl);
-    }
+      while (node.firstChild) node.removeChild(node.firstChild);
+
+      if (type === 'rectangle') {
+        const w = dims.L * 10; 
+        const h = dims.l * 10;
+        const x = 50; const y = 50;
+
+        const rect = rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 });
+        node.appendChild(rect);
+
+        const lineH = rc.line(x, y - 20, x + w, y - 20, { stroke: '#0984e3', strokeWidth: 1 });
+        node.appendChild(lineH);
+        
+        const textL = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        textL.setAttribute("x", (x + w / 2 - 10).toString());
+        textL.setAttribute("y", (y - 25).toString());
+        textL.setAttribute("fill", "#0984e3");
+        textL.setAttribute("font-size", "12");
+        textL.setAttribute("font-weight", "bold");
+        textL.textContent = `${dims.L}m`;
+        node.appendChild(textL);
+
+        const lineV = rc.line(x + w + 20, y, x + w + 20, y + h, { stroke: '#d63031', strokeWidth: 1 });
+        node.appendChild(lineV);
+        
+        const textl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        textl.setAttribute("x", (x + w + 25).toString());
+        textl.setAttribute("y", (y + h / 2).toString());
+        textl.setAttribute("fill", "#d63031");
+        textl.setAttribute("font-size", "12");
+        textl.setAttribute("font-weight", "bold");
+        textl.textContent = `${dims.l}m`;
+        node.appendChild(textl);
+      }
+    };
+
+    renderSketch();
   }, [type, dims]);
 
   return <svg ref={svgRef} width="400" height="250" className="bg-gray-50 rounded-xl border border-gray-100 shadow-inner" />;
@@ -104,30 +108,31 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
 // 4. COMPOSANT PRINCIPAL
 // =================================================================================================
 export default function Rapports() {
-  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(true);
   const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions'>('notes');
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantier, setSelectedChantier] = useState<string>("");
   
-  // State du Rapport
   const [notes, setNotes] = useState<any[]>([]);
   const [calculs, setCalculs] = useState<any[]>([]);
   const [activeNote, setActiveNote] = useState("");
   const [noteCategory, setNoteCategory] = useState("Technique");
 
-  // State Calculateur
   const [calcForm, setCalcForm] = useState({ L: 10, l: 5, microns: 200, rendement: 5, degree: 'Sa2.5' });
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    fetchChantiers();
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    if (typeof window !== 'undefined') {
+        setIsOnline(navigator.onLine);
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        fetchChantiers();
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
+    }
   }, []);
 
   async function fetchChantiers() {
@@ -141,7 +146,7 @@ export default function Rapports() {
       id: Date.now(),
       category: noteCategory,
       text: activeNote,
-      type: 'observation', // decision, action, TS
+      type: 'observation',
       timestamp: new Date().toISOString()
     };
     setNotes([newNote, ...notes]);
@@ -157,16 +162,15 @@ export default function Rapports() {
       is_synced: false
     };
 
-    // Sauvegarde IndexedDB (Offline)
-    await db.reports.add(report);
+    if (db) {
+        await db.reports.add(report);
+    }
     
     if (isOnline) {
       const { error } = await supabase.from('reunions').insert([report]);
-      if (!error) {
-        alert("Rapport synchronisé avec Supabase !");
-      }
+      if (!error) alert("Rapport synchronisé avec Supabase !");
     } else {
-      alert("Rapport enregistré localement (Hors-ligne). Synchro auto au retour du réseau.");
+      alert("Rapport enregistré localement (Hors-ligne).");
     }
   };
 
@@ -211,8 +215,6 @@ export default function Rapports() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* COLONNE GAUCHE : NOTES & DÉCISIONS */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col">
               <div className="flex items-center gap-2 mb-8 bg-gray-50 p-2 rounded-2xl self-start">
@@ -228,7 +230,7 @@ export default function Rapports() {
               </div>
 
               {meetingTab === 'notes' && (
-                <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex-1 flex flex-col animate-in fade-in">
                   <div className="flex gap-4 mb-8">
                     <div className="flex-1 relative">
                       <textarea 
@@ -238,23 +240,16 @@ export default function Rapports() {
                         className="w-full bg-gray-50 border-2 border-transparent focus:border-black rounded-2xl p-4 font-medium text-gray-700 outline-none transition-all h-32 resize-none"
                       />
                       <div className="absolute bottom-3 right-3 flex gap-2">
-                        <select 
-                          value={noteCategory} 
-                          onChange={(e) => setNoteCategory(e.target.value)}
-                          className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-[10px] font-black uppercase text-gray-500 outline-none"
-                        >
+                        <select value={noteCategory} onChange={(e) => setNoteCategory(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-[10px] font-black uppercase text-gray-500 outline-none">
                           <option>Technique</option>
                           <option>Planning</option>
                           <option>Budget</option>
                           <option>Sécurité</option>
                         </select>
-                        <button onClick={addNote} className="bg-black text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
-                          <Plus size={20} />
-                        </button>
+                        <button onClick={addNote} className="bg-black text-white p-2 rounded-xl hover:bg-gray-800 transition-colors"><Plus size={20} /></button>
                       </div>
                     </div>
                   </div>
-
                   <div className="space-y-4">
                     {notes.map((n) => (
                       <div key={n.id} className="group bg-white border border-gray-100 p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4">
@@ -266,49 +261,31 @@ export default function Rapports() {
                           </div>
                           <p className="text-gray-700 font-medium leading-relaxed">{n.text}</p>
                         </div>
-                        <button className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">
-                          <Trash2 size={16} />
-                        </button>
+                        <button className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
                       </div>
                     ))}
-                    {notes.length === 0 && (
-                      <div className="text-center py-20 opacity-20">
-                        <FileText size={64} className="mx-auto mb-4" />
-                        <p className="font-black uppercase text-xl">Aucune note saisie</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
 
               {meetingTab === 'calculs' && (
-                <div className="flex-1 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex-1 animate-in fade-in">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="space-y-6">
-                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2">
-                          <Settings size={18} className="text-blue-500"/> Paramètres de métré
-                        </h3>
+                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><Settings size={18} className="text-blue-500"/> Paramètres de métré</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Longueur (m)</label><input type="number" value={calcForm.L} onChange={(e)=>setCalcForm({...calcForm, L: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400" /></div>
                           <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Largeur (m)</label><input type="number" value={calcForm.l} onChange={(e)=>setCalcForm({...calcForm, l: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400" /></div>
                           <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Épaisseur (µm)</label><input type="number" value={calcForm.microns} onChange={(e)=>setCalcForm({...calcForm, microns: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none" /></div>
                           <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Rendement (m²/L)</label><input type="number" value={calcForm.rendement} onChange={(e)=>setCalcForm({...calcForm, rendement: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none" /></div>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Soin de Surface (Abrasif)</label>
-                          <div className="flex gap-2">
-                            {['Sa1', 'Sa2', 'Sa2.5', 'Sa3'].map(s => (
-                              <button key={s} onClick={()=>setCalcForm({...calcForm, degree: s})} className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${calcForm.degree === s ? 'bg-black text-white' : 'bg-gray-100 text-gray-400'}`}>{s}</button>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                       <div className="flex flex-col items-center justify-center">
                         <SketchTool type="rectangle" dims={{ L: calcForm.L, l: calcForm.l }} />
-                        <div className="w-full mt-4 p-4 bg-blue-50 rounded-2xl border border-blue-100 grid grid-cols-3 gap-2 text-center">
-                          <div><p className="text-[9px] font-black text-blue-400 uppercase">Surface</p><p className="text-lg font-black text-blue-800">{surfaceCalculated}m²</p></div>
-                          <div><p className="text-[9px] font-black text-blue-400 uppercase">Peinture</p><p className="text-lg font-black text-blue-800">{paintNeeded.toFixed(1)}L</p></div>
-                          <div><p className="text-[9px] font-black text-blue-400 uppercase">Abrasif</p><p className="text-lg font-black text-blue-800">{sandNeeded.toFixed(2)}T</p></div>
+                        <div className="w-full mt-4 p-4 bg-blue-50 rounded-2xl border border-blue-100 grid grid-cols-3 gap-2 text-center text-blue-800">
+                          <div><p className="text-[9px] font-black uppercase opacity-50">Surface</p><p className="text-lg font-black">{surfaceCalculated}m²</p></div>
+                          <div><p className="text-[9px] font-black uppercase opacity-50">Peinture</p><p className="text-lg font-black">{paintNeeded.toFixed(1)}L</p></div>
+                          <div><p className="text-[9px] font-black uppercase opacity-50">Abrasif</p><p className="text-lg font-black">{sandNeeded.toFixed(2)}T</p></div>
                         </div>
                       </div>
                    </div>
@@ -317,55 +294,28 @@ export default function Rapports() {
             </div>
           </div>
 
-          {/* COLONNE DROITE : ALERTES & CONTEXTE */}
           <div className="space-y-6">
-            
-            {/* ALERTES PRÉDICTIVES */}
             <div className="bg-[#1e272e] rounded-[35px] p-8 text-white shadow-xl relative overflow-hidden">
                <AlertTriangle size={150} className="absolute -right-10 -bottom-10 opacity-5" />
-               <h3 className="text-xl font-black uppercase italic mb-6 flex items-center gap-2">
-                 <AlertCircle className="text-yellow-400" /> Alertes Systèmes
-               </h3>
+               <h3 className="text-xl font-black uppercase italic mb-6 flex items-center gap-2"><AlertCircle className="text-yellow-400" /> Alertes Systèmes</h3>
                <div className="space-y-4 relative z-10">
                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
                    <div className="bg-red-500/20 p-2 rounded-lg"><Layers size={20} className="text-red-400" /></div>
                    <div><p className="text-xs font-black uppercase text-red-400">Budget Consommé</p><p className="text-[10px] font-bold opacity-60">82% atteint / 55% de prod.</p></div>
                  </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
-                   <div className="bg-orange-500/20 p-2 rounded-lg"><Calculator size={20} className="text-orange-400" /></div>
-                   <div><p className="text-xs font-black uppercase text-orange-400">Location Nacelle</p><p className="text-[10px] font-bold opacity-60">Retour prévu dans 48h</p></div>
-                 </div>
-                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
-                   <div className="bg-blue-500/20 p-2 rounded-lg"><Pipette size={20} className="text-blue-400" /></div>
-                   <div><p className="text-xs font-black uppercase text-blue-400">Appro Peinture</p><p className="text-[10px] font-bold opacity-60">Calcul suggère +45L (TS Cuve)</p></div>
-                 </div>
                </div>
             </div>
-
-            {/* QUICK STATS CHANTIER */}
             <div className="bg-white rounded-[35px] p-8 shadow-sm border border-gray-100">
-               <h3 className="font-black text-gray-700 uppercase text-sm mb-6 flex items-center gap-2">
-                 <Layers size={18} /> Rentabilité Directe
-               </h3>
+               <h3 className="font-black text-gray-700 uppercase text-sm mb-6 flex items-center gap-2"><Layers size={18} /> Rentabilité</h3>
                <div className="space-y-4">
                  <div>
                    <div className="flex justify-between text-[10px] font-black uppercase mb-1"><span>Production</span><span>65%</span></div>
                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full w-[65%]" /></div>
                  </div>
-                 <div>
-                   <div className="flex justify-between text-[10px] font-black uppercase mb-1"><span>Main d'œuvre</span><span>82%</span></div>
-                   <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden"><div className="bg-red-500 h-full w-[82%]" /></div>
-                 </div>
-                 <div className="pt-4 mt-4 border-t border-gray-50 flex items-center justify-between text-gray-400">
-                   <div className="flex items-center gap-1"><Wifi size={12}/> <span className="text-[10px] font-bold">PWA OK</span></div>
-                   <div className="flex items-center gap-1"><Save size={12}/> <span className="text-[10px] font-bold italic">Auto-save on</span></div>
-                 </div>
                </div>
             </div>
-
           </div>
         </div>
-
       </div>
     </div>
   );
