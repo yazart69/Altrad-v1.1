@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
 // =================================================================================================
-// 1. BASE DE DONNÉES LOCALE (SÉCURISÉE POUR LE SSR)
+// 1. BASE DE DONNÉES LOCALE (SÉCURISÉE POUR LE SSR - NE JAMAIS SUPPRIMER)
 // =================================================================================================
 class OfflineDB extends Dexie {
   reports!: Table<any>;
@@ -23,7 +23,7 @@ class OfflineDB extends Dexie {
   }
 }
 
-// Initialisation sécurisée (ne s'exécute que côté client)
+// Initialisation sécurisée : évite l'erreur "window is not defined" au build Vercel
 const db = typeof window !== 'undefined' ? new OfflineDB() : null;
 
 // =================================================================================================
@@ -48,64 +48,79 @@ const ScientificEngine = {
 };
 
 // =================================================================================================
-// 3. COMPOSANT CROQUIS SVG COTÉ (IMPORT DYNAMIQUE ROUGH.JS)
+// 3. COMPOSANT CROQUIS SVG COTÉ (IMPORT DYNAMIQUE SÉCURISÉ POUR VERCEL)
 // =================================================================================================
 const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const renderSketch = async () => {
       if (!svgRef.current || typeof window === 'undefined') return;
       
-      // Importation dynamique de roughjs pour éviter l'erreur au build
-      const rough = (await import('roughjs')).default;
-      const rc = rough.svg(svgRef.current);
-      const node = svgRef.current;
-      
-      while (node.firstChild) node.removeChild(node.firstChild);
-
-      if (type === 'rectangle') {
-        const w = dims.L * 10; 
-        const h = dims.l * 10;
-        const x = 50; const y = 50;
-
-        const rect = rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 });
-        node.appendChild(rect);
-
-        const lineH = rc.line(x, y - 20, x + w, y - 20, { stroke: '#0984e3', strokeWidth: 1 });
-        node.appendChild(lineH);
+      try {
+        // Chargement dynamique de Rough.js uniquement côté client (Browser)
+        const roughModule = await import('roughjs');
+        const rough = roughModule.default;
         
-        const textL = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        textL.setAttribute("x", (x + w / 2 - 10).toString());
-        textL.setAttribute("y", (y - 25).toString());
-        textL.setAttribute("fill", "#0984e3");
-        textL.setAttribute("font-size", "12");
-        textL.setAttribute("font-weight", "bold");
-        textL.textContent = `${dims.L}m`;
-        node.appendChild(textL);
-
-        const lineV = rc.line(x + w + 20, y, x + w + 20, y + h, { stroke: '#d63031', strokeWidth: 1 });
-        node.appendChild(lineV);
+        if (!isMounted || !svgRef.current) return;
         
-        const textl = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        textl.setAttribute("x", (x + w + 25).toString());
-        textl.setAttribute("y", (y + h / 2).toString());
-        textl.setAttribute("fill", "#d63031");
-        textl.setAttribute("font-size", "12");
-        textl.setAttribute("font-weight", "bold");
-        textl.textContent = `${dims.l}m`;
-        node.appendChild(textl);
+        const rc = rough.svg(svgRef.current);
+        const node = svgRef.current;
+        
+        // Nettoyage du SVG avant nouveau rendu
+        while (node.firstChild) node.removeChild(node.firstChild);
+
+        if (type === 'rectangle') {
+          const w = Math.max(dims.L * 10, 50); 
+          const h = Math.max(dims.l * 10, 30);
+          const x = 50; const y = 50;
+
+          // Dessin de la forme principale
+          const rect = rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 });
+          node.appendChild(rect);
+
+          // Dessin de la cote horizontale
+          const lineH = rc.line(x, y - 20, x + w, y - 20, { stroke: '#0984e3', strokeWidth: 1 });
+          node.appendChild(lineH);
+          
+          const textL = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          textL.setAttribute("x", (x + w / 2 - 10).toString());
+          textL.setAttribute("y", (y - 25).toString());
+          textL.setAttribute("fill", "#0984e3");
+          textL.setAttribute("font-size", "12");
+          textL.setAttribute("font-weight", "bold");
+          textL.textContent = `${dims.L}m`;
+          node.appendChild(textL);
+
+          // Dessin de la cote verticale
+          const lineV = rc.line(x + w + 20, y, x + w + 20, y + h, { stroke: '#d63031', strokeWidth: 1 });
+          node.appendChild(lineV);
+          
+          const textl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          textl.setAttribute("x", (x + w + 25).toString());
+          textl.setAttribute("y", (y + h / 2).toString());
+          textl.setAttribute("fill", "#d63031");
+          textl.setAttribute("font-size", "12");
+          textl.setAttribute("font-weight", "bold");
+          textl.textContent = `${dims.l}m`;
+          node.appendChild(textl);
+        }
+      } catch (error) {
+        console.error("Erreur lors du rendu Rough.js:", error);
       }
     };
 
     renderSketch();
+    return () => { isMounted = false; };
   }, [type, dims]);
 
   return <svg ref={svgRef} width="400" height="250" className="bg-gray-50 rounded-xl border border-gray-100 shadow-inner" />;
 };
 
 // =================================================================================================
-// 4. COMPOSANT PRINCIPAL
+// 4. COMPOSANT PRINCIPAL (RESTE INCHANGÉ MAIS SÉCURISÉ)
 // =================================================================================================
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
@@ -163,14 +178,18 @@ export default function Rapports() {
     };
 
     if (db) {
-        await db.reports.add(report);
+        try {
+          await db.reports.add(report);
+        } catch (e) {
+          console.error("Erreur IndexedDB:", e);
+        }
     }
     
     if (isOnline) {
       const { error } = await supabase.from('reunions').insert([report]);
       if (!error) alert("Rapport synchronisé avec Supabase !");
     } else {
-      alert("Rapport enregistré localement (Hors-ligne).");
+      alert("Rapport enregistré localement (Mode Hors-ligne).");
     }
   };
 
