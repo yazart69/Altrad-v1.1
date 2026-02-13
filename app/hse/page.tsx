@@ -9,7 +9,8 @@ import {
   Plus, Trash2, Search, ArrowRight, Download, Eye,
   AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
   ClipboardList, Stethoscope, Factory, Truck, Edit, ClipboardCheck, History,
-  PenTool, Thermometer, Droplets, Ruler, MousePointer2, Circle, Lock, ShieldAlert
+  PenTool, Thermometer, Droplets, Ruler, MousePointer2, Circle, Lock, ShieldAlert,
+  BellRing, CalendarClock, MessageSquare, ListChecks, CheckCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
@@ -27,7 +28,7 @@ import {
 } from '@/app/hse/data';
 
 // =================================================================================================
-// 1. DÉFINITION DES TYPES & INTERFACES (Modèle de Données Intégral)
+// 1. DÉFINITION DES TYPES & INTERFACES (Modèle de Données Intégral Altrad OS)
 // =================================================================================================
 
 interface IHabilitation {
@@ -79,6 +80,13 @@ interface IVisite {
   type: 'VMT' | 'Q3SRE' | 'OST';
   auteur: string;
   conformite_globale: number; // %
+}
+
+// Interface spécifique pour le build
+interface PrejobProps {
+  chantier: IChantier;
+  equipe: IUser[];
+  animateurId: string;
 }
 
 // =================================================================================================
@@ -152,7 +160,7 @@ export default function HSEUltimateModule() {
   if (loading) return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 text-gray-500">
       <div className="animate-spin mb-4"><ShieldCheck size={48} className="text-red-600"/></div>
-      <p className="font-bold text-lg animate-pulse uppercase tracking-widest">Initialisation Altrad HSE Suite...</p>
+      <p className="font-bold text-lg animate-pulse uppercase tracking-widest text-center">Initialisation Altrad HSE Suite...<br/><span className="text-[10px] opacity-50 tracking-normal italic">Vérification des habilitations et du registre matériel</span></p>
     </div>
   );
 
@@ -223,12 +231,12 @@ export default function HSEUltimateModule() {
             <div className="flex items-center gap-6">
               <div className="text-right">
                 <p className="text-xs font-bold text-gray-900">{activeChantier.client}</p>
-                <div className="flex items-center gap-1 justify-end text-xs text-gray-500 italic">
+                <div className="flex items-center gap-1 justify-end text-xs text-gray-500 italic font-medium">
                   <MapPin size={12}/> {activeChantier.adresse}
                 </div>
               </div>
-              <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200 shadow-sm">
-                <span className="font-bold text-xs text-gray-600">{activeChantier.nom.substring(0,2).toUpperCase()}</span>
+              <div className="h-10 w-10 bg-red-600 rounded-full flex items-center justify-center border-2 border-white shadow-xl">
+                <span className="font-bold text-xs text-white uppercase">{activeChantier.nom.substring(0,2)}</span>
               </div>
             </div>
           )}
@@ -239,10 +247,10 @@ export default function HSEUltimateModule() {
           
           {/* EMPTY STATE (Si aucun chantier sélectionné) */}
           {!activeChantierId && view !== 'dashboard' && view !== 'history' ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center opacity-40 select-none pointer-events-none text-center p-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center opacity-40 select-none pointer-events-none text-center p-10 animate-in fade-in">
               <HardHat size={80} className="mb-6 text-gray-300 mx-auto"/>
-              <h3 className="text-2xl font-black text-gray-400 mb-2 uppercase tracking-tighter">Contexte Projet Indisponible</h3>
-              <p className="text-gray-400 font-medium max-w-sm mx-auto">Veuillez sélectionner un projet réel dans le menu de gauche pour charger l'équipe et le matériel associés.</p>
+              <h3 className="text-2xl font-black text-gray-400 mb-2 uppercase tracking-tighter italic">Projet Non Identifié</h3>
+              <p className="text-gray-400 font-medium max-w-sm mx-auto uppercase text-[10px] tracking-[0.2em] leading-loose">Veuillez sélectionner un projet réel dans le menu de gauche pour charger l'équipe et le matériel associés.</p>
             </div>
           ) : (
             // ROUTEUR DE VUES
@@ -263,7 +271,7 @@ export default function HSEUltimateModule() {
 }
 
 // =================================================================================================
-// MODULE 1: DASHBOARD (Calculs KPI)
+// MODULE 1: DASHBOARD (KPI DÉTAILLÉS)
 // =================================================================================================
 function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], materiel: IMateriel[] }) {
   const vgpPerimees = materiel.filter(m => {
@@ -273,50 +281,50 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
     return nextDate < new Date();
   }).length;
 
-  const chartData = [{n:'Jan', v:4.2}, {n:'Fev', v:3.8}, {n:'Mar', v:2.1}, {n:'Avr', v:0.0}, {n:'Mai', v:1.2}];
+  const chartData = [{n:'Jan', v:4.2}, {n:'Fev', v:3.8}, {n:'Mar', v:2.1}, {n:'Avr', v:1.5}, {n:'Mai', v:0.9}];
   const pieData = [
     {name: 'VGP Conformes', value: Math.max(0, materiel.length - vgpPerimees), color: '#10b981'}, 
     {name: 'VGP Périmées', value: vgpPerimees, color: '#ef4444'}
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard label="Taux de Fréquence (TF)" val="2.1" sub="-0.5 vs N-1" icon={AlertOctagon} color="blue" />
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <StatCard label="Indice TF" val="2.1" sub="-0.5 vs N-1" icon={AlertOctagon} color="blue" />
         <StatCard label="Chantiers Actifs" val={chantiers.length} sub="Projets en base" icon={HardHat} color="indigo" />
         <StatCard label="Matériel Non Conforme" val={vgpPerimees} sub="Action immédiate" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
-        <StatCard label="Causeries Réalisées" val="12" sub="Objectif Mensuel: 15" icon={Megaphone} color="orange" />
+        <StatCard label="Performance Briefing" val="98%" sub="Signature Matin" icon={Megaphone} color="orange" />
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2"><ArrowRight size={16} className="text-red-500"/> Évolution Taux de Fréquence (Année 2026)</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 h-[450px]">
+        <div className="lg:col-span-2 bg-white p-10 rounded-[50px] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-xl group">
+          <h3 className="font-black text-gray-800 mb-8 flex items-center gap-3 uppercase text-sm tracking-widest"><ArrowRight size={18} className="text-red-500 group-hover:translate-x-2 transition-transform"/> Évolution Taux de Fréquence (2026)</h3>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/>
               <XAxis dataKey="n" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
               <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-              <RechartsTooltip cursor={{fill: '#f9fafb'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}/>
-              <Bar dataKey="v" fill="#ef4444" radius={[4,4,0,0]} barSize={50}/>
+              <RechartsTooltip cursor={{fill: '#f9fafb'}} contentStyle={{borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}/>
+              <Bar dataKey="v" fill="#ef4444" radius={[8,8,0,0]} barSize={60}/>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2"><ArrowRight size={16} className="text-emerald-500"/> État du Parc Matériel</h3>
+        <div className="bg-white p-10 rounded-[50px] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-xl">
+          <h3 className="font-black text-gray-800 mb-4 flex items-center gap-3 uppercase text-sm tracking-widest">Registre VGP</h3>
           <div className="flex-1 relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                <Pie data={pieData} innerRadius={80} outerRadius={110} paddingAngle={5} dataKey="value">
                   {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                 </Pie>
                 <RechartsTooltip />
                 <Legend verticalAlign="bottom" height={36}/>
               </PieChart>
             </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-               <span className="text-4xl font-black text-gray-800">{materiel.length > 0 ? (((materiel.length - vgpPerimees)/materiel.length) * 100).toFixed(0) : 100}%</span>
-               <span className="text-[10px] uppercase font-bold text-gray-400">Taux de Conformité</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-12">
+               <span className="text-5xl font-black text-gray-900 tracking-tighter">{materiel.length > 0 ? (((materiel.length - vgpPerimees)/materiel.length) * 100).toFixed(0) : 100}%</span>
+               <span className="text-[10px] uppercase font-black text-gray-400 tracking-[0.3em] mt-1">Conformité VGP</span>
             </div>
           </div>
         </div>
@@ -326,14 +334,15 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
 }
 
 // =================================================================================================
-// MODULE 2: SUIVI MATÉRIEL & VGP (Gestion des Machines)
+// MODULE 2: SUIVI MATÉRIEL (Registre & Planification VGP)
 // =================================================================================================
 function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[], chantierId: string, onRefresh: () => void }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEquip, setNewEquip] = useState({ libelle: '', type: 'interne', categorie: 'Levage', numero_serie: '', derniere_vgp: '' });
   const [isSaving, setIsSaving] = useState(false);
 
-  const getStatus = (last: string, cat: string) => {
+  // LOGIQUE DE PLANIFICATION : Alerte si échéance < 15 jours
+  const getPlanningStatus = (last: string, cat: string) => {
     const freq = VGP_RULES[cat as keyof typeof VGP_RULES] || 12; 
     const lastDate = new Date(last);
     const nextDate = new Date(lastDate.setMonth(lastDate.getMonth() + freq));
@@ -341,9 +350,9 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
     const diffTime = nextDate.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return { label: 'PÉRIMÉ', color: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-200', days: diffDays };
-    if (diffDays < 30) return { label: 'URGENT', color: 'bg-orange-100 text-orange-700 border-orange-200 ring-1 ring-orange-200', days: diffDays };
-    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', days: diffDays };
+    if (diffDays < 0) return { label: 'EXPIRÉ', color: 'bg-red-600 text-white shadow-red-200', alert: true };
+    if (diffDays <= 15) return { label: 'ALERTE 15j', color: 'bg-orange-500 text-white animate-pulse', alert: true };
+    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', alert: false };
   };
 
   const handleSaveEquipment = async (e: React.FormEvent) => {
@@ -356,125 +365,79 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
         statut: 'operationnel'
       }]);
       if (error) throw error;
-      alert("✅ Équipement enregistré !");
       setShowAddModal(false);
       onRefresh();
     } catch (err: any) {
-      alert("Erreur: " + err.message);
+      alert("Erreur base de données : " + err.message);
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-      <div className="flex justify-between items-end">
+    <div className="space-y-8 animate-in fade-in">
+      <div className="flex justify-between items-end bg-white p-10 rounded-[50px] shadow-sm border border-gray-100 transition-all hover:shadow-md">
         <div>
-          <h3 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-3 italic">
-            <Wrench className="text-orange-500" size={28}/> Registre de Sécurité
+          <h3 className="text-3xl font-black text-gray-800 uppercase flex items-center gap-4 italic tracking-tighter leading-none">
+            <Wrench className="text-red-600" size={32}/> Registre de Sécurité Machine
           </h3>
-          <p className="text-gray-500 font-medium mt-1">Suivi réglementaire des équipements réels affectés au chantier.</p>
+          <p className="text-gray-400 font-bold mt-2 uppercase text-[10px] tracking-[0.3em] ml-1">Planification des vérifications périodiques Altrad</p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="bg-black text-white px-6 py-3 rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95">
-          <Plus size={16}/> Nouvel Équipement
-        </button>
+        <div className="flex gap-4">
+           <div className="bg-orange-50 p-3 rounded-xl flex items-center gap-3 border border-orange-100 shadow-inner">
+              <BellRing className="text-orange-500 animate-bounce" size={18}/>
+              <span className="text-[9px] font-black uppercase text-orange-600 italic tracking-widest leading-none">Maintenance</span>
+           </div>
+           <button onClick={() => setShowAddModal(true)} className="bg-black text-white px-8 py-4 rounded-[25px] text-xs font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-gray-900 flex items-center gap-3">
+             <Plus size={20}/> Nouvel Équipement
+           </button>
+        </div>
       </div>
 
-      {showAddModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Enregistrer Matériel</h2>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button>
-            </div>
-            <form onSubmit={handleSaveEquipment} className="space-y-6">
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Libellé de la machine</label>
-                <input required type="text" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold uppercase" placeholder="Ex: Nacelle 12m" value={newEquip.libelle} onChange={e => setNewEquip({...newEquip, libelle: e.target.value})} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">N° de Série / Immat</label>
-                  <input required type="text" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold uppercase" placeholder="S/N: 0000" value={newEquip.numero_serie} onChange={e => setNewEquip({...newEquip, numero_serie: e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Dernière VGP</label>
-                  <input required type="date" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold text-sm" value={newEquip.derniere_vgp} onChange={e => setNewEquip({...newEquip, derniere_vgp: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                 <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Type</label>
-                  <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value})}>
-                    <option value="interne">Parc Interne</option>
-                    <option value="location">Location Externe</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Règle de contrôle</label>
-                  <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={newEquip.categorie} onChange={e => setNewEquip({...newEquip, categorie: e.target.value})}>
-                    {Object.keys(VGP_RULES).map(k => <option key={k} value={k}>{k}</option>)}
-                  </select>
-                </div>
-              </div>
-              <button disabled={isSaving} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
-                {isSaving ? <Clock className="animate-spin" /> : <Save />}
-                Valider l'affectation au chantier
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider border-b border-gray-100">
+      <div className="bg-white rounded-[45px] shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-gray-100/50 text-[11px] font-black text-gray-400 uppercase tracking-[0.4em] border-b-2">
             <tr>
-              <th className="p-5">Équipement / Série</th>
-              <th className="p-5">Catégorie</th>
-              <th className="p-5">Dernière VGP</th>
-              <th className="p-5">Prochaine Échéance</th>
-              <th className="p-5 text-center">Statut</th>
-              <th className="p-5 text-center">Action</th>
+              <th className="p-8">Équipement / Identifiant Unique</th>
+              <th className="p-8">Catégorie VGP</th>
+              <th className="p-8 text-center">Échéance</th>
+              <th className="p-8 text-center">État Réglementaire</th>
+              <th className="p-8 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50 text-sm">
-            {materiel.length === 0 && (
-              <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic">Aucune donnée matérielle détectée pour ce chantier dans Supabase.</td></tr>
-            )}
+          <tbody className="divide-y divide-gray-100">
             {materiel.map(m => {
-              const status = getStatus(m.derniere_vgp, m.categorie);
+              const status = getPlanningStatus(m.derniere_vgp, m.categorie);
               return (
-                <tr key={m.id} className="hover:bg-gray-50/80 transition-colors group">
-                  <td className="p-5">
-                    <div className="font-bold text-gray-800 text-base">{m.libelle}</div>
-                    <div className="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
-                      <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600 uppercase">S/N: {m.numero_serie}</span>
-                      {m.type === 'location' && <span className="text-purple-500 font-bold bg-purple-50 px-2 py-0.5 rounded italic">EXTERNE</span>}
+                <tr key={m.id} className={`transition-all ${status.alert ? 'bg-orange-50/20' : 'hover:bg-gray-50/50'}`}>
+                  <td className="p-8">
+                    <div className="font-black text-gray-800 text-lg uppercase italic tracking-tighter leading-none mb-1">{m.libelle}</div>
+                    <div className="text-[10px] text-gray-400 font-black mt-2 tracking-[0.2em] uppercase flex items-center gap-3">
+                      S/N: {m.numero_serie} {m.type === 'location' && <span className="bg-purple-100 text-purple-600 px-4 py-1 rounded-[8px] text-[8px] font-black italic border border-purple-200">LOCATION EXTERNE</span>}
                     </div>
                   </td>
-                  <td className="p-5">
-                    <span className="px-3 py-1 rounded-lg text-xs font-bold uppercase bg-white border border-gray-200 text-gray-500 shadow-sm">
-                      {m.categorie}
-                    </span>
+                  <td className="p-8">
+                    <div className="flex items-center gap-3 font-black text-gray-500">
+                       <ShieldCheck size={18} className="text-emerald-500"/>
+                       <span className="uppercase text-sm tracking-widest">{m.categorie}</span>
+                    </div>
                   </td>
-                  <td className="p-5 text-gray-600 font-medium">{new Date(m.derniere_vgp).toLocaleDateString()}</td>
-                  <td className="p-5 font-bold text-gray-800">
-                    {new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + (VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12))).toLocaleDateString()}
+                  <td className="p-8 text-center font-black text-gray-800 text-sm italic">
+                    <div className="flex flex-col items-center">
+                       <CalendarClock size={22} className="text-gray-300 mb-2 opacity-50"/>
+                       {new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + (VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12))).toLocaleDateString('fr-FR')}
+                    </div>
                   </td>
-                  <td className="p-5 text-center">
-                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black inline-flex items-center gap-2 shadow-sm ${status.color}`}>
-                      {status.days < 0 ? <XCircle size={14}/> : <CheckCircle2 size={14}/>}
+                  <td className="p-8 text-center">
+                    <span className={`px-6 py-3 rounded-full text-[9px] font-black inline-flex items-center gap-3 shadow-sm uppercase italic tracking-widest ${status.color}`}>
+                      {status.alert ? <AlertTriangle size={14}/> : <CheckCircle2 size={14}/>}
                       {status.label}
-                      <span className="opacity-60 border-l pl-2 ml-1 border-current uppercase">
-                        {status.days > 0 ? `J+${status.days}` : `J${status.days}`}
-                      </span>
                     </span>
                   </td>
-                  <td className="p-5 text-center">
-                    <button className="p-2 hover:bg-gray-200 rounded-lg text-gray-400 hover:text-blue-600 transition-colors">
-                      <Download size={20}/>
-                    </button>
+                  <td className="p-8 text-center">
+                     <button className="p-4 bg-gray-100 rounded-2xl text-gray-400 hover:text-red-600 transition-all shadow-sm active:scale-90 hover:bg-white hover:shadow-lg">
+                        <Printer size={22}/>
+                     </button>
                   </td>
                 </tr>
               );
@@ -482,6 +445,29 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
           </tbody>
         </table>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-8 bg-black/70 backdrop-blur-xl animate-in fade-in">
+           <div className="bg-white w-full max-w-2xl rounded-[60px] shadow-2xl p-16 animate-in zoom-in-95 border-4 border-white">
+              <h2 className="text-3xl font-black uppercase tracking-tighter mb-12 flex items-center gap-6 border-b-4 border-gray-50 pb-8 italic leading-none"><Truck size={48} className="text-red-600"/> ENREGISTRER MACHINE</h2>
+              <form onSubmit={handleSaveEquipment} className="space-y-8">
+                  <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-6 italic">Libellé Commercial de l'Équipement</label><input required className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[40px] font-black uppercase shadow-inner text-xl outline-none focus:border-red-500 transition-all" value={newEquip.libelle} onChange={e=>setNewEquip({...newEquip, libelle: e.target.value})} /></div>
+                  <div className="grid grid-cols-2 gap-10">
+                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-6 italic">N° de Série Altrad</label><input required className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[40px] font-black uppercase shadow-inner text-xl outline-none focus:border-red-500 transition-all" value={newEquip.numero_serie} onChange={e=>setNewEquip({...newEquip, numero_serie: e.target.value})} /></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-6 italic">Dernière VGP</label><input required type="date" className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[40px] font-black shadow-inner text-xl outline-none focus:border-red-500 transition-all" value={newEquip.derniere_vgp} onChange={e=>setNewEquip({...newEquip, derniere_vgp: e.target.value})} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-12">
+                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-6 italic">Type de Parc</label><select className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[40px] font-black uppercase shadow-inner cursor-pointer text-lg appearance-none" value={newEquip.type} onChange={e=>setNewEquip({...newEquip, type: e.target.value})}><option value="interne">Altrad Services</option><option value="location">Loueur Externe</option></select></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-6 italic">Périodicité VGP</label><select className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[40px] font-black uppercase shadow-inner cursor-pointer text-lg appearance-none" value={newEquip.categorie} onChange={e=>setNewEquip({...newEquip, categorie: e.target.value})}>{Object.keys(VGP_RULES).map(k=><option key={k} value={k}>{k}</option>)}</select></div>
+                  </div>
+                  <div className="flex gap-8 pt-10">
+                    <button type="button" onClick={()=>setShowAddModal(false)} className="flex-1 p-8 rounded-[40px] font-black uppercase text-gray-300 bg-gray-50 transition-all hover:bg-gray-100 text-lg italic">Annuler</button>
+                    <button type="submit" disabled={isSaving} className="flex-[2] p-8 rounded-[40px] font-black uppercase text-white bg-red-600 shadow-2xl shadow-red-200 active:scale-95 transition-all text-xl italic tracking-tighter">Valider l'Affectation au Projet</button>
+                  </div>
+              </form>
+           </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -542,7 +528,7 @@ function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IC
                 <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2 uppercase tracking-widest text-[10px]"><ShieldCheck size={16}/> Analyse des Risques Métier (Base RISK_DB)</h4>
                 <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto custom-scrollbar pr-2">
                 {RISK_DATABASE.map(r => (
-                    <label key={r.id} className={`flex items-start gap-3 p-4 rounded-xl border transition-all ${selectedRisks.includes(r.task) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-gray-200'}`}>
+                    <label key={r.id} className={`flex items-start gap-3 p-4 rounded-xl border transition-all ${selectedRisks.includes(r.task) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
                     <input type="checkbox" className="mt-1 w-4 h-4 rounded text-blue-600" checked={selectedRisks.includes(r.task)} onChange={(e) => e.target.checked ? setSelectedRisks([...selectedRisks, r.task]) : setSelectedRisks(selectedRisks.filter(x => x !== r.task))} />
                     <div>
                         <div className="text-xs font-black text-gray-800 uppercase italic leading-tight">{r.task}</div>
@@ -624,7 +610,7 @@ function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
       </div>
 
       <div className="lg:col-span-2 bg-white p-8 rounded-[40px] shadow-sm border border-gray-200">
-        <h3 className="font-bold text-xl mb-8 flex items-center gap-3 uppercase text-gray-800 tracking-tighter"><Camera className="text-blue-500" size={24}/> Saisie Terrain : {visitType.toUpperCase()}</h3>
+        <h3 className="font-bold text-xl mb-8 flex items-center gap-3 uppercase text-gray-800"><Camera className="text-blue-500" size={24}/> Saisie Terrain : {visitType.toUpperCase()}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Domaine Audit</label><select className="w-full p-4 bg-gray-50 border rounded-2xl text-sm font-black shadow-inner" value={domaine} onChange={e => setDomaine(e.target.value)}><option>Sécurité</option><option>Qualité</option><option>Environnement</option></select></div>
           <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Observateur Autorisé</label><select className="w-full p-4 bg-gray-50 border rounded-2xl text-sm font-black shadow-inner" value={auteurId} onChange={e => setAuteurId(e.target.value)}><option value="">-- Qui audite ? --</option>{equipe.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}</select></div>
@@ -658,158 +644,220 @@ function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
 }
 
 // =================================================================================================
-// MODULE 5: PREJOB BRIEFING (Fidèle à la Fiche REVETEMENT + LOGIQUE HABILITATIONS)
+// MODULE 5: PREJOB BRIEFING (Fidèle à la Fiche REVETEMENT + HABILITATIONS + DEBRIEFING)
 // =================================================================================================
-function PrejobBriefingModule({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
+function PrejobBriefingModule({ chantier, equipe, animateurId }: PrejobProps) {
   const [step, setStep] = useState(1);
   const [generalInfo, setGeneralInfo] = useState({ zone: '', poste: '' });
   const [checks, setChecks] = useState<any>({});
-  const [epi, setEpi] = useState<any>({ "Tenue base": true, "Chaussures": true, "Casque": true });
+  const [epi, setEpi] = useState<any>({ "Tenue base": true, "Chaussures montantes": true, "Casque": true });
+  
+  // LOGIQUE DE DEBRIEFING (Fidèle à la Fiche REVETEMENT Word)
+  const [debriefData, setDebriefData] = useState({
+    scope_realise: "",
+    evenement_secu: false,
+    matériel_ko: false,
+    zone_rangee: true,
+    remontees: ""
+  });
+
   const [isSaving, setIsSaving] = useState(false);
   const sigCanvas = useRef<any>(null);
 
-  // --- LOGIQUE HABILITATIONS (BLOCAGE SIGNATURE) ---
+  // LOGIQUE HABILITATIONS (VÉRIFICATION RÉELLE & BLOCAGE)
   const checkMemberValidity = (user: IUser) => {
     if (!user.habilitations || user.habilitations.length === 0) return { ok: false, msg: "HABILITATIONS ABSENTES" };
     const now = new Date();
     const expired = user.habilitations.filter(h => new Date(h.date_echeance) < now);
-    if (expired.length > 0) return { ok: false, msg: `PÉRIMÉ: ${expired[0].libelle}` };
+    if (expired.length > 0) return { ok: false, msg: `PÉRIMÉ : ${expired[0].libelle}` };
     return { ok: true, msg: "CONFORME" };
   };
 
   const pointsBriefing = [
-    "Zone dégagée / risques pris en compte", "Vérification absence plomb/amiante",
-    "Description travaux / phases critiques", "Rôle de chacun défini",
-    "Modes de communication définis", "Moyens de secours (douche, lave œil)",
-    "Risques produits (FDS)", "Stockage matériel / tri déchets",
-    "Objectif avancement fin de poste", "Autorisation de travail conforme",
-    "Moyen d’accès conforme", "Balisage zone", "Extincteur présent"
+    "Zone disponible et dégagée / risques pris en compte", 
+    "Vérification absence plomb/amiante",
+    "Description travaux / phases critiques identifiées", 
+    "Rôle de chacun dans l'équipe défini",
+    "Modes de communication définis (verbal/gestuelle)", 
+    "Moyens de secours (douche, lave œil) accessibles",
+    "Risques des produits (FDS) consultés", 
+    "Stockage matériel / tri déchets respectés",
+    "Minute d’Arrêt Sécurité (MAS)"
   ];
 
-  const handleArchive = async () => {
+  const handleArchiveReport = async () => {
     if (!generalInfo.zone || !generalInfo.poste) return alert("Zone et Poste requis.");
     setIsSaving(true);
-    const { error } = await supabase.from('hse_prejob_briefings').insert([{
-      chantier_id: chantier.id,
-      unite_zone: generalInfo.zone,
-      poste_travail: generalInfo.poste,
-      nb_personnes: equipe.length,
-      briefing_check: checks,
-      epi_selection: epi,
-      date: new Date().toISOString()
-    }]);
-    if (!error) {
-      alert("✅ Rapport Prejob archivé !");
-      setStep(1); setChecks({}); setEpi({});
-    } else {
-      alert("Erreur base de données : " + error.message);
-    }
-    setIsSaving(false);
+    try {
+      const { error } = await supabase.from('hse_prejob_briefings').insert([{
+        chantier_id: chantier.id,
+        unite_zone: generalInfo.zone,
+        poste_travail: generalInfo.poste,
+        nb_personnes: equipe.length,
+        briefing_check: checks,
+        epi_selection: epi,
+        debriefing: debriefData,
+        date: new Date().toISOString()
+      }]);
+      if (error) throw error;
+      alert("✅ Rapport Journalier Archivé sur Altrad OS.");
+      setStep(1);
+    } catch (e: any) { alert(e.message); } finally { setIsSaving(false); }
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-in slide-in-from-bottom-6">
-      <div className="bg-white rounded-[50px] shadow-2xl border border-gray-100 overflow-hidden">
-        <div className="bg-[#e21118] p-12 text-white flex justify-between items-center shrink-0 shadow-lg">
+    <div className="max-w-5xl mx-auto space-y-12 pb-32">
+      <div className="bg-white rounded-[80px] shadow-2xl border-4 border-white overflow-hidden animate-in zoom-in-95">
+        
+        {/* HEADER DYNAMIQUE SELON ÉTAPE */}
+        <div className={`p-20 text-white flex justify-between items-center transition-all duration-1000 ${step === 4 ? 'bg-[#10b981]' : 'bg-[#e21118]'}`}>
           <div>
-            <h1 className="text-3xl font-black uppercase italic leading-none tracking-tighter">PREJOB BRIEFING</h1>
-            <p className="font-bold opacity-80 mt-2 uppercase tracking-widest text-xs italic">Activité REVETEMENT - ALTRAD PREZIOSO</p>
+            <h1 className="text-5xl font-black uppercase italic leading-none tracking-tighter">
+              {step === 4 ? 'DEBRIEFING FIN DE POSTE' : 'PREJOB BRIEFING'}
+            </h1>
+            <p className="font-bold opacity-80 mt-4 uppercase tracking-[0.5em] text-[12px] italic">ACTIVITÉ REVETEMENT - PERFORMANCE HSE</p>
           </div>
-          <ClipboardCheck size={64} className="opacity-20" />
+          {step === 4 ? <CheckCircle size={100} className="opacity-10" /> : <ClipboardCheck size={100} className="opacity-10" />}
         </div>
 
-        <div className="p-12 space-y-12">
+        <div className="p-20 space-y-20">
+          
+          {/* STEP 1 : CONTEXTE & HABILITATIONS */}
           {step === 1 && (
-            <div className="space-y-12 animate-in fade-in">
-              <div className="grid grid-cols-2 gap-10">
-                 <div className="space-y-4"><label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Unité / Zone d'intervention</label><input className="w-full p-6 bg-gray-50 border-2 border-gray-100 rounded-[30px] font-black uppercase shadow-inner outline-none focus:border-red-500 transition-all" value={generalInfo.zone} onChange={e=>setGeneralInfo({...generalInfo, zone: e.target.value})} /></div>
-                 <div className="space-y-4"><label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Poste de travail</label><input className="w-full p-6 bg-gray-50 border-2 border-gray-100 rounded-[30px] font-black uppercase shadow-inner outline-none focus:border-red-500 transition-all" value={generalInfo.poste} onChange={e=>setGeneralInfo({...generalInfo, poste: e.target.value})} /></div>
+            <div className="space-y-16 animate-in fade-in">
+              <div className="grid grid-cols-2 gap-12">
+                 <div className="space-y-6"><label className="text-[14px] font-black uppercase text-gray-400 tracking-[0.4em] ml-12 italic">Unité / Zone d'intervention</label><input className="w-full p-10 bg-gray-50 border-4 border-gray-100 rounded-[60px] font-black uppercase shadow-inner text-3xl outline-none focus:border-red-500 transition-all" value={generalInfo.zone} onChange={e=>setGeneralInfo({...generalInfo, zone: e.target.value})} placeholder="Saisir zone..." /></div>
+                 <div className="space-y-6"><label className="text-[14px] font-black uppercase text-gray-400 tracking-[0.4em] ml-12 italic">Poste de travail (Scope)</label><input className="w-full p-10 bg-gray-50 border-4 border-gray-100 rounded-[60px] font-black uppercase shadow-inner text-3xl outline-none focus:border-red-500 transition-all" value={generalInfo.poste} onChange={e=>setGeneralInfo({...generalInfo, poste: e.target.value})} placeholder="Détail poste..." /></div>
               </div>
-              <div className="bg-red-50 p-12 rounded-[60px] border border-red-100 shadow-inner">
-                 <h3 className="font-black text-red-900 uppercase mb-10 flex items-center gap-4 tracking-tighter"><Users size={32}/> ÉQUIPE & HABILITATIONS</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              <div className="bg-red-50 p-16 rounded-[80px] border-4 border-red-100 shadow-inner">
+                 <h3 className="font-black text-red-900 uppercase mb-12 flex items-center gap-8 text-3xl tracking-tighter italic border-b-4 border-red-200/50 pb-8"><Users size={56}/> CONTRÔLE HABILITATIONS ÉQUIPE</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                     {equipe.map(m => {
                       const status = checkMemberValidity(m);
                       return (
-                        <div key={m.id} className={`p-6 rounded-[35px] border-2 flex items-center justify-between transition-all shadow-sm ${status.ok ? 'bg-white border-gray-100' : 'bg-red-100 border-red-300'}`}>
-                           <div className="flex items-center gap-5">
-                             <div className={`h-14 w-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner ${status.ok ? 'bg-emerald-100 text-emerald-600' : 'bg-red-200 text-red-600 animate-pulse'}`}>{m.nom[0]}</div>
-                             <div><p className="font-black text-sm uppercase italic">{m.nom} {m.prenom}</p><p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${status.ok ? 'text-emerald-500' : 'text-red-700'}`}>{status.msg}</p></div>
+                        <div key={m.id} className={`p-10 rounded-[70px] border-4 flex items-center justify-between transition-all shadow-xl bg-white group hover:scale-[1.02] ${status.ok ? 'border-gray-50' : 'border-red-500 ring-8 ring-red-500/10 animate-pulse'}`}>
+                           <div className="flex items-center gap-10">
+                             <div className={`h-20 w-20 rounded-3xl flex items-center justify-center font-black text-4xl shadow-inner ${status.ok ? 'bg-emerald-100 text-emerald-600' : 'bg-red-200 text-red-700'}`}>{m.nom[0]}</div>
+                             <div>
+                                <p className="font-black text-2xl uppercase tracking-tighter italic leading-none">{m.nom} {m.prenom}</p>
+                                <p className={`text-xs font-black uppercase tracking-[0.3em] mt-5 px-5 py-2 rounded-full inline-block shadow-sm ${status.ok ? 'bg-emerald-50 text-emerald-500' : 'bg-red-100 text-red-700 border border-red-200'}`}>{status.msg}</p>
+                             </div>
                            </div>
-                           {!status.ok && <ShieldAlert className="text-red-600" size={28}/>}
+                           {!status.ok && <ShieldAlert className="text-red-600" size={48}/>}
                         </div>
                       )
                     })}
                  </div>
               </div>
-              <button onClick={()=>setStep(2)} className="w-full bg-black text-white py-8 rounded-[40px] font-black uppercase shadow-2xl flex items-center justify-center gap-6 hover:scale-[1.02] transition-all hover:bg-gray-900 active:scale-95">Démarrer le Briefing Matinal <ArrowRight/></button>
+              <button onClick={()=>setStep(2)} className="w-full bg-black text-white py-12 rounded-[70px] font-black uppercase shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] flex items-center justify-center gap-10 hover:scale-[1.02] transition-all hover:bg-gray-900 active:scale-95 text-4xl tracking-tighter italic leading-none">DÉBUTER LE BRIEFING SÉCURITÉ <ArrowRight size={56}/></button>
             </div>
           )}
 
-          {step === 2 && (
-            <div className="space-y-12 animate-in slide-in-from-right-10">
-               <h3 className="text-2xl font-black uppercase text-gray-800 border-b-8 border-orange-100 pb-6 italic tracking-tighter">Checklist de Sécurité (Briefing)</h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {pointsBriefing.map(p => (
-                    <label key={p} className={`flex items-center justify-between p-8 rounded-[40px] border-2 transition-all cursor-pointer shadow-sm ${checks[p] ? 'bg-emerald-50 border-emerald-500 scale-[0.98] shadow-inner' : 'bg-gray-50 hover:bg-white hover:border-gray-300'}`}>
-                       <span className="text-xs font-black uppercase text-gray-700 leading-tight pr-8">{p}</span>
-                       <input type="checkbox" className="w-8 h-8 rounded-2xl text-emerald-600 border-gray-300 focus:ring-0 shadow-sm" checked={checks[p] || false} onChange={()=>setChecks({...checks, [p]: !checks[p]})} />
-                    </label>
+          {/* ÉTAPE 4 : DEBRIEFING (Logiciel Fin de Poste) */}
+          {step === 4 && (
+            <div className="space-y-20 animate-in slide-in-from-right-10">
+               <h3 className="text-4xl font-black uppercase text-emerald-900 italic tracking-tighter border-b-8 border-emerald-100 pb-10 flex items-center gap-8"><ListChecks size={56}/> CONTRÔLE DE FIN DE POSTE</h3>
+               
+               <div className="space-y-10">
+                  <label className="text-[14px] font-black uppercase text-gray-400 tracking-[0.5em] ml-16 italic">Avancement du scope et remarques de production</label>
+                  <textarea 
+                    className="w-full p-16 bg-gray-50 border-4 border-gray-100 rounded-[100px] text-3xl font-bold shadow-inner outline-none focus:border-emerald-500 h-96 transition-all italic leading-relaxed" 
+                    value={debriefData.scope_realise}
+                    onChange={e => setDebriefData({...debriefData, scope_realise: e.target.value})}
+                    placeholder="Quels sont les points marquants de la journée ?..."
+                  ></textarea>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                  {[
+                    {label: "Évènement sécurité survenu même mineur ?", key: "evenement_secu", icon: ShieldAlert},
+                    {label: "Problématique rencontrée matériel ?", key: "matériel_ko", icon: Wrench},
+                    {label: "Zone rangée et déchets évacués ?", key: "zone_rangee", icon: Truck},
+                    {label: "Remontées terrain des opérateurs ?", key: "remontees", icon: MessageSquare}
+                  ].map(item => (
+                    <div key={item.key} className="bg-white p-12 rounded-[70px] border-4 border-gray-50 shadow-2xl flex items-center justify-between group hover:border-emerald-300 transition-all hover:scale-[1.02]">
+                       <div className="flex items-center gap-6 max-w-[65%]">
+                          <div className="p-5 bg-gray-100 rounded-3xl group-hover:bg-emerald-100 transition-colors"><item.icon size={32} className="text-gray-400 group-hover:text-emerald-600"/></div>
+                          <span className="text-xl font-black uppercase text-gray-700 leading-tight italic tracking-tighter">{item.label}</span>
+                       </div>
+                       <div className="flex gap-4">
+                          <button 
+                            onClick={() => setDebriefData({...debriefData, [item.key]: false})}
+                            className={`px-10 py-5 rounded-[25px] font-black text-xl uppercase transition-all shadow-md ${!debriefData[item.key as keyof typeof debriefData] ? 'bg-red-500 text-white scale-110 shadow-red-200' : 'bg-gray-100 text-gray-300'}`}
+                          >NON</button>
+                          <button 
+                            onClick={() => setDebriefData({...debriefData, [item.key]: true})}
+                            className={`px-10 py-5 rounded-[25px] font-black text-xl uppercase transition-all shadow-md ${debriefData[item.key as keyof typeof debriefData] ? 'bg-emerald-500 text-white scale-110 shadow-emerald-200' : 'bg-gray-100 text-gray-300'}`}
+                          >OUI</button>
+                       </div>
+                    </div>
                   ))}
                </div>
-               <div className="flex gap-6 pt-10">
-                  <button onClick={()=>setStep(1)} className="flex-1 bg-gray-100 text-gray-400 py-8 rounded-[40px] font-black uppercase transition-all hover:bg-gray-200 active:scale-95">Retour Infos</button>
-                  <button onClick={()=>setStep(3)} className="flex-[2] bg-black text-white py-8 rounded-[40px] font-black uppercase shadow-2xl flex items-center justify-center gap-6 hover:bg-gray-900 active:scale-95 transition-all">Valider Checklist & Signature <ArrowRight/></button>
+
+               <div className="flex gap-12 pt-20">
+                  <button onClick={()=>setStep(3)} className="flex-1 bg-gray-100 text-gray-300 py-12 rounded-[70px] font-black uppercase text-3xl transition-all hover:bg-gray-200 active:scale-95 shadow-inner leading-none tracking-tighter">RETOUR SIGNATURES</button>
+                  <button disabled={isSaving} onClick={handleArchiveReport} className="flex-[3] bg-[#10b981] text-white py-12 rounded-[70px] font-black uppercase shadow-[0_50px_100px_-20px_rgba(16,185,129,0.5)] flex items-center justify-center gap-12 text-4xl hover:bg-black transition-all active:scale-95 disabled:opacity-50 tracking-[0.1em] italic leading-none shadow-emerald-200">
+                    {isSaving ? <Clock className="animate-spin" size={64}/> : <Save size={72} />} TRANSMETTRE & CLÔTURER
+                  </button>
                </div>
             </div>
           )}
 
+          {/* ÉTAPES 2 & 3 MAINTENUES */}
           {step === 3 && (
-            <div className="space-y-12 animate-in slide-in-from-right-10">
-               <div className="bg-yellow-50 p-12 rounded-[70px] border border-yellow-200 shadow-inner relative overflow-hidden">
-                  <PenTool className="absolute -right-10 -bottom-10 text-yellow-100 size-96 opacity-40 -rotate-12" />
-                  <h4 className="font-black uppercase text-yellow-900 mb-8 flex items-center gap-6 relative z-10 tracking-tighter"><PenTool size={44}/> ÉMARGEMENT TACTILE & ENGAGEMENT MAS</h4>
-                  <p className="text-[13px] font-black text-yellow-800 mb-12 border-l-8 border-yellow-400 pl-8 italic leading-loose relative z-10 uppercase tracking-widest bg-white/50 p-6 rounded-3xl">
-                    Engagement Minute d’Arrêt Sécurité : "Je certifie avoir pris connaissance des risques et m'engage à appliquer les mesures de prévention. Je ferai remonter toute anomalie."
-                  </p>
-                  
-                  <div className="space-y-10 relative z-10">
+            <div className="space-y-20 animate-in slide-in-from-right-10">
+               <div className="bg-yellow-50 p-20 rounded-[100px] border-4 border-yellow-200 shadow-inner relative overflow-hidden">
+                  <PenTool className="absolute -right-40 -bottom-40 text-yellow-100 size-[800px] opacity-40 -rotate-12" />
+                  <h4 className="font-black uppercase text-yellow-900 mb-12 flex items-center gap-10 relative z-10 tracking-tighter text-6xl italic leading-none"><PenTool size={80}/> ÉMARGEMENT ÉQUIPE</h4>
+                  <div className="space-y-16 relative z-10">
                     {equipe.map(membre => {
                       const status = checkMemberValidity(membre);
                       return (
-                        <div key={membre.id} className={`bg-white p-10 rounded-[50px] border-2 flex flex-col md:flex-row items-center justify-between gap-12 shadow-md transition-all hover:shadow-xl ${status.ok ? 'border-yellow-100' : 'border-red-400 bg-red-50/30'}`}>
-                           <div className="flex items-center gap-8">
-                              <div className={`h-20 w-20 rounded-3xl flex items-center justify-center font-black text-2xl shadow-inner ${status.ok ? 'bg-yellow-100 text-yellow-600' : 'bg-red-200 text-red-600 animate-pulse'}`}>{membre.nom[0]}</div>
-                              <div><p className="font-black text-2xl uppercase tracking-tighter italic leading-none">{membre.nom} {membre.prenom}</p><p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mt-2">Signature Altrad Digital Signature</p></div>
+                        <div key={membre.id} className={`bg-white p-12 rounded-[90px] border-4 flex flex-col md:flex-row items-center justify-between gap-16 shadow-2xl transition-all ${status.ok ? 'border-yellow-200 hover:border-yellow-400' : 'border-red-600 bg-red-50 grayscale'}`}>
+                           <div className="flex items-center gap-10">
+                              <div className={`h-32 w-32 rounded-[45px] flex items-center justify-center font-black text-6xl shadow-inner border-8 border-white ${status.ok ? 'bg-yellow-100 text-yellow-600' : 'bg-red-200 text-red-700'}`}>{membre.nom[0]}</div>
+                              <div><h3 className="font-black text-5xl uppercase tracking-tighter italic leading-none mb-4">{membre.nom} {membre.prenom}</h3><p className="text-sm font-black text-gray-300 uppercase tracking-[0.6em] italic">Identity Digital Verified</p></div>
                            </div>
-                           
                            {status.ok ? (
-                              <div className="bg-gray-50 rounded-[40px] h-52 w-full md:w-[500px] border-4 border-dashed border-gray-100 relative overflow-hidden group shadow-inner">
-                                 <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-gray-200 pointer-events-none uppercase tracking-[1em]">Signer ici</div>
-                                 <SignatureCanvas ref={sigCanvas} penColor='black' canvasProps={{width: 500, height: 210, className: 'sigCanvas'}} />
-                                 <button onClick={()=>sigCanvas.current.clear()} className="absolute bottom-6 right-6 p-5 bg-white/90 rounded-2xl text-gray-300 hover:text-red-600 shadow-sm transition-all hover:scale-110 active:scale-90"><Trash2 size={24}/></button>
+                              <div className="bg-gray-100 rounded-[70px] h-[350px] w-full md:w-[800px] border-8 border-dashed border-gray-200 relative overflow-hidden group shadow-inner transition-all hover:bg-white hover:border-yellow-300">
+                                 <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-gray-300 pointer-events-none uppercase tracking-[3em] opacity-40">Signature Tactile ici</div>
+                                 <SignatureCanvas ref={sigCanvas} penColor='black' canvasProps={{width: 800, height: 350, className: 'sigCanvas'}} />
+                                 <button onClick={()=>sigCanvas.current.clear()} className="absolute bottom-12 right-12 p-10 bg-white rounded-[40px] text-gray-300 hover:text-red-600 shadow-2xl transition-all hover:scale-110 active:scale-90 border-4 border-gray-50 shadow-black/20"><Trash2 size={48}/></button>
                               </div>
                            ) : (
-                             <div className="bg-red-100 p-12 rounded-[40px] w-full md:w-[500px] border-2 border-red-300 flex flex-col items-center justify-center text-center shadow-inner">
-                                <Lock className="text-red-600 mb-6" size={48}/>
-                                <p className="text-red-900 font-black uppercase text-sm tracking-widest leading-none">SIGNATURE BLOQUÉE PAR LE SYSTÈME</p>
-                                <p className="text-red-600 text-xs font-black mt-4 uppercase italic bg-white px-4 py-1 rounded-full">{status.msg}</p>
-                             </div>
+                             <div className="bg-red-100 p-24 rounded-[80px] w-full md:w-[800px] text-center shadow-inner border-8 border-white"><Lock className="mx-auto mb-10 text-red-600" size={100}/><h2 className="text-4xl font-black text-red-900 uppercase italic mb-4">SIGNATURE INTERDITE</h2><p className="font-black text-red-600 uppercase tracking-widest text-xl bg-white px-8 py-4 rounded-full shadow-sm">{status.msg}</p></div>
                            )}
                         </div>
                       )
                     })}
                   </div>
                </div>
-
-               <div className="flex gap-6">
-                  <button onClick={()=>setStep(2)} className="flex-1 bg-gray-50 text-gray-300 py-10 rounded-[50px] font-black uppercase transition-all hover:bg-gray-100 active:scale-95 shadow-sm">Retour Checklist</button>
-                  <button disabled={isSaving} onClick={handleArchive} className="flex-[3] bg-[#e21118] text-white py-10 rounded-[50px] font-black uppercase shadow-2xl flex items-center justify-center gap-8 text-2xl hover:bg-black transition-all active:scale-95 disabled:opacity-50 shadow-red-200">
-                    {isSaving ? <Clock className="animate-spin" size={40}/> : <Save size={48} />} VALIDER & ARCHIVER LE PREJOB BRIEFING
-                  </button>
+               <div className="flex gap-12">
+                  <button onClick={()=>setStep(2)} className="flex-1 bg-gray-50 text-gray-300 py-12 rounded-[70px] font-black uppercase text-2xl shadow-inner active:scale-95 transition-all">Retour Checklist</button>
+                  <button onClick={()=>setStep(4)} className="flex-[3] bg-black text-white py-12 rounded-[70px] font-black uppercase shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] flex items-center justify-center gap-12 text-5xl hover:bg-[#10b981] transition-all active:scale-95 italic leading-none tracking-tighter shadow-black/40">PASSER AU DÉBRIEFING FINAL <ChevronRight size={64}/></button>
                </div>
             </div>
           )}
+
+          {step === 2 && (
+            <div className="space-y-16 animate-in slide-in-from-right-10">
+               <h3 className="text-4xl font-black uppercase text-gray-800 border-b-[12px] border-orange-100 pb-10 italic tracking-tighter leading-none">Vérifications de Sécurité (Briefing)</h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                  {pointsBriefing.map(p => (
+                    <label key={p} className={`flex items-center justify-between p-12 rounded-[70px] border-4 transition-all cursor-pointer shadow-xl ${checks[p] ? 'bg-emerald-50 border-emerald-500 scale-[0.98] shadow-inner' : 'bg-gray-50 hover:bg-white hover:border-gray-300'}`}>
+                       <span className="text-2xl font-black uppercase text-gray-700 leading-tight pr-12 italic tracking-tighter">{p}</span>
+                       <input type="checkbox" className="w-16 h-16 rounded-[25px] text-emerald-600 border-gray-300 focus:ring-0 shadow-inner" checked={checks[p] || false} onChange={()=>setChecks({...checks, [p]: !checks[p]})} />
+                    </label>
+                  ))}
+               </div>
+               <div className="flex gap-10 pt-16">
+                  <button onClick={()=>setStep(1)} className="flex-1 bg-gray-50 text-gray-300 py-12 rounded-[70px] font-black uppercase transition-all hover:bg-gray-100 active:scale-95 shadow-inner text-3xl italic leading-none">Retour Infos</button>
+                  <button onClick={()=>setStep(3)} className="flex-[3] bg-black text-white py-12 rounded-[70px] font-black uppercase shadow-2xl flex items-center justify-center gap-12 hover:bg-gray-900 active:scale-95 transition-all text-5xl tracking-tighter italic leading-none">VALIDER POINTS <ArrowRight size={64}/></button>
+               </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
@@ -817,7 +865,7 @@ function PrejobBriefingModule({ chantier, equipe }: { chantier: IChantier, equip
 }
 
 // =================================================================================================
-// MODULE 5: ARCHIVES (Consultation & Nettoyage)
+// MODULE 5: ARCHIVES (Consultation & Nettoyage Sécurisé)
 // =================================================================================================
 function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], onRefresh: () => void }) {
   const [archives, setArchives] = useState<any[]>([]);
@@ -834,40 +882,40 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
   }
 
   const handleDelete = async (id: string, theme: string) => {
-    if (!confirm(`⚠️ SUPPRESSION DÉFINITIVE : Voulez-vous supprimer l'archive "${theme}" ?`)) return;
+    if (!confirm(`⚠️ SUPPRESSION IRRÉVERSIBLE : Voulez-vous supprimer l'archive "${theme}" du serveur HSE ?`)) return;
     const { error } = await supabase.from('causeries_archives').delete().eq('id', id);
     if (!error) {
-      alert("✅ Archive supprimée de la base de données centrale.");
+      alert("✅ Rapport supprimé définitivement.");
       fetchArchives();
       onRefresh();
     }
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in">
-      <div className="bg-white p-12 rounded-[60px] shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-16 border-b-4 border-gray-50 pb-10">
-          <h3 className="text-3xl font-black uppercase text-gray-900 flex items-center gap-6 tracking-tighter"><History className="text-red-600" size={44} /> Registre Global HSE Altrad</h3>
-          <button onClick={fetchArchives} className="p-5 bg-gray-50 rounded-3xl hover:bg-red-50 transition-all shadow-sm"><Clock size={32} className="text-gray-400" /></button>
+    <div className="space-y-16 animate-in fade-in">
+      <div className="bg-white p-16 rounded-[100px] shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-24 border-b-8 border-gray-50 pb-16">
+          <h3 className="text-5xl font-black uppercase text-gray-900 flex items-center gap-12 tracking-tighter italic leading-none"><History className="text-red-600" size={72} /> Registre Global HSE Altrad</h3>
+          <button onClick={fetchArchives} className="p-10 bg-gray-50 rounded-40px hover:bg-red-50 transition-all shadow-inner"><Clock size={56} className="text-gray-400" /></button>
         </div>
         
-        {loading ? (<div className="py-40 text-center font-black text-gray-200 animate-pulse uppercase tracking-[0.5em] text-2xl">Synchronisation en cours...</div>) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+        {loading ? (<div className="py-80 text-center font-black text-gray-200 animate-pulse uppercase tracking-[1em] text-4xl italic">Synchronisation Cloud...</div>) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-20">
             {archives.map(item => (
-              <div key={item.id} className="bg-gray-50 p-12 rounded-[55px] border border-gray-100 hover:border-red-500 hover:shadow-2xl transition-all cursor-pointer group relative shadow-md">
+              <div key={item.id} className="bg-gray-50 p-20 rounded-[90px] border border-gray-100 hover:border-red-500 hover:shadow-2xl transition-all cursor-pointer group relative shadow-lg">
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.theme); }}
-                  className="absolute top-8 right-8 p-4 bg-white rounded-full text-gray-300 hover:text-red-600 shadow-sm opacity-0 group-hover:opacity-100 transition-all active:scale-90 hover:shadow-lg"
+                  className="absolute top-12 right-12 p-8 bg-white rounded-full text-gray-200 hover:text-red-600 shadow-2xl opacity-0 group-hover:opacity-100 transition-all active:scale-90 hover:shadow-red-200 border-4 border-gray-50"
                 >
-                  <Trash2 size={24}/>
+                  <Trash2 size={40}/>
                 </button>
                 <div onClick={() => setSelectedArchive(item)}>
-                  <div className="mb-8"><span className="bg-white px-6 py-2.5 rounded-full text-[11px] font-black text-gray-400 border border-gray-100 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('fr-FR')}</span></div>
-                  <h4 className="font-black text-gray-800 uppercase text-2xl mb-4 leading-tight h-20 line-clamp-2 italic tracking-tighter">{item.theme}</h4>
-                  <p className="text-sm font-black text-red-600 mb-12 tracking-widest uppercase flex items-center gap-2"><MapPin size={14}/> {item.chantiers?.nom}</p>
-                  <div className="flex items-center gap-5 pt-10 border-t-2 border-gray-200">
-                    <div className="h-16 w-16 bg-red-100 rounded-[20px] flex items-center justify-center font-black text-xl text-red-600 border-2 border-red-200 shadow-inner uppercase">{item.animateur?.nom[0]}{item.animateur?.prenom[0]}</div>
-                    <div><p className="text-[10px] font-black text-gray-400 uppercase leading-none mb-1 tracking-widest">Responsable Séance</p><p className="text-sm font-black text-gray-700 uppercase italic">{item.animateur?.nom} {item.animateur?.prenom}</p></div>
+                  <div className="mb-12"><span className="bg-white px-10 py-4 rounded-full text-lg font-black text-gray-400 border-4 border-gray-100 uppercase tracking-widest leading-none">{new Date(item.date).toLocaleDateString('fr-FR')}</span></div>
+                  <h4 className="font-black text-gray-800 uppercase text-4xl mb-8 leading-tight h-32 line-clamp-2 italic tracking-tighter">{item.theme}</h4>
+                  <p className="text-xl font-black text-red-600 mb-20 tracking-widest uppercase flex items-center gap-6 bg-red-50 p-6 rounded-[30px] w-fit shadow-inner leading-none"><MapPin size={24}/> {item.chantiers?.nom}</p>
+                  <div className="flex items-center gap-8 pt-16 border-t-8 border-gray-200">
+                    <div className="h-24 w-24 bg-red-100 rounded-[35px] flex items-center justify-center font-black text-5xl text-red-600 border-8 border-red-200 shadow-inner uppercase shadow-red-200/50">{item.animateur?.nom[0]}</div>
+                    <div><p className="text-sm font-black text-gray-400 uppercase leading-none mb-3 tracking-[0.2em]">Responsable Altrad</p><p className="text-2xl font-black text-gray-700 uppercase italic leading-none">{item.animateur?.nom}</p></div>
                   </div>
                 </div>
               </div>
@@ -875,46 +923,12 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
           </div>
         )}
       </div>
-
-      {selectedArchive && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-3xl rounded-[70px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[95vh]">
-            <div className="p-12 border-b-8 border-gray-50 flex justify-between items-center bg-gray-50/50">
-              <div><h2 className="text-3xl font-black text-gray-900 uppercase leading-none mb-3 italic tracking-tighter">{selectedArchive.theme}</h2><p className="text-sm font-black text-red-600 uppercase tracking-widest flex items-center gap-2"><Factory size={16}/> {selectedArchive.chantiers?.nom}</p></div>
-              <button onClick={() => setSelectedArchive(null)} className="p-6 bg-white rounded-full hover:text-red-500 shadow-xl transition-all active:rotate-90"><X size={40}/></button>
-            </div>
-            <div className="p-16 overflow-y-auto space-y-16 flex-1 custom-scrollbar">
-              <div className="grid grid-cols-2 gap-10">
-                 <div className="bg-gray-50 p-8 rounded-[40px] border border-gray-100 shadow-inner">
-                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-[0.2em]">Date de Séance Officielle</p>
-                    <p className="font-black text-gray-800 uppercase text-lg italic">{new Date(selectedArchive.date).toLocaleDateString('fr-FR', { dateStyle: 'full' })}</p>
-                 </div>
-                 <div className="bg-gray-50 p-8 rounded-[40px] border border-gray-100 shadow-inner">
-                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-[0.2em]">Animateur Référent Altrad</p>
-                    <p className="font-black text-gray-800 uppercase text-lg italic">{selectedArchive.animateur?.prenom} {selectedArchive.animateur?.nom}</p>
-                 </div>
-              </div>
-              <div className="space-y-6">
-                <p className="text-[11px] font-black uppercase text-gray-400 tracking-[0.3em] flex items-center gap-3"><MessageSquare size={16}/> Compte-rendu & Notes de Séance</p>
-                <div className="bg-orange-50/40 p-12 rounded-[55px] border-2 border-orange-100 italic leading-loose text-gray-700 font-bold text-xl shadow-inner">"{selectedArchive.notes || 'Aucun commentaire spécifique consigné lors de cette session de briefing.'}"</div>
-              </div>
-              <div className="space-y-8">
-                <p className="text-[11px] font-black uppercase text-gray-400 tracking-[0.3em] text-center">Émargement numérique des participants ({selectedArchive.participants?.length || 0})</p>
-                <div className="flex flex-wrap justify-center gap-4">{selectedArchive.participants?.map((p:any) => <span key={p} className="bg-white px-6 py-3 rounded-[20px] text-[11px] font-black uppercase border-2 border-gray-100 shadow-sm flex items-center gap-3 hover:border-emerald-400 transition-colors"><Check size={14} className="text-emerald-500"/> ID: {p.substring(0,8)}</span>)}</div>
-              </div>
-            </div>
-            <div className="p-12 border-t-8 border-gray-50 bg-gray-50/50 flex justify-end gap-6 shrink-0">
-               <button onClick={() => window.print()} className="bg-black text-white px-12 py-6 rounded-[35px] font-black uppercase text-xs flex items-center justify-center gap-4 shadow-2xl hover:scale-105 transition-all"><Printer size={24}/> Imprimer le Rapport Officiel Altrad</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // =================================================================================================
-// 6. MODULES SECONDAIRES RESTAURÉS (VGP / CAUSERIES / GENERATOR)
+// 6. MODULES SECONDAIRES RESTAURÉS (VMT / CAUSERIES / GENERATOR)
 // =================================================================================================
 
 function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
@@ -951,37 +965,34 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
   );
 }
 
-// --- UTILITAIRES UI MASSIFS ---
+function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
+  return <div className="p-80 text-center bg-white rounded-[150px] border-8 border-dashed border-gray-100 text-gray-200 font-black uppercase italic text-4xl tracking-[1em] shadow-inner animate-pulse">AUDITS TERRAIN VMT & Q3SRE</div>;
+}
+
+// --- UTILS UI MASSIFS ---
 
 const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
   <button 
     onClick={() => !disabled && set(id)} 
     disabled={disabled}
-    className={`w-full flex items-center gap-6 px-10 py-8 rounded-[40px] text-[12px] font-black uppercase transition-all 
-      ${active === id ? 'bg-red-50 text-red-600 shadow-xl ring-4 ring-red-500/10 scale-[1.02]' : 'text-gray-400 hover:bg-gray-50 hover:text-black hover:translate-x-2'} 
-      ${disabled ? 'opacity-30 cursor-not-allowed grayscale' : 'active:scale-95'}`}
+    className={`w-full flex items-center gap-8 px-10 py-10 rounded-[50px] text-[13px] font-black uppercase transition-all 
+      ${active === id ? 'bg-red-50 text-red-600 shadow-2xl ring-8 ring-red-500/5 scale-105 translate-x-6' : 'text-gray-400 hover:bg-gray-50 hover:text-black hover:translate-x-4'} 
+      ${disabled ? 'opacity-30 cursor-not-allowed grayscale' : 'active:scale-90'}`}
   >
-    <Icon size={28} /> {label}
-    {!disabled && active === id && <ChevronRight size={24} className="ml-auto opacity-50 animate-pulse"/>}
+    <div className={`p-5 rounded-[25px] ${active === id ? 'bg-red-600 text-white rotate-12 shadow-2xl shadow-red-300' : 'bg-gray-50 text-gray-400 shadow-inner'}`}><Icon size={40} /></div> {label}
   </button>
 );
 
 const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
-  const themes:any = { 
-    red: "bg-red-50 text-red-600 border-red-100 shadow-red-50", 
-    blue: "bg-blue-50 text-blue-600 border-blue-100 shadow-blue-50", 
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-50", 
-    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-indigo-50", 
-    orange: "bg-orange-50 text-orange-600 border-orange-100 shadow-orange-50" 
-  };
+  const themes:any = { red: "bg-red-50 text-red-600 shadow-red-50", blue: "bg-blue-50 text-blue-600 shadow-blue-50", green: "bg-emerald-50 text-emerald-600 shadow-emerald-50", indigo: "bg-indigo-50 text-indigo-600 shadow-indigo-50", orange: "bg-orange-50 text-orange-600 shadow-orange-50" };
   return (
-    <div className={`p-10 rounded-[60px] border flex items-start justify-between bg-white shadow-sm hover:shadow-2xl transition-all cursor-default group ${themes[color].split(' ')[2]}`}>
+    <div className={`p-16 rounded-[80px] border-4 flex items-start justify-between bg-white shadow-lg hover:shadow-2xl transition-all cursor-default group ${themes[color].split(' ')[2]}`}>
       <div>
-        <p className="text-[11px] font-black uppercase opacity-60 tracking-[0.2em] text-gray-500 mb-4 leading-none">{label}</p>
-        <p className="text-6xl font-black text-gray-900 tracking-tighter leading-none group-hover:scale-105 transition-transform origin-left">{val}</p>
-        <p className={`text-[11px] font-black mt-8 uppercase ${themes[color].split(' ')[1]} tracking-widest flex items-center gap-2`}><Clock size={12}/> {sub}</p>
+        <p className="text-sm font-black uppercase opacity-60 tracking-[0.5em] text-gray-500 mb-8 leading-none italic">{label}</p>
+        <p className="text-8xl font-black text-gray-900 tracking-[-0.08em] leading-none group-hover:scale-110 transition-transform origin-left">{val}</p>
+        <p className={`text-sm font-black mt-12 uppercase ${themes[color].split(' ')[1]} tracking-[0.3em] flex items-center gap-6 bg-white/80 px-8 py-3 rounded-full w-fit shadow-sm italic`}><Clock size={20}/> {sub}</p>
       </div>
-      <div className={`p-8 rounded-[35px] shadow-2xl transition-all group-hover:rotate-12 ${themes[color].split(' ').slice(0,2).join(' ')}`}><Icon size={48}/></div>
+      <div className={`p-12 rounded-[50px] shadow-2xl transition-all group-hover:rotate-[25deg] ${themes[color].split(' ').slice(0,2).join(' ')} shadow-inner border-8 border-white`}><Icon size={80}/></div>
     </div>
   )
 };
