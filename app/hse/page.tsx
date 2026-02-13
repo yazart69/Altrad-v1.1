@@ -243,7 +243,7 @@ export default function HSEUltimateModule() {
               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
               {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} users={users} />}
               {view === 'vgp' && <VGPTracker materiel={activeMateriel} chantierId={activeChantierId} onRefresh={fetchGlobalData} />}
-              {view === 'terrain' && <FieldVisits chantier={activeChantier!} />}
+              {view === 'terrain' && <FieldVisits chantier={activeChantier!} equipe={activeEquipe} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
               {view === 'history' && <CauserieArchives chantiers={chantiers} />}
             </div>
@@ -485,23 +485,17 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
 }
 
 // =================================================================================================
-// MODULE 3: GÉNÉRATEUR INTELLIGENT (Moteurs de rendu distincts)
+// MODULE 3: GÉNÉRATEUR INTELLIGENT
 // =================================================================================================
 function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IChantier, equipe: IUser[], materiel: IMateriel[], users: IUser[] }) {
   const [docType, setDocType] = useState<'ppsps'|'modop'|'rex'|'causerie'>('ppsps');
-  
-  // États Formulaires
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
   const [modopSteps, setModopSteps] = useState([{ phase: "Préparation", risque: "Chute de hauteur", prevention: "Harnais double longe" }]);
   const [secours, setSecours] = useState({ sst: [], hopital: "Hôpital de Lyon (Référencé)", pompier: "18" });
 
-  // --- AUTOMATISME: Héritage des données Réelles ---
   useEffect(() => {
-    // 1. Détection des SST réels dans l'équipe affectée au planning
     const sstMembers = equipe.filter(u => u.habilitations?.includes("SST")).map(u => `${u.nom} ${u.prenom}`);
     setSecours(prev => ({ ...prev, sst: sstMembers as any }));
-
-    // 2. Pré-cochage des risques selon les travaux déclarés
     if (chantier) {
         const autoRisks: string[] = [];
         if (chantier.type_travaux?.includes("Peinture")) autoRisks.push("Inhalation solvants", "Projection");
@@ -518,137 +512,156 @@ function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IC
         doc.text(`CLIENT : ${chantier.client}`, 10, 20);
         doc.text(`EFFECTIF RÉEL : ${equipe.length} PERSONNES`, 10, 30);
         doc.save(`${docType}_${chantier.nom}.pdf`);
-    } catch (err) {
-        alert("Erreur génération PDF.");
-    }
+    } catch (err) { alert("Erreur génération PDF."); }
   };
 
   return (
-    <div className="grid grid-cols-12 gap-6 h-full animate-in fade-in slide-in-from-bottom-4">
-      {/* GAUCHE : SÉLECTEUR & ACTIONS */}
+    <div className="grid grid-cols-12 gap-6 h-full animate-in fade-in">
       <div className="col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
         <h3 className="font-black text-gray-700 mb-6 uppercase flex items-center gap-2"><FileText size={20}/> Catalogue Documents</h3>
         <div className="space-y-3">
-          {[
-            {id: 'ppsps', label: 'PPSPS', desc: 'Plan Particulier Sécurité', color: 'border-red-500 bg-red-50 text-red-700'},
-            {id: 'modop', label: 'Mode Opératoire', desc: 'Fiche technique de tâche', color: 'border-blue-500 bg-blue-50 text-blue-700'},
-            {id: 'rex', label: 'REX Chantier', desc: 'Retour expérience', color: 'border-purple-500 bg-purple-50 text-purple-700'},
-            {id: 'causerie', label: 'Fiche Causerie', desc: 'Animation sécurité', color: 'border-orange-500 bg-orange-50 text-orange-700'},
-          ].map((t: any) => (
-            <button 
-              key={t.id} 
-              onClick={() => setDocType(t.id)}
-              className={`w-full text-left p-4 rounded-xl border-l-4 transition-all group ${docType === t.id ? t.color + ' shadow-md' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-            >
-              <div className="font-bold flex justify-between">
-                  {t.label}
-                  {docType === t.id && <CheckCircle2 size={16}/>}
-              </div>
-              <div className="text-[10px] opacity-70 group-hover:opacity-100">{t.desc}</div>
-            </button>
+          {['ppsps', 'modop', 'rex', 'causerie'].map((t: any) => (
+            <button key={t} onClick={() => setDocType(t as any)} className={`w-full text-left p-4 rounded-xl border-l-4 transition-all font-bold uppercase text-xs ${docType === t ? 'border-red-500 bg-red-50 text-red-700' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>{t}</button>
           ))}
         </div>
-        <div className="mt-auto pt-6 border-t border-gray-100 text-center">
-          <button onClick={generatePDF} className="w-full bg-black text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-transform active:scale-95">
-            <Download size={20}/> TÉLÉCHARGER LE DOCUMENT
-          </button>
-        </div>
+        <button onClick={generatePDF} className="mt-auto w-full bg-black text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-transform active:scale-95">
+          <Download size={20}/> TÉLÉCHARGER
+        </button>
       </div>
-
-      {/* DROITE : FORMULAIRE CONTEXTUEL COMPLET */}
-      <div className="col-span-9 bg-white p-8 rounded-2xl shadow-sm border border-gray-100 overflow-y-auto">
-        <h3 className="text-xl font-black text-gray-800 uppercase mb-6 flex items-center gap-2 border-b border-gray-100 pb-4">
-          <Edit className="text-gray-400"/> Éditeur Dynamique : {docType.toUpperCase()}
-        </h3>
-
-        {docType === 'ppsps' && (
-          <div className="space-y-8 animate-in fade-in">
-            <div className="bg-red-50 p-6 rounded-xl border border-red-100 shadow-sm shadow-red-50">
-              <h4 className="font-bold text-red-800 mb-4 flex items-center gap-2"><Siren size={20}/> Organisation des Secours (Données Réelles)</h4>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2 block">Centre de soin local</label>
-                  <input type="text" className="w-full p-3 bg-white border border-red-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500 transition-all" value={secours.hopital} onChange={e => setSecours({...secours, hopital: e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2 block">SST Identifiés au Planning ({secours.sst.length})</label>
-                  <div className="flex flex-wrap gap-2 mt-2 bg-white p-3 rounded-lg border border-red-200 min-h-[42px]">
-                    {(secours.sst as any).map((s:string) => (
-                      <span key={s} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200 flex items-center gap-1">
-                        <CheckCircle2 size={12}/> {s}
-                      </span>
-                    ))}
-                    {(secours.sst as any).length === 0 && <span className="text-red-500 text-xs font-bold italic flex items-center gap-1"><AlertTriangle size={12}/> Aucun sauveteur (SST) détecté !</span>}
-                  </div>
-                </div>
-              </div>
+      <div className="col-span-9 bg-white p-8 rounded-2xl shadow-sm border overflow-y-auto">
+        <h3 className="text-xl font-black uppercase mb-6 border-b pb-4">Éditeur : {docType.toUpperCase()}</h3>
+        <div className="space-y-8 animate-in fade-in">
+            <div className="bg-red-50 p-6 rounded-xl border border-red-100">
+              <h4 className="font-bold text-red-800 mb-4 flex items-center gap-2"><Siren size={20}/> Secours (Connecté au Planning)</h4>
+              <div className="flex flex-wrap gap-2">{(secours.sst as any).map((s:string) => (<span key={s} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">{s} (SST)</span>))}</div>
             </div>
-            
             <div>
-                <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2"><ShieldCheck size={20}/> Inventaire des Risques (Base RISK_DB)</h4>
-                <div className="grid grid-cols-2 gap-3 mt-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
-                {RISK_DATABASE.map(r => (
-                    <label key={r.id} className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${selectedRisks.includes(r.task) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'}`}>
-                    <input type="checkbox" className="mt-1" checked={selectedRisks.includes(r.task)} onChange={(e) => e.target.checked ? setSelectedRisks([...selectedRisks, r.task]) : setSelectedRisks(selectedRisks.filter(x => x !== r.task))} />
-                    <div>
-                        <div className="text-xs font-bold text-gray-800">{r.task}</div>
-                        <div className="text-[10px] text-gray-500 uppercase mt-0.5">{r.category}</div>
-                    </div>
-                    </label>
-                ))}
-                </div>
+                <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2"><ShieldCheck size={20}/> Analyse des Risques</h4>
+                <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto">{RISK_DATABASE.map(r => (<label key={r.id} className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border ${selectedRisks.includes(r.task) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-gray-200'}`}><input type="checkbox" checked={selectedRisks.includes(r.task)} onChange={(e) => e.target.checked ? setSelectedRisks([...selectedRisks, r.task]) : setSelectedRisks(selectedRisks.filter(x => x !== r.task))} /><div className="text-xs font-bold">{r.task}</div></label>))}</div>
             </div>
-          </div>
-        )}
-
-        {docType === 'modop' && (
-          <div className="space-y-6 animate-in fade-in">
-            <h4 className="font-bold text-gray-700 flex items-center gap-2 uppercase tracking-tighter text-sm"><ClipboardList className="text-blue-500"/> Décomposition Technique du Travail</h4>
-            <div className="space-y-4">
-              {modopSteps.map((step, i) => (
-                <div key={i} className="grid grid-cols-12 gap-3 items-center bg-gray-50 p-5 rounded-2xl border border-gray-200 relative group transition-all hover:bg-white hover:shadow-lg">
-                  <div className="col-span-1 font-black text-gray-300 text-xl">{i+1}</div>
-                  <div className="col-span-4">
-                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Désignation de la Phase</label>
-                      <input type="text" className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:border-blue-500" placeholder="Phase" value={step.phase} onChange={e => {const n=[...modopSteps]; n[i].phase=e.target.value; setModopSteps(n)}} />
-                  </div>
-                  <div className="col-span-3">
-                      <label className="text-[9px] font-bold text-red-400 uppercase tracking-widest block mb-1">Danger Associé</label>
-                      <input type="text" className="w-full p-2.5 bg-white border border-red-100 rounded-xl text-sm font-bold text-red-700 outline-none focus:border-red-400" placeholder="Risque" value={step.risque} onChange={e => {const n=[...modopSteps]; n[i].risque=e.target.value; setModopSteps(n)}} />
-                  </div>
-                  <div className="col-span-3">
-                      <label className="text-[9px] font-bold text-green-400 uppercase tracking-widest block mb-1">Moyen de Prévention</label>
-                      <input type="text" className="w-full p-2.5 bg-white border border-green-100 rounded-xl text-sm font-bold text-green-700 outline-none focus:border-green-400" placeholder="Mesure" value={step.prevention} onChange={e => {const n=[...modopSteps]; n[i].prevention=e.target.value; setModopSteps(n)}} />
-                  </div>
-                  <div className="col-span-1 text-center pt-4">
-                      <button onClick={() => {const n=[...modopSteps]; n.splice(i,1); setModopSteps(n)}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={() => setModopSteps([...modopSteps, {phase:"", risque:"", prevention:""}])} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 font-bold uppercase text-xs hover:border-blue-500 hover:text-blue-500 transition-all flex items-center justify-center gap-2">
-                  <Plus size={18}/> Insérer une étape technique supplémentaire
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
 // =================================================================================================
-// MODULE 4: FIELD VISITS (Mobile First & Tactile)
+// MODULE 4: FIELD VISITS (Mobile First - Connecté Supabase + GÉNÉRATEUR PDF D'AUDIT)
 // =================================================================================================
-function FieldVisits({ chantier }: { chantier: IChantier }) {
-  const [visitType, setVisitType] = useState('vmt');
+function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
+  const [visitType, setVisitType] = useState<'vmt' | 'q3sre' | 'ost'>('vmt');
   const [photo, setPhoto] = useState<string | null>(null);
-  const [checklist, setChecklist] = useState<string>(''); 
+  const [pointControle, setPointControle] = useState('');
+  const [domaine, setDomaine] = useState('Sécurité');
+  const [observations, setObservations] = useState('');
+  const [auteurId, setAuteurId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [recentVisits, setRecentVisits] = useState<any[]>([]);
+
+  useEffect(() => { fetchRecentVisits(); }, [chantier.id]);
+
+  async function fetchRecentVisits() {
+    const { data } = await supabase.from('visites_terrain').select('*').eq('chantier_id', chantier.id).order('date', { ascending: false }).limit(5);
+    if (data) setRecentVisits(data);
+  }
+
+  // --- MOTEUR DE GÉNÉRATION PDF D'AUDIT TECHNIQUE ---
+  const downloadAuditPDF = async (visitData: any) => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF();
+      const author = equipe.find(u => u.id === visitData.auteur_id);
+      
+      // Header pro Altrad
+      doc.setFillColor(33, 37, 41);
+      doc.rect(0, 0, 210, 35, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("RAPPORT D'AUDIT TERRAIN HSE", 105, 15, { align: "center" });
+      doc.setFontSize(10);
+      doc.text("ALTRAD SERVICES - Direction Performance HSE", 105, 25, { align: "center" });
+
+      // Bloc Projet
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+      doc.text("1. CONTEXTE PROJET", 15, 50);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Projet : ${chantier.nom}`, 20, 60);
+      doc.text(`Client : ${chantier.client}`, 20, 67);
+      doc.text(`Lieu : ${chantier.adresse}`, 20, 74);
+      doc.text(`Date Audit : ${new Date(visitData.date || Date.now()).toLocaleString()}`, 20, 81);
+
+      // Détails Audit
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("2. DÉTAILS DU CONTRÔLE", 15, 100);
+      doc.setFontSize(10);
+      doc.setFillColor(240, 240, 240);
+      doc.rect(15, 105, 180, 50, 'F');
+      
+      doc.setFont("helvetica", "bold");
+      doc.text(`Type d'inspection : ${visitData.type?.toUpperCase()}`, 20, 115);
+      doc.text(`Domaine audité : ${visitData.domaine}`, 20, 123);
+      doc.text(`Point de contrôle :`, 20, 131);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${visitData.point_controle}`, 20, 139, { maxWidth: 170 });
+
+      // Bloc Observations
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("3. OBSERVATIONS ET ACTIONS", 15, 175);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${visitData.observations || 'Le point de contrôle est jugé conforme. Aucune action corrective immédiate n\'est requise.'}`, 15, 185, { maxWidth: 180 });
+
+      // Auteur et signature num
+      doc.setFont("helvetica", "bold");
+      doc.text(`Auditeur Altrad : ${author ? author.prenom + ' ' + author.nom : 'Responsable Chantier'}`, 15, 230);
+      
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("Généré numériquement via ALTRAD.OS - L'original est archivé sur le serveur HSE.", 105, 285, { align: "center" });
+
+      doc.save(`Audit_${visitData.type}_${chantier.nom.substring(0,5)}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de la génération du rapport PDF.");
+    }
+  };
+
+  const handleSaveVisit = async () => {
+    if (!pointControle || !auteurId) return alert("Veuillez remplir les champs obligatoires.");
+    setIsSaving(true);
+    
+    const visitPayload = {
+        chantier_id: chantier.id,
+        type: visitType,
+        domaine,
+        point_controle: pointControle,
+        observations,
+        auteur_id: auteurId,
+        photo_url: photo 
+    };
+
+    try {
+      const { error } = await supabase.from('visites_terrain').insert([visitPayload]);
+      if (error) throw error;
+      
+      // Téléchargement automatique du PDF à la création
+      await downloadAuditPDF(visitPayload);
+      
+      alert("✅ Visite enregistrée et Rapport PDF généré !");
+      setObservations(''); setPhoto(null); fetchRecentVisits();
+    } catch (e: any) { alert(e.message); } finally { setIsSaving(false); }
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
       <div className="lg:col-span-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        {[{id:'vmt', l:'VMT Manager'}, {id:'q3sre', l:'Audit Q3SRE'}, {id:'ost', l:'Observatoire OST'}].map(t => (
-          <button key={t.id} onClick={()=>setVisitType(t.id)} className={`px-6 py-5 rounded-2xl font-black uppercase text-xs flex-1 transition-all ${visitType===t.id ? 'bg-black text-white shadow-xl scale-105' : 'bg-white border border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+        {[{id:'vmt', l:'VMT Manager'}, {id:'q3sre', l:'Audit Q3SRE'}, {id:'ost', l:'Observatoire OST'}].map((t:any) => (
+          <button key={t.id} onClick={()=>setVisitType(t.id)} className={`px-6 py-5 rounded-2xl font-black uppercase text-xs flex-1 transition-all ${visitType===t.id ? 'bg-black text-white shadow-xl scale-105' : 'bg-white border text-gray-400 hover:bg-gray-50'}`}>
             {t.l}
           </button>
         ))}
@@ -660,19 +673,29 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Domaine Audit</label><select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black"><option>Sécurité</option><option>Qualité</option><option>Environnement</option></select></div>
-          <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Code OTP Projet</label><input type="text" className="w-full p-4 bg-gray-100 border border-gray-200 rounded-2xl text-sm font-bold text-gray-400 outline-none" value={`OTP-${chantier.nom.substring(0,4).toUpperCase()}`} readOnly/></div>
-          
+          <div>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Domaine</label>
+            <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none" value={domaine} onChange={e => setDomaine(e.target.value)}>
+              <option>Sécurité</option><option>Qualité</option><option>Environnement</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Auteur (Équipe présente)</label>
+            <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none" value={auteurId} onChange={e => setAuteurId(e.target.value)}>
+              <option value="">-- Qui audite ? --</option>
+              {equipe.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}
+            </select>
+          </div>
           <div className="md:col-span-2">
-             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Point de contrôle (Référentiel Altrad)</label>
-             <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black" value={checklist} onChange={e => setChecklist(e.target.value)}>
-                <option value="">-- Choisir un item à auditer --</option>
+             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Item de contrôle</label>
+             <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none" value={pointControle} onChange={e => setPointControle(e.target.value)}>
+                <option value="">-- Choisir un point du référentiel --</option>
                 {Q3SRE_REFERENTIAL.points_controle.map(p => <option key={p} value={p}>{p}</option>)}
              </select>
           </div>
 
           <div className="md:col-span-2 mt-4">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Preuve Visuelle (Capture APN)</label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Support Visuel (Photo)</label>
             <div className="border-2 border-dashed border-gray-300 rounded-[30px] h-64 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 transition-all cursor-pointer relative overflow-hidden bg-gray-50 group">
               {photo ? <img src={photo} className="w-full h-full object-cover" alt="prevue" /> : (
                 <>
@@ -687,26 +710,36 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
               }}/>
             </div>
           </div>
+
+          <div className="md:col-span-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Observations détaillées</label>
+            <textarea className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl h-24 font-medium text-sm text-gray-700 outline-none" value={observations} onChange={e => setObservations(e.target.value)} placeholder="Décrire les écarts observés..."></textarea>
+          </div>
         </div>
 
-        <button className="w-full mt-10 bg-emerald-600 text-white font-black py-6 rounded-3xl shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3 active:scale-95">
-          <Save size={24}/> TRANSMETTRE AU RESPONSABLE HSE
+        <button disabled={isSaving} onClick={handleSaveVisit} className="w-full mt-10 bg-emerald-600 text-white font-black py-6 rounded-3xl shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3 active:scale-95">
+          {isSaving ? <Clock className="animate-spin" size={24}/> : <Save size={24}/>}
+          VALIDER & ÉMETTRE LE RAPPORT PDF
         </button>
       </div>
-      
-      {/* Historique Latéral */}
-      <div className="hidden lg:block bg-white p-8 rounded-[40px] shadow-sm border border-gray-200 h-fit">
-          <h3 className="font-bold text-gray-400 uppercase text-[10px] tracking-widest mb-6 border-b pb-4">Archives de la semaine</h3>
+
+      {/* Colonne Archives des rapports récents */}
+      <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-200 h-fit">
+          <h3 className="font-bold text-gray-400 uppercase text-[10px] tracking-widest mb-6 border-b pb-4 italic">Audits déjà archivés</h3>
           <div className="space-y-6">
-              {[1,2,3].map(i => (
-                  <div key={i} className="flex gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-md transition-all cursor-pointer">
-                      <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center font-black text-xs border text-gray-400 shadow-sm">0{i}</div>
-                      <div>
-                          <p className="text-xs font-black text-gray-800 uppercase italic">Audit Q3SRE</p>
-                          <p className="text-[10px] text-gray-400 font-bold mt-0.5">{new Date().toLocaleDateString()}</p>
+              {recentVisits.map(v => (
+                  <div key={v.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border hover:shadow-md transition-all group">
+                      <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center font-black text-xs border text-emerald-500 shadow-sm uppercase">{v.type}</div>
+                      <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-gray-800 uppercase italic truncate">{v.point_controle}</p>
+                          <p className="text-[10px] text-gray-400 font-bold mt-0.5">{new Date(v.date).toLocaleDateString()}</p>
                       </div>
+                      <button onClick={() => downloadAuditPDF(v)} className="p-2 text-gray-300 hover:text-blue-500 transition-colors">
+                        <Printer size={18}/>
+                      </button>
                   </div>
               ))}
+              {recentVisits.length === 0 && <p className="text-center text-gray-300 font-bold uppercase text-[9px] py-10 italic tracking-widest">Aucune donnée trouvée</p>}
           </div>
       </div>
     </div>
@@ -724,147 +757,82 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
   const [isSaving, setIsSaving] = useState(false);
 
   const toggleParticipant = (userId: string) => {
-    setParticipants(prev => 
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
+    setParticipants(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
 
   const handleArchive = async () => {
-    if (!theme || !animateurId) {
-      alert("Veuillez sélectionner un thème et un animateur.");
-      return;
-    }
-
+    if (!theme || !animateurId) return alert("Veuillez sélectionner un thème et un animateur.");
     setIsSaving(true);
     try {
       const { error } = await supabase.from('causeries_archives').insert([{
         chantier_id: chantier.id,
         animateur_id: animateurId,
-        theme: theme,
-        notes: notes,
-        participants: participants,
+        theme,
+        notes,
+        participants,
         date: new Date().toISOString()
       }]);
-
       if (error) throw error;
-      alert("✅ Causerie archivée avec succès !");
-      setTheme("");
-      setNotes("");
-      setParticipants([]);
-    } catch (e: any) {
-      alert("Erreur lors de l'archivage : " + e.message);
-    } finally {
-      setIsSaving(false);
-    }
+      alert("✅ Causerie archivée !");
+      setTheme(""); setNotes(""); setParticipants([]);
+    } catch (e: any) { alert(e.message); } finally { setIsSaving(false); }
   };
 
   return (
     <div className="max-w-5xl mx-auto bg-white p-12 rounded-[50px] shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex justify-between items-start border-b-4 border-gray-50 pb-8 mb-10">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 uppercase flex items-center gap-4">
-              <Megaphone className="text-red-600" size={40}/> Causerie Hebdomadaire
-          </h1>
-          <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">Référentiel Altrad HSE-FORM-042</p>
+          <h1 className="text-3xl font-black text-gray-900 uppercase flex items-center gap-4"><Megaphone className="text-red-600" size={40}/> Causerie Hebdomadaire</h1>
+          <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest tracking-tighter">Référentiel Altrad HSE-FORM-042 (V2.1)</p>
         </div>
         <div className="text-right">
-          <p className="font-black text-gray-900 text-xl italic uppercase">{chantier.nom}</p>
-          <div className="flex items-center justify-end gap-2 text-gray-400 mt-2 font-bold">
-              <Calendar size={18}/>
-              <p className="text-sm">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          </div>
+          <p className="font-black text-gray-900 text-xl italic uppercase tracking-tighter">{chantier.nom}</p>
+          <div className="flex items-center justify-end gap-2 text-gray-400 mt-2 font-bold"><Calendar size={18}/><p className="text-sm">{new Date().toLocaleDateString()}</p></div>
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-10 mb-10">
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Thématique du Jour</label>
-          <select 
-            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner" 
-            value={theme} 
-            onChange={e => setTheme(e.target.value)}
-          >
-             <option value="">-- Sélectionner un thème --</option>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Thème traité</label>
+          <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700" value={theme} onChange={e => setTheme(e.target.value)}>
+             <option value="">-- Sélectionner --</option>
              {CAUSERIE_THEMES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Animateur / Chef de Chantier</label>
-          <select 
-            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700 outline-none focus:border-red-500 transition-all shadow-inner"
-            value={animateurId}
-            onChange={e => setAnimateurId(e.target.value)}
-          >
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Animateur Altrad</label>
+          <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-black text-gray-700" value={animateurId} onChange={e => setAnimateurId(e.target.value)}>
             <option value="">-- Sélectionner l'animateur --</option>
             {equipe.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}
           </select>
         </div>
       </div>
-
       <div className="mb-10">
-        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Notes de séance / Remontées des opérateurs</label>
-        <textarea 
-          className="w-full p-6 bg-orange-50/30 border-2 border-orange-100 rounded-[30px] text-sm font-bold text-gray-700 h-40 outline-none focus:border-orange-300 transition-all placeholder:text-orange-200" 
-          placeholder="Saisir les échanges et les points de vigilance identifiés par l'équipe..."
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-        ></textarea>
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-3">Compte-rendu et points de vigilance</label>
+        <textarea className="w-full p-6 bg-orange-50/30 border-2 border-orange-100 rounded-[30px] text-sm font-bold text-gray-700 h-40" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Saisir les échanges et les remarques des opérateurs..."></textarea>
       </div>
-
       <div>
         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 block flex justify-between items-center">
             <span>Tableau d'Émargement Digital</span>
-            <span className="bg-gray-100 px-3 py-1 rounded-full text-gray-500 font-bold">{equipe.length} personnels convoqués via le planning</span>
+            <span className="bg-gray-100 px-3 py-1 rounded-full text-gray-500 font-bold">{equipe.length} personnels identifiés au planning</span>
         </label>
-        <div className="border-2 border-gray-50 rounded-[35px] overflow-hidden shadow-inner">
+        <div className="border-2 border-gray-50 rounded-[35px] overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-gray-50/50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-100">
-              <tr><th className="p-5">Collaborateur</th><th className="p-5">Habilitation Clef</th><th className="p-5 text-center">Émarger</th></tr>
-            </thead>
+            <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-500 border-b"><tr><th className="p-5">Collaborateur</th><th className="p-5 text-center">Émarger</th></tr></thead>
             <tbody className="text-sm bg-white">
               {equipe.map(u => (
                 <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors group">
-                  <td className="p-5 flex items-center gap-4">
-                    <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-gray-400 group-hover:bg-red-500 group-hover:text-white transition-colors">
-                      {u.nom.substring(0,1)}{u.prenom.substring(0,1)}
-                    </div>
-                    <div>
-                      <div className="font-black text-gray-800 text-base uppercase italic">{u.nom} {u.prenom}</div>
-                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{u.role}</div>
-                    </div>
-                  </td>
-                  <td className="p-5">
-                    <div className="flex flex-wrap gap-1">
-                      {u.habilitations?.slice(0, 2).map(h => <span key={h} className="text-[8px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-black uppercase">{h}</span>)}
-                    </div>
-                  </td>
-                  <td className="p-5 text-center">
-                    <input 
-                      type="checkbox" 
-                      className="w-7 h-7 rounded-xl text-red-600 focus:ring-red-500 border-gray-200 cursor-pointer shadow-sm" 
-                      checked={participants.includes(u.id)}
-                      onChange={() => toggleParticipant(u.id)}
-                    />
-                  </td>
+                  <td className="p-5 flex items-center gap-4"><div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-gray-400 group-hover:bg-red-500 group-hover:text-white transition-colors">{u.nom[0]}{u.prenom[0]}</div><div className="font-black text-gray-800 text-base italic">{u.nom} {u.prenom}</div></td>
+                  <td className="p-5 text-center"><input type="checkbox" className="w-7 h-7 rounded-xl text-red-600 shadow-sm border-gray-200 cursor-pointer" checked={participants.includes(u.id)} onChange={() => toggleParticipant(u.id)} /></td>
                 </tr>
               ))}
-              {equipe.length === 0 && (
-                <tr><td colSpan={3} className="p-20 text-center text-gray-300 font-black uppercase italic">Aucun personnel affecté à ce chantier au planning aujourd'hui.</td></tr>
-              )}
+              {equipe.length === 0 && (<tr><td colSpan={2} className="p-20 text-center text-gray-300 font-black uppercase italic">Aucun personnel au planning.</td></tr>)}
             </tbody>
           </table>
         </div>
       </div>
-      
-      <div className="mt-12 flex justify-between items-center pt-8 border-t-2 border-gray-50">
-        <p className="text-[10px] font-bold text-gray-300 max-w-xs uppercase italic">L'archivage de ce document vaut pour validation des consignes de sécurité journalières.</p>
-        <button 
-          onClick={handleArchive}
-          disabled={isSaving}
-          className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl shadow-red-100 flex items-center gap-3 active:scale-95 disabled:opacity-50"
-        >
-            {isSaving ? <Clock className="animate-spin" size={24}/> : <Save size={24}/>}
-            Finaliser & Archiver
+      <div className="mt-12 flex justify-end pt-8 border-t-2 border-gray-50">
+        <button onClick={handleArchive} disabled={isSaving} className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl shadow-red-100 flex items-center gap-3">
+            {isSaving ? <Clock className="animate-spin" size={24}/> : <Save size={24}/>} Finaliser & Archiver
         </button>
       </div>
     </div>
@@ -879,17 +847,11 @@ function CauserieArchives({ chantiers }: { chantiers: IChantier[] }) {
   const [loading, setLoading] = useState(true);
   const [selectedArchive, setSelectedArchive] = useState<any>(null);
 
-  useEffect(() => {
-    fetchArchives();
-  }, []);
+  useEffect(() => { fetchArchives(); }, []);
 
   async function fetchArchives() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('causeries_archives')
-      .select('*, chantiers(nom), animateur:employes!animateur_id(nom, prenom)')
-      .order('date', { ascending: false });
-    
+    const { data } = await supabase.from('causeries_archives').select('*, chantiers(nom), animateur:employes!animateur_id(nom, prenom)').order('date', { ascending: false });
     if (data) setArchives(data);
     setLoading(false);
   }
@@ -898,90 +860,35 @@ function CauserieArchives({ chantiers }: { chantiers: IChantier[] }) {
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-8">
-          <h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-3">
-            <History className="text-gray-400" /> Historique des Causeries
-          </h3>
-          <button onClick={fetchArchives} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <Clock size={20} className="text-gray-400" />
-          </button>
+          <h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-3"><History className="text-gray-400" /> Historique HSE</h3>
+          <button onClick={fetchArchives} className="p-2 hover:bg-gray-100 rounded-full"><Clock size={20} className="text-gray-400" /></button>
         </div>
-
         {loading ? (
-          <div className="py-20 text-center font-bold text-gray-300 animate-pulse uppercase">Chargement des archives...</div>
+          <div className="py-20 text-center font-bold text-gray-300 animate-pulse uppercase italic">Chargement des données...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {archives.map(item => (
-              <div 
-                key={item.id} 
-                onClick={() => setSelectedArchive(item)}
-                className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:border-red-200 hover:shadow-lg transition-all cursor-pointer group"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black text-gray-400 border border-gray-100">
-                    {new Date(item.date).toLocaleDateString()}
-                  </span>
-                  <ArrowRight size={16} className="text-gray-200 group-hover:text-red-500 transition-colors" />
-                </div>
-                <h4 className="font-black text-gray-800 uppercase mb-1">{item.theme}</h4>
+              <div key={item.id} onClick={() => setSelectedArchive(item)} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:border-red-200 hover:shadow-lg transition-all cursor-pointer group">
+                <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black text-gray-400 border">{new Date(item.date).toLocaleDateString()}</span>
+                <h4 className="font-black text-gray-800 uppercase mb-1 mt-4">{item.theme}</h4>
                 <p className="text-xs font-bold text-red-600 mb-4 tracking-tighter">{item.chantiers?.nom}</p>
-                <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
-                  <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center font-black text-[10px] text-gray-500">
-                    {item.animateur?.nom[0]}{item.animateur?.prenom[0]}
-                  </div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Animé par {item.animateur?.nom}</p>
-                </div>
+                <div className="flex items-center gap-2 pt-4 border-t border-gray-200"><div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center font-black text-[10px] text-gray-500">{item.animateur?.nom[0]}{item.animateur?.prenom[0]}</div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Animé par {item.animateur?.nom}</p></div>
               </div>
             ))}
-            {archives.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-300 font-bold uppercase italic">Aucune causerie archivée pour le moment.</div>
-            )}
           </div>
         )}
       </div>
 
-      {/* MODAL DE DÉTAILS */}
       {selectedArchive && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md">
-          <div className="bg-white w-full max-w-2xl rounded-[50px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+          <div className="bg-white w-full max-w-2xl rounded-[50px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
             <div className="p-8 border-b-4 border-gray-50 flex justify-between items-center bg-gray-50/50">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 uppercase leading-none">{selectedArchive.theme}</h2>
-                <p className="text-xs font-bold text-red-600 uppercase mt-2">{selectedArchive.chantiers?.nom}</p>
-              </div>
-              <button onClick={() => setSelectedArchive(null)} className="p-3 bg-white rounded-full shadow-sm hover:text-red-500 transition-colors"><X size={24}/></button>
+              <div><h2 className="text-2xl font-black text-gray-900 uppercase leading-none">{selectedArchive.theme}</h2><p className="text-xs font-bold text-red-600 uppercase mt-2 italic tracking-tighter">{selectedArchive.chantiers?.nom}</p></div>
+              <button onClick={() => setSelectedArchive(null)} className="p-3 bg-white rounded-full hover:text-red-500 transition-colors shadow-sm"><X size={24}/></button>
             </div>
             <div className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-2xl">
-                   <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Date du rapport</p>
-                   <p className="font-bold text-gray-800">{new Date(selectedArchive.date).toLocaleDateString('fr-FR', { dateStyle: 'full' })}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-2xl">
-                   <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Animateur</p>
-                   <p className="font-bold text-gray-800">{selectedArchive.animateur?.prenom} {selectedArchive.animateur?.nom}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest flex items-center gap-2"><Edit size={12}/> Notes de séance</p>
-                <div className="bg-orange-50/30 p-6 rounded-3xl border border-orange-100 text-sm font-medium text-gray-700 leading-relaxed italic">
-                  "{selectedArchive.notes || 'Aucune note saisie pour cette session.'}"
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">Émargement ({selectedArchive.participants?.length} présents)</p>
-                <div className="bg-gray-50 rounded-2xl overflow-hidden">
-                  <div className="p-4 flex flex-wrap gap-2">
-                    {selectedArchive.participants?.map((pId: string) => (
-                      <span key={pId} className="bg-white px-3 py-1.5 rounded-xl border border-gray-200 text-[10px] font-black uppercase text-gray-600 flex items-center gap-1">
-                        <CheckCircle2 size={12} className="text-emerald-500" /> ID: {pId.substring(0,8)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-50 bg-gray-50/50 flex gap-4">
-              <button onClick={() => window.print()} className="flex-1 bg-black text-white py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors shadow-lg"><Printer size={18}/> Imprimer le rapport</button>
+              <div className="grid grid-cols-2 gap-4"><div className="bg-gray-50 p-4 rounded-2xl"><p className="text-[10px] font-black text-gray-400 uppercase mb-1">Date Séance</p><p className="font-bold text-gray-800">{new Date(selectedArchive.date).toLocaleDateString('fr-FR', { dateStyle: 'full' })}</p></div><div className="bg-gray-50 p-4 rounded-2xl"><p className="text-[10px] font-black text-gray-400 uppercase mb-1">Animateur</p><p className="font-bold text-gray-800">{selectedArchive.animateur?.prenom} {selectedArchive.animateur?.nom}</p></div></div>
+              <div><p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">Notes consignées</p><div className="bg-orange-50/30 p-6 rounded-3xl border border-orange-100 text-sm font-medium text-gray-700 italic leading-relaxed">"{selectedArchive.notes || 'Aucune note spécifique saisie.'}"</div></div>
             </div>
           </div>
         </div>
@@ -1006,18 +913,12 @@ const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
 );
 
 const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
-  const themes:any = { 
-    red: "bg-red-50 text-red-600 border-red-100 shadow-red-50", 
-    blue: "bg-blue-50 text-blue-600 border-blue-100 shadow-blue-50", 
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-50", 
-    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-indigo-50",
-    orange: "bg-orange-50 text-orange-600 border-orange-100 shadow-orange-50" 
-  };
+  const themes:any = { red: "bg-red-50 text-red-600 border-red-100", blue: "bg-blue-50 text-blue-600 border-blue-100", green: "bg-emerald-50 text-emerald-600 border-emerald-100", indigo: "bg-indigo-50 text-indigo-600 border-indigo-100", orange: "bg-orange-50 text-orange-600 border-orange-100" };
   return (
     <div className={`p-6 rounded-[30px] border flex items-start justify-between shadow-sm hover:shadow-xl transition-all cursor-default bg-white ${themes[color].split(' ')[2]}`}>
       <div>
         <p className="text-[10px] font-black uppercase opacity-60 tracking-widest text-gray-500">{label}</p>
-        <p className="text-4xl font-black mt-2 text-gray-900 tracking-tighter">{val}</p>
+        <p className="text-4xl font-black mt-2 text-gray-900 tracking-tighter leading-none">{val}</p>
         <p className={`text-[10px] font-black mt-2 uppercase ${themes[color].split(' ')[1]}`}>{sub}</p>
       </div>
       <div className={`p-4 rounded-2xl shadow-sm ${themes[color].split(' ').slice(0,2).join(' ')}`}><Icon size={28}/></div>
