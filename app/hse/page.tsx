@@ -5,11 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { 
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, 
   ShieldCheck, AlertTriangle, CheckCircle2, XCircle, Clock, 
-  MapPin, Phone, Mail, User, Calendar, Printer, Save, 
+  MapPin, Phone, Mail, User, Users, Calendar, Printer, Save, 
   Plus, Trash2, Search, ArrowRight, Download, Eye,
   AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
   ClipboardList, Stethoscope, Factory, Truck, Edit, ClipboardCheck, History,
-  PenTool, Thermometer, Droplets, Ruler, MousePointer2
+  PenTool, Thermometer, Droplets, Ruler, MousePointer2, Circle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
@@ -242,7 +242,7 @@ export default function HSEUltimateModule() {
             // ROUTEUR DE VUES
             <div className="max-w-7xl mx-auto pb-20">
               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
-              {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} user={users} />}
+              {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} users={users} />}
               {view === 'vgp' && <VGPTracker materiel={activeMateriel} chantierId={activeChantierId} onRefresh={fetchGlobalData} />}
               {view === 'terrain' && <FieldVisits chantier={activeChantier!} equipe={activeEquipe} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
@@ -260,7 +260,6 @@ export default function HSEUltimateModule() {
 // MODULE 1: DASHBOARD (Indicateurs Clés & KPI)
 // =================================================================================================
 function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], materiel: IMateriel[] }) {
-  // Calculs KPI réels
   const vgpPerimees = materiel.filter(m => {
     const freq = VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12;
     const lastDate = new Date(m.derniere_vgp);
@@ -276,7 +275,6 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard label="Taux de Fréquence (TF)" val="2.1" sub="-0.5 vs N-1" icon={AlertOctagon} color="blue" />
         <StatCard label="Chantiers Actifs" val={chantiers.length} sub="Projets en base" icon={HardHat} color="indigo" />
@@ -284,7 +282,6 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
         <StatCard label="Causeries Réalisées" val="12" sub="Objectif Mensuel: 15" icon={Megaphone} color="orange" />
       </div>
       
-      {/* Graphiques */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
           <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2"><ArrowRight size={16} className="text-red-500"/> Évolution Taux de Fréquence (Année 2026)</h3>
@@ -311,7 +308,6 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
                 <Legend verticalAlign="bottom" height={36}/>
               </PieChart>
             </ResponsiveContainer>
-            {/* Score central */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
                <span className="text-4xl font-black text-gray-800">{materiel.length > 0 ? (((materiel.length - vgpPerimees)/materiel.length) * 100).toFixed(0) : 100}%</span>
                <span className="text-[10px] uppercase font-bold text-gray-400">Taux de Conformité</span>
@@ -324,7 +320,7 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
 }
 
 // =================================================================================================
-// MODULE 2: SUIVI MATÉRIEL & VGP (Calcul Automatique + Ajout Massif)
+// MODULE 2: SUIVI MATÉRIEL & VGP (Gestion Complète)
 // =================================================================================================
 function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[], chantierId: string, onRefresh: () => void }) {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -485,7 +481,7 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
 }
 
 // =================================================================================================
-// MODULE 3: GÉNÉRATEUR INTELLIGENT (Moteurs de rendu complets)
+// MODULE 3: GÉNÉRATEUR INTELLIGENT (Moteurs complets)
 // =================================================================================================
 function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IChantier, equipe: IUser[], materiel: IMateriel[], users: IUser[] }) {
   const [docType, setDocType] = useState<'ppsps'|'modop'|'rex'|'causerie'>('ppsps');
@@ -556,7 +552,7 @@ function DocumentGenerator({ chantier, equipe, materiel, users }: { chantier: IC
 }
 
 // =================================================================================================
-// MODULE 4: FIELD VISITS (Mobile First - Connecté Supabase + GÉNÉRATEUR PDF D'AUDIT)
+// MODULE 4: FIELD VISITS (Audit + Générateur PDF Altrad)
 // =================================================================================================
 function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
   const [visitType, setVisitType] = useState<'vmt' | 'q3sre' | 'ost'>('vmt');
@@ -575,7 +571,6 @@ function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
     if (data) setRecentVisits(data);
   }
 
-  // --- MOTEUR DE GÉNÉRATION PDF D'AUDIT TECHNIQUE ---
   const downloadAuditPDF = async (visitData: any) => {
     try {
       const { jsPDF } = await import("jspdf");
@@ -591,7 +586,6 @@ function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
       doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text("2. DÉTAILS DU CONTRÔLE", 15, 100);
       doc.setFontSize(10); doc.setFillColor(240, 240, 240); doc.rect(15, 105, 180, 50, 'F');
       doc.text(`Type d'inspection : ${visitData.type?.toUpperCase()}`, 20, 115);
-      doc.text(`Domaine audité : ${visitData.domaine}`, 20, 123);
       doc.text(`Point de contrôle :`, 20, 131);
       doc.setFont("helvetica", "normal"); doc.text(`${visitData.point_controle}`, 20, 139, { maxWidth: 170 });
       doc.setFont("helvetica", "bold"); doc.text("3. OBSERVATIONS ET ACTIONS", 15, 175);
@@ -649,7 +643,6 @@ function FieldVisits({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
                       <button onClick={() => downloadAuditPDF(v)} className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Printer size={18}/></button>
                   </div>
               ))}
-              {recentVisits.length === 0 && <p className="text-center text-gray-300 font-bold uppercase text-[9px] py-10 italic">Aucun audit archivé</p>}
           </div>
       </div>
     </div>
@@ -665,7 +658,6 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
   const [teamStats, setTeamStats] = useState({ apt: true, absents: false, heure: true });
   const [checks, setChecks] = useState<any>({});
   const [epi, setEpi] = useState<any>({});
-  const [observations, setObservations] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const sigCanvas = useRef<any>(null);
 
@@ -704,12 +696,11 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
         aptitude_equipe: teamStats.apt,
         briefing_check: checks,
         epi_selection: epi,
-        observations: observations,
         date: new Date().toISOString()
       }]);
       if (error) throw error;
       alert("✅ Fiche Prejob archivée !");
-      setStep(1); setChecks({}); setEpi({}); setObservations("");
+      setStep(1); setChecks({}); setEpi({});
     } catch (e: any) { alert(e.message); } finally { setIsSaving(false); }
   };
 
@@ -724,7 +715,6 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
       </div>
 
       <div className="p-12 space-y-12">
-        {/* STEP 1: INFOS & TEAM */}
         {step === 1 && (
           <div className="space-y-10 animate-in slide-in-from-bottom-4">
             <div className="grid grid-cols-2 gap-8">
@@ -750,11 +740,10 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
                   </div>
                </div>
             </div>
-            <button onClick={()=>setStep(2)} className="w-full bg-black text-white py-6 rounded-3xl font-black uppercase shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 active:scale-95">Passer au Briefing Terrain <ChevronRight/></button>
+            <button onClick={()=>setStep(2)} className="w-full bg-black text-white py-6 rounded-3xl font-black uppercase shadow-xl active:scale-95 transition-all">Suivant : Checklist Briefing</button>
           </div>
         )}
 
-        {/* STEP 2: CHECKLIST BRIEFING */}
         {step === 2 && (
           <div className="space-y-8 animate-in slide-in-from-right-4">
              <div className="flex justify-between items-end border-b-4 border-orange-100 pb-4">
@@ -770,13 +759,12 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
                 ))}
              </div>
              <div className="flex gap-4 pt-6">
-               <button onClick={()=>setStep(1)} className="flex-1 bg-gray-100 text-gray-400 py-6 rounded-3xl font-black uppercase transition-all hover:bg-gray-200">Retour Infos</button>
-               <button onClick={()=>setStep(3)} className="flex-1 bg-black text-white py-6 rounded-3xl font-black uppercase shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3">Suivant : EPI <ChevronRight/></button>
+               <button onClick={()=>setStep(1)} className="flex-1 bg-gray-100 text-gray-400 py-6 rounded-3xl font-black uppercase transition-all hover:bg-gray-200">Retour</button>
+               <button onClick={()=>setStep(3)} className="flex-1 bg-black text-white py-6 rounded-3xl font-black uppercase shadow-xl hover:scale-[1.02] transition-all">Suivant : EPI & Signature</button>
              </div>
           </div>
         )}
 
-        {/* STEP 3: EPI & SIGNATURE */}
         {step === 3 && (
           <div className="space-y-10 animate-in slide-in-from-right-4">
             <h3 className="text-2xl font-black uppercase text-gray-800 border-b-4 border-blue-100 pb-4">ÉQUIPEMENTS DE PROTECTION (EPI)</h3>
@@ -793,18 +781,18 @@ function PrejobBriefingModule({ chantier, equipe, animateurId }: { chantier: ICh
                <PenTool className="absolute -right-5 -bottom-5 text-yellow-100 size-64" />
                <h4 className="font-black uppercase text-yellow-900 mb-4 flex items-center gap-2 relative z-10"><PenTool size={20}/> ÉMARGEMENT TACTILE</h4>
                <p className="text-[11px] font-bold text-yellow-800 mb-8 border-l-4 border-yellow-400 pl-4 relative z-10 leading-relaxed italic">
-                 Engagement MAS (Minute d’Arrêt Sécurité) : "Chaque membre de l'équipe s'engage à respecter les consignes communiquées lors du pré-job et à réaliser la Minute d’Arrêt Sécurité avant de commencer toute activité." 
+                 Engagement MAS (Minute d’Arrêt Sécurité) : "Je respecte les consignes et m'engage à faire remonter toute anomalie." 
                </p>
                <div className="bg-white rounded-3xl h-48 border-2 border-dashed border-yellow-300 relative overflow-hidden shadow-sm group relative z-10">
                   <SignatureCanvas ref={sigCanvas} penColor='black' canvasProps={{width: 800, height: 200, className: 'sigCanvas'}} />
                   <div className="absolute bottom-4 right-4 flex gap-2">
-                    <button onClick={()=>sigCanvas.current.clear()} className="bg-gray-100 p-2 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Effacer"><Trash2 size={16}/></button>
+                    <button onClick={()=>sigCanvas.current.clear()} className="p-2 bg-gray-100 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Effacer"><Trash2 size={16}/></button>
                   </div>
                </div>
             </div>
 
             <div className="flex gap-4">
-               <button onClick={()=>setStep(2)} className="flex-1 bg-gray-100 text-gray-400 py-6 rounded-3xl font-black uppercase transition-all hover:bg-gray-200">Retour Briefing</button>
+               <button onClick={()=>setStep(2)} className="flex-1 bg-gray-100 text-gray-400 py-6 rounded-3xl font-black uppercase transition-all hover:bg-gray-200">Retour</button>
                <button onClick={handleArchivePrejob} disabled={isSaving} className="flex-[2] bg-[#e21118] text-white py-8 rounded-[35px] font-black uppercase shadow-2xl flex items-center justify-center gap-4 text-xl hover:bg-black transition-all active:scale-95 disabled:opacity-50">
                   {isSaving ? <Clock className="animate-spin" size={24}/> : <Save size={32} />} FINALISER & ARCHIVER LE PREJOB
                </button>
@@ -837,11 +825,9 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
     if (!confirm(`⚠️ SUPPRESSION DÉFINITIVE : Êtes-vous sûr de vouloir supprimer l'archive "${theme}" ?`)) return;
     const { error } = await supabase.from('causeries_archives').delete().eq('id', id);
     if (!error) {
-      alert("✅ Archive supprimée avec succès de la base de données.");
+      alert("✅ Archive supprimée avec succès.");
       fetchArchives();
       onRefresh();
-    } else {
-      alert("Erreur lors de la suppression : " + error.message);
     }
   };
 
@@ -857,7 +843,6 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {archives.map(item => (
               <div key={item.id} className="bg-gray-50 p-8 rounded-[45px] border border-gray-100 hover:border-red-200 hover:shadow-2xl transition-all cursor-pointer group relative shadow-sm">
-                {/* Bouton de suppression demandé */}
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.theme); }}
                   className="absolute top-6 right-6 p-3 bg-white rounded-full text-gray-300 hover:text-red-500 shadow-sm opacity-0 group-hover:opacity-100 transition-all active:scale-90 hover:shadow-md"
@@ -875,9 +860,6 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
                 </div>
               </div>
             ))}
-            {archives.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-400 font-black uppercase italic italic">Aucune archive archivée.</div>
-            )}
           </div>
         )}
       </div>
@@ -901,15 +883,12 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
                  </div>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest flex items-center gap-2"><MessageSquare size={12}/> Notes consignées</p>
-                <div className="bg-orange-50/40 p-8 rounded-[40px] border border-orange-100 italic leading-relaxed text-gray-700 font-medium">"{selectedArchive.notes || 'Aucun commentaire spécifique consigné lors de cette séance.'}"</div>
-              </div>
-              <div><p className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest">Émargement numérique ({selectedArchive.participants?.length || 0} participants)</p>
-                <div className="flex flex-wrap gap-2">{selectedArchive.participants?.map((p:any) => <span key={p} className="bg-white px-4 py-2 rounded-2xl text-[9px] font-black uppercase border border-gray-100 shadow-sm flex items-center gap-2"><Check size={10} className="text-emerald-500"/> ID: {p.substring(0,8)}</span>)}</div>
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest flex items-center gap-2"><Edit size={12}/> Notes consignées</p>
+                <div className="bg-orange-50/40 p-8 rounded-[40px] border border-orange-100 italic leading-relaxed text-gray-700 font-medium">"{selectedArchive.notes || 'Aucune note spécifique saisie.'}"</div>
               </div>
             </div>
             <div className="p-8 border-t bg-gray-50 flex justify-end gap-4 shrink-0">
-               <button onClick={() => window.print()} className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all"><Printer size={18}/> Imprimer Rapport</button>
+               <button onClick={() => window.print()} className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all"><Printer size={18}/> Imprimer Rapport</button>
             </div>
           </div>
         </div>
@@ -919,7 +898,7 @@ function CauserieArchives({ chantiers, onRefresh }: { chantiers: IChantier[], on
 }
 
 // =================================================================================================
-// 6. MODULES SECONDAIRES & UTILS (Restaurés en version détaillée)
+// 6. MODULES SECONDAIRES RESTAURÉS (VGP / CAUSERIES / GENERATOR)
 // =================================================================================================
 
 function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[] }) {
@@ -948,7 +927,7 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
       <div className="grid grid-cols-2 gap-10 mb-10"><div><label className="text-[10px] font-black text-gray-400 uppercase block mb-3">Thématique du Jour</label><select className="w-full p-4 bg-gray-50 border-2 rounded-2xl font-black" value={theme} onChange={e => setTheme(e.target.value)}><option value="">-- Sélectionner --</option>{CAUSERIE_THEMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div><div><label className="text-[10px] font-black text-gray-400 uppercase block mb-3">Animateur</label><select className="w-full p-4 bg-gray-50 border-2 rounded-2xl font-black" value={animateurId} onChange={e => setAnimateurId(e.target.value)}><option value="">-- Sélectionner --</option>{equipe.map(u => <option key={u.id} value={u.id}>{u.nom} {u.prenom}</option>)}</select></div></div>
       <div className="mb-10"><label className="text-[10px] font-black text-gray-400 uppercase block mb-3">Notes & Remontées terrain</label><textarea className="w-full p-6 bg-orange-50/30 border-2 rounded-[30px] text-sm font-bold h-40" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Saisir les échanges..."></textarea></div>
       <div><label className="text-[10px] font-black text-gray-400 uppercase mb-6 block flex justify-between"><span>Émargement Digital</span><span className="bg-gray-100 px-3 py-1 rounded-full text-gray-500 font-bold">{equipe.length} personnels</span></label><div className="border-2 rounded-[35px] overflow-hidden shadow-inner"><table className="w-full text-left"><thead className="bg-gray-50 text-[10px] font-black uppercase border-b"><tr><th className="p-5">Collaborateur</th><th className="p-5 text-center">Émarger</th></tr></thead><tbody className="bg-white">{equipe.map(u => (<tr key={u.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors group"><td className="p-5 flex items-center gap-4"><div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center font-black">{u.nom[0]}{u.prenom[0]}</div><div className="font-black text-gray-800 text-base italic uppercase">{u.nom} {u.prenom}</div></td><td className="p-5 text-center"><input type="checkbox" className="w-7 h-7 rounded-xl text-red-600 shadow-sm border-gray-200 cursor-pointer" checked={participants.includes(u.id)} onChange={() => toggleParticipant(u.id)} /></td></tr>))}</tbody></table></div></div>
-      <div className="mt-12 flex justify-end pt-8 border-t-2"><button onClick={handleArchive} disabled={isSaving} className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl flex items-center gap-3">{isSaving ? <Clock className="animate-spin" /> : <Save />} Finaliser & Archiver la Causerie</button></div>
+      <div className="mt-12 flex justify-end pt-8 border-t-2 border-gray-50"><button onClick={handleArchive} disabled={isSaving} className="bg-red-600 text-white px-12 py-5 rounded-2xl font-black uppercase hover:bg-black transition-all shadow-xl flex items-center gap-3">{isSaving ? <Clock className="animate-spin" /> : <Save size={24}/>} Finaliser & Archiver la Causerie</button></div>
     </div>
   );
 }
@@ -968,9 +947,9 @@ const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
 
 const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
   const themes:any = { 
-    red: "bg-red-50 text-red-600 border-red-100 shadow-red-50", blue: "bg-blue-50 text-blue-600 border-blue-100 shadow-blue-50", 
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-50", indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-indigo-50", 
-    orange: "bg-orange-50 text-orange-600 border-orange-100 shadow-orange-50" 
+    red: "bg-red-50 text-red-600 border-red-100", blue: "bg-blue-50 text-blue-600 border-blue-100", 
+    green: "bg-emerald-50 text-emerald-600 border-emerald-100", indigo: "bg-indigo-50 text-indigo-600 border-indigo-100", 
+    orange: "bg-orange-50 text-orange-600 border-orange-100" 
   };
   return (
     <div className={`p-8 rounded-[45px] border flex items-start justify-between bg-white shadow-sm hover:shadow-xl transition-all cursor-default ${themes[color].split(' ')[2]}`}>
