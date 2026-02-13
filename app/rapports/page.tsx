@@ -134,22 +134,27 @@ export default function ConstructionMeetingModule() {
     setNewTopicTitle('');
   };
 
-  const addTaskToTopic = (topicId: string, taskDesc: string, assigneeId: string) => {
+ const addTaskToTopic = (topicId: string, taskDesc: string, assigneeId: string) => {
     if (!taskDesc) return;
+    
+    // Correction : On définit explicitement le type Task ici pour éviter l'erreur de "string"
+    const newTask: Task = {
+      id: Math.random().toString(36).substr(2, 9),
+      description: taskDesc,
+      assigneeId,
+      dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0], // J+7
+      priority: 'medium', // TypeScript accepte maintenant ceci car newTask est typé Task
+      isSync: false
+    };
+
     const updatedTopics = topics.map(t => {
       if (t.id !== topicId) return t;
       return {
         ...t,
-        tasks: [...t.tasks, {
-          id: Math.random().toString(36).substr(2, 9),
-          description: taskDesc,
-          assigneeId,
-          dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0], // J+7
-          priority: 'medium',
-          isSync: false
-        }]
+        tasks: [...t.tasks, newTask]
       };
     });
+    
     setTopics(updatedTopics);
   };
 
