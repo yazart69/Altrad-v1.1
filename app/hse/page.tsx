@@ -8,7 +8,7 @@ import {
   MapPin, Phone, Mail, User, Calendar, Printer, Save, 
   Plus, Trash2, Search, ArrowRight, Download, Eye,
   AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
-  ClipboardList, Stethoscope, Factory, Truck, Edit, ClipboardCheck
+  ClipboardList, Stethoscope, Factory, Truck, Edit, ClipboardCheck, History
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
@@ -82,7 +82,7 @@ interface IVisite {
 
 export default function HSEUltimateModule() {
   // --- STATE GLOBAL ---
-  const [view, setView] = useState<'dashboard'|'generator'|'vgp'|'terrain'|'causerie'>('dashboard');
+  const [view, setView] = useState<'dashboard'|'generator'|'vgp'|'terrain'|'causerie'|'history'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [activeChantierId, setActiveChantierId] = useState<string>("");
 
@@ -186,6 +186,7 @@ export default function HSEUltimateModule() {
           <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Terrain & Opérations</p></div>
           <NavBtn id="terrain" icon={Camera} label="Visites (VMT / Q3SRE)" active={view} set={setView} disabled={!activeChantierId} />
           <NavBtn id="causerie" icon={Megaphone} label="Causeries & Accueil" active={view} set={setView} disabled={!activeChantierId} />
+          <NavBtn id="history" icon={History} label="Archives Causeries" active={view} set={setView} />
         </nav>
 
         <div className="p-4 border-t border-gray-100 text-center">
@@ -205,6 +206,7 @@ export default function HSEUltimateModule() {
               {view === 'vgp' && <Wrench className="text-orange-500"/>}
               {view === 'terrain' && <Camera className="text-emerald-500"/>}
               {view === 'causerie' && <Megaphone className="text-purple-500"/>}
+              {view === 'history' && <History className="text-gray-400"/>}
               {view === 'dashboard' ? 'Tableau de Bord HSE' : view.replace('_', ' ')}
             </h2>
             <p className="text-xs text-gray-400 font-medium mt-1">Pilotage de la performance sécurité</p>
@@ -229,7 +231,7 @@ export default function HSEUltimateModule() {
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
           
           {/* EMPTY STATE (Si aucun chantier sélectionné) */}
-          {!activeChantierId && view !== 'dashboard' ? (
+          {!activeChantierId && view !== 'dashboard' && view !== 'history' ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center opacity-40 select-none pointer-events-none text-center p-10">
               <HardHat size={80} className="mb-6 text-gray-300 mx-auto"/>
               <h3 className="text-2xl font-black text-gray-400 mb-2 uppercase tracking-tighter">Contexte Projet Indisponible</h3>
@@ -243,6 +245,7 @@ export default function HSEUltimateModule() {
               {view === 'vgp' && <VGPTracker materiel={activeMateriel} />}
               {view === 'terrain' && <FieldVisits chantier={activeChantier!} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
+              {view === 'history' && <CauserieArchives chantiers={chantiers} />}
             </div>
           )}
         </div>
@@ -596,7 +599,7 @@ function FieldVisits({ chantier }: { chantier: IChantier }) {
           <div className="md:col-span-2">
              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Point de contrôle (Référentiel Altrad)</label>
              <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black" value={checklist} onChange={e => setChecklist(e.target.value)}>
-                <option value="">-- Choisir un point de contrôle --</option>
+                <option value="">-- Choisir un item à auditer --</option>
                 {Q3SRE_REFERENTIAL.points_controle.map(p => <option key={p} value={p}>{p}</option>)}
              </select>
           </div>
@@ -678,7 +681,6 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
 
       if (error) throw error;
       alert("✅ Causerie archivée avec succès !");
-      // Reset form
       setTheme("");
       setNotes("");
       setParticipants([]);
@@ -798,6 +800,125 @@ function SafetyTalks({ chantier, equipe }: { chantier: IChantier, equipe: IUser[
             Finaliser & Archiver
         </button>
       </div>
+    </div>
+  );
+}
+
+// =================================================================================================
+// MODULE 6: ARCHIVES CAUSERIES (Consultation & Historique)
+// =================================================================================================
+function CauserieArchives({ chantiers }: { chantiers: IChantier[] }) {
+  const [archives, setArchives] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedArchive, setSelectedArchive] = useState<any>(null);
+
+  useEffect(() => {
+    fetchArchives();
+  }, []);
+
+  async function fetchArchives() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('causeries_archives')
+      .select('*, chantiers(nom), animateur:employes!animateur_id(nom, prenom)')
+      .order('date', { ascending: false });
+    
+    if (data) setArchives(data);
+    setLoading(false);
+  }
+
+  return (
+    <div className="space-y-8 animate-in fade-in">
+      <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-3">
+            <History className="text-gray-400" /> Historique des Causeries
+          </h3>
+          <button onClick={fetchArchives} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <Clock size={20} className="text-gray-400" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="py-20 text-center font-bold text-gray-300 animate-pulse uppercase">Chargement des archives...</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {archives.map(item => (
+              <div 
+                key={item.id} 
+                onClick={() => setSelectedArchive(item)}
+                className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:border-red-200 hover:shadow-lg transition-all cursor-pointer group"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black text-gray-400 border border-gray-100">
+                    {new Date(item.date).toLocaleDateString()}
+                  </span>
+                  <ArrowRight size={16} className="text-gray-200 group-hover:text-red-500 transition-colors" />
+                </div>
+                <h4 className="font-black text-gray-800 uppercase mb-1">{item.theme}</h4>
+                <p className="text-xs font-bold text-red-600 mb-4 tracking-tighter">{item.chantiers?.nom}</p>
+                <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
+                  <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center font-black text-[10px] text-gray-500">
+                    {item.animateur?.nom[0]}{item.animateur?.prenom[0]}
+                  </div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Animé par {item.animateur?.nom}</p>
+                </div>
+              </div>
+            ))}
+            {archives.length === 0 && (
+              <div className="col-span-full py-20 text-center text-gray-300 font-bold uppercase italic">Aucune causerie archivée pour le moment.</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL DE DÉTAILS */}
+      {selectedArchive && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md">
+          <div className="bg-white w-full max-w-2xl rounded-[50px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <div className="p-8 border-b-4 border-gray-50 flex justify-between items-center bg-gray-50/50">
+              <div>
+                <h2 className="text-2xl font-black text-gray-900 uppercase leading-none">{selectedArchive.theme}</h2>
+                <p className="text-xs font-bold text-red-600 uppercase mt-2">{selectedArchive.chantiers?.nom}</p>
+              </div>
+              <button onClick={() => setSelectedArchive(null)} className="p-3 bg-white rounded-full shadow-sm hover:text-red-500 transition-colors"><X size={24}/></button>
+            </div>
+            <div className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 p-4 rounded-2xl">
+                   <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Date du rapport</p>
+                   <p className="font-bold text-gray-800">{new Date(selectedArchive.date).toLocaleDateString('fr-FR', { dateStyle: 'full' })}</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-2xl">
+                   <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Animateur</p>
+                   <p className="font-bold text-gray-800">{selectedArchive.animateur?.prenom} {selectedArchive.animateur?.nom}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest flex items-center gap-2"><Edit size={12}/> Notes de séance</p>
+                <div className="bg-orange-50/30 p-6 rounded-3xl border border-orange-100 text-sm font-medium text-gray-700 leading-relaxed italic">
+                  "{selectedArchive.notes || 'Aucune note saisie pour cette session.'}"
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">Émargement ({selectedArchive.participants?.length} présents)</p>
+                <div className="bg-gray-50 rounded-2xl overflow-hidden">
+                  <div className="p-4 flex flex-wrap gap-2">
+                    {selectedArchive.participants?.map((pId: string) => (
+                      <span key={pId} className="bg-white px-3 py-1.5 rounded-xl border border-gray-200 text-[10px] font-black uppercase text-gray-600 flex items-center gap-1">
+                        <CheckCircle2 size={12} className="text-emerald-500" /> ID: {pId.substring(0,8)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-50 bg-gray-50/50 flex gap-4">
+              <button onClick={() => window.print()} className="flex-1 bg-black text-white py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors shadow-lg"><Printer size={18}/> Imprimer le rapport</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
