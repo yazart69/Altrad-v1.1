@@ -242,7 +242,7 @@ export default function HSEUltimateModule() {
             <div className="max-w-7xl mx-auto pb-20">
               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
               {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} materiel={activeMateriel} users={users} />}
-              {view === 'vgp' && <VGPTracker materiel={activeMateriel} />}
+              {view === 'vgp' && <VGPTracker materiel={activeMateriel} chantierId={activeChantierId} onRefresh={fetchGlobalData} />}
               {view === 'terrain' && <FieldVisits chantier={activeChantier!} />}
               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
               {view === 'history' && <CauserieArchives chantiers={chantiers} />}
@@ -322,29 +322,49 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
 }
 
 // =================================================================================================
-// MODULE 2: SUIVI MATÉRIEL & VGP (Calcul Automatique)
+// MODULE 2: SUIVI MATÉRIEL & VGP (Calcul Automatique + Ajout)
 // =================================================================================================
-function VGPTracker({ materiel }: { materiel: IMateriel[] }) {
-  
+function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[], chantierId: string, onRefresh: () => void }) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEquip, setNewEquip] = useState({ libelle: '', type: 'interne', categorie: 'Levage', numero_serie: '', derniere_vgp: '' });
+  const [isSaving, setIsSaving] = useState(false);
+
   // Algorithme de calcul d'état VGP
   const getStatus = (last: string, cat: string) => {
     const freq = VGP_RULES[cat as keyof typeof VGP_RULES] || 12; 
-    
     const lastDate = new Date(last);
     const nextDate = new Date(lastDate.setMonth(lastDate.getMonth() + freq));
     const now = new Date();
-    
     const diffTime = nextDate.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return { label: 'PÉRIMÉ', color: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-200', days: diffDays, urgent: true };
-    if (diffDays < 30) return { label: 'URGENT', color: 'bg-orange-100 text-orange-700 border-orange-200 ring-1 ring-orange-200', days: diffDays, urgent: false };
-    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', days: diffDays, urgent: false };
+    if (diffDays < 0) return { label: 'PÉRIMÉ', color: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-200', days: diffDays };
+    if (diffDays < 30) return { label: 'URGENT', color: 'bg-orange-100 text-orange-700 border-orange-200 ring-1 ring-orange-200', days: diffDays };
+    return { label: 'VALIDE', color: 'bg-green-50 text-green-700 border-green-200', days: diffDays };
+  };
+
+  const handleSaveEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('materiel').insert([{
+        ...newEquip,
+        chantier_actuel_id: chantierId,
+        statut: 'operationnel'
+      }]);
+      if (error) throw error;
+      alert("✅ Équipement enregistré !");
+      setShowAddModal(false);
+      onRefresh();
+    } catch (err: any) {
+      alert("Erreur: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-      
       <div className="flex justify-between items-end">
         <div>
           <h3 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-3">
@@ -352,10 +372,57 @@ function VGPTracker({ materiel }: { materiel: IMateriel[] }) {
           </h3>
           <p className="text-gray-500 font-medium mt-1">Suivi réglementaire des équipements réels affectés au chantier.</p>
         </div>
-        <button className="bg-black text-white px-6 py-3 rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg">
+        <button onClick={() => setShowAddModal(true)} className="bg-black text-white px-6 py-3 rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95">
           <Plus size={16}/> Nouvel Équipement
         </button>
       </div>
+
+      {/* MODAL AJOUT MATÉRIEL */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-black text-gray-900 uppercase">Enregistrer Matériel</h2>
+              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button>
+            </div>
+            <form onSubmit={handleSaveEquipment} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Libellé de la machine</label>
+                <input required type="text" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold" placeholder="Ex: Nacelle 12m" value={newEquip.libelle} onChange={e => setNewEquip({...newEquip, libelle: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">N° de Série / Immat</label>
+                  <input required type="text" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold uppercase" placeholder="S/N: 0000" value={newEquip.numero_serie} onChange={e => setNewEquip({...newEquip, numero_serie: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Dernière VGP</label>
+                  <input required type="date" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold text-sm" value={newEquip.derniere_vgp} onChange={e => setNewEquip({...newEquip, derniere_vgp: e.target.value})} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Type</label>
+                  <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value})}>
+                    <option value="interne">Parc Interne</option>
+                    <option value="location">Location Externe</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Règle de contrôle</label>
+                  <select className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={newEquip.categorie} onChange={e => setNewEquip({...newEquip, categorie: e.target.value})}>
+                    {Object.keys(VGP_RULES).map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button disabled={isSaving} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
+                {isSaving ? <Clock className="animate-spin" /> : <Save />}
+                Valider l'affectation au chantier
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full text-left">
@@ -381,7 +448,7 @@ function VGPTracker({ materiel }: { materiel: IMateriel[] }) {
                     <div className="font-bold text-gray-800 text-base">{m.libelle}</div>
                     <div className="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
                       <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600">S/N: {m.numero_serie}</span>
-                      {m.type === 'location' && <span className="text-purple-500 font-bold bg-purple-50 px-2 py-0.5 rounded">EXTERNE</span>}
+                      {m.type === 'location' && <span className="text-purple-500 font-bold bg-purple-50 px-2 py-0.5 rounded italic">EXTERNE</span>}
                     </div>
                   </td>
                   <td className="p-5">
