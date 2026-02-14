@@ -41,7 +41,12 @@ export default function FicheEmploye() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    const { error } = await supabase.from('employes').update(emp).eq('id', id);
+    // CORRECTION ERREUR 400 : On retire l'id de l'objet avant l'envoi
+    // Supabase refuse la mise à jour si la clé primaire est dans le body ET dans l'URL
+    const { id: _, ...empDataWithoutId } = emp;
+    
+    const { error } = await supabase.from('employes').update(empDataWithoutId).eq('id', id);
+    
     setIsSaving(false);
     if (!error) alert("✅ Dossier mis à jour avec succès !");
     else alert("❌ Erreur lors de la sauvegarde.");
@@ -301,4 +306,3 @@ export default function FicheEmploye() {
     </div>
   );
 }
-
