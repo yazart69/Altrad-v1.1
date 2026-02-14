@@ -36,9 +36,9 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
       const todayObj = new Date();
       const todayStr = toLocalISOString(todayObj);
       
-      // On regarde jusqu'à 4 jours devant
+      // MODIFICATION : On regarde jusqu'à 7 jours devant (au lieu de 4) pour être sûr de capter la semaine prochaine
       const lookAheadObj = new Date(todayObj);
-      lookAheadObj.setDate(todayObj.getDate() + 4);
+      lookAheadObj.setDate(todayObj.getDate() + 7);
       const lookAheadStr = toLocalISOString(lookAheadObj);
 
       // 1. Récupération large
@@ -65,7 +65,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         let targetTasks = todayTasks;
         let isFuture = false;
 
-        // Si rien aujourd'hui, on prend la première date disponible
+        // Si rien aujourd'hui, on prend la PREMIÈRE date disponible (le prochain jour actif)
         if (todayTasks.length === 0) {
             targetDate = assignments[0].date_debut;
             targetTasks = assignments.filter((a: any) => a.date_debut === targetDate);
@@ -74,7 +74,6 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
 
         // 3. Regroupement par chantier (AVEC DÉDOUBLONNAGE)
         const grouped: any = {};
-        // Set global pour compter les personnes uniques au total sur la journée
         const uniquePeopleIds = new Set();
 
         targetTasks.forEach((assign: any) => {
@@ -89,7 +88,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
               };
             }
 
-            // CORRECTION DOUBLONS : Vérifier si l'employé est déjà dans la liste de ce chantier
+            // Vérifier doublon employé
             const isAlreadyInTeam = grouped[chantierId].equipe.some((e: any) => e.id === assign.employes.id);
 
             if (!isAlreadyInTeam) {
@@ -100,7 +99,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         });
 
         setStaffing(Object.values(grouped));
-        setActiveCount(uniquePeopleIds.size); // Compte réel de personnes uniques
+        setActiveCount(uniquePeopleIds.size);
         setDisplayDate(targetDate);
         setIsForecast(isFuture);
       } else {
@@ -120,13 +119,14 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
   }, []);
 
   return (
-    <div className={`h-full w-full rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.01] transition-transform duration-300 ${isForecast ? 'bg-[#2d3436]' : 'bg-[#e17055]'}`}>
+    // AJOUT ANIMATION : animate-in fade-in slide-in-from-bottom-6 duration-700
+    <div className={`h-full w-full rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.02] transition-all duration-500 animate-in fade-in slide-in-from-bottom-6 ${isForecast ? 'bg-[#2d3436]' : 'bg-[#e17055]'}`}>
       
       {/* HEADER */}
       <div className="flex justify-between items-start mb-4 z-10 shrink-0">
         <Link href="/planning" className="group/title">
-            <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
-            Staffing <span className={`opacity-40 ${isForecast ? 'text-gray-400' : 'text-orange-900'}`}>Terrain</span>
+            <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white transition-opacity group-hover:opacity-100">
+            Staffing <span className={`opacity-40 transition-colors duration-300 ${isForecast ? 'text-gray-400 group-hover:text-white' : 'text-orange-900 group-hover:text-white'}`}>Terrain</span>
             </h2>
             
             <div className="flex items-center gap-2 mt-1">
@@ -147,31 +147,35 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                 </p>
             </div>
         </Link>
-        <Link href="/planning" className="bg-white/20 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-white">
+        <Link href="/planning" className="bg-white/20 p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:text-black text-white transform translate-x-4 group-hover:translate-x-0">
            <ArrowUpRight size={20} />
         </Link>
       </div>
 
       {/* LISTE DES CHANTIERS (SCROLLABLE) */}
-      {/* flex-1 et min-h-0 sont cruciaux pour que le scroll fonctionne sans agrandir la div parente */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1 z-10">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
             <Loader2 className="animate-spin text-white" size={30} />
-            <p className="text-[10px] font-black text-white/50 uppercase italic">Recherche d'activité...</p>
+            <p className="text-[10px] font-black text-white/50 uppercase italic">Scan planning...</p>
           </div>
         ) : staffing.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center opacity-40 py-10">
             <HardHat size={50} className="mb-3 text-white" />
             <p className="text-xs font-black uppercase tracking-tighter text-white text-center">
-              Aucune activité <br/> détectée (J+4)
+              Aucune activité <br/> détectée (J+7)
             </p>
           </div>
         ) : (
           staffing.map((site, idx) => (
-            <div key={idx} className="bg-white/10 rounded-[20px] p-4 border border-white/5 hover:bg-white/20 hover:shadow-md transition-all group/site backdrop-blur-sm">
+            // ANIMATION DES ITEMS : delay par index pour effet cascade
+            <div 
+                key={idx} 
+                className="bg-white/10 rounded-[20px] p-4 border border-white/5 hover:bg-white/20 hover:shadow-md transition-all duration-300 group/site backdrop-blur-sm animate-in fade-in slide-in-from-bottom-2 fill-mode-backwards"
+                style={{ animationDelay: `${idx * 100}ms` }}
+            >
               <div className="flex items-center gap-2 mb-3">
-                <div className={`p-1.5 bg-white/20 rounded-lg shadow-sm text-white group-hover/site:bg-white transition-colors ${isForecast ? 'group-hover/site:text-[#2d3436]' : 'group-hover/site:text-[#e17055]'}`}>
+                <div className={`p-1.5 bg-white/20 rounded-lg shadow-sm text-white group-hover/site:bg-white transition-colors duration-300 ${isForecast ? 'group-hover/site:text-[#2d3436]' : 'group-hover/site:text-[#e17055]'}`}>
                   <MapPin size={14} />
                 </div>
                 <h3 className="font-black text-white text-[12px] truncate uppercase tracking-tighter w-full">
@@ -212,8 +216,8 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         </div>
       )}
 
-      {/* DÉCORATION FOND */}
-      <HardHat size={160} className={`absolute -right-6 -bottom-8 opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-700 pointer-events-none ${isForecast ? 'text-gray-900' : 'text-orange-900'}`} />
+      {/* DÉCORATION FOND (ANIMÉE AU SURVOL) */}
+      <HardHat size={160} className={`absolute -right-6 -bottom-8 opacity-10 rotate-12 group-hover:rotate-0 group-hover:scale-110 transition-transform duration-700 pointer-events-none ${isForecast ? 'text-gray-900' : 'text-orange-900'}`} />
     </div>
   );
 }
