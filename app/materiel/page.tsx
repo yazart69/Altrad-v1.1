@@ -160,26 +160,29 @@ export default function ChantierDetail() {
 
 
   // =================================================================================================
-  //                             INITIALISATION & FETCH
+  //                             INITIALISATION & FETCH (CORRIGÉ)
   // =================================================================================================
 
   useEffect(() => { 
-      fetchChantierData(); 
+      // On ne lance le chargement QUE si l'ID est disponible
+      if (id) {
+          fetchChantierData(); 
+      }
   }, [id]);
 
   async function fetchChantierData() {
-    if (!id) return;
+    console.log("Démarrage chargement pour ID:", id); // DEBUG
     setLoading(true);
 
     try {
         // 1. Employés
         const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
-        if (errEmp) throw errEmp;
+        if (errEmp) console.error("Erreur Employés:", errEmp);
         if (emp) setEmployes(emp);
 
         // 2. Chantier
         const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
-        if (errC) throw errC;
+        if (errC) throw new Error("Erreur Chantier: " + errC.message);
         
         if (c) {
             setChantier({
@@ -206,8 +209,7 @@ export default function ChantierDetail() {
         }
 
         // 3. Tâches
-        const { data: t, error: errT } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (errT) throw errT;
+        const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
         if (t) {
             const formattedTasks = t.map(task => ({
                 ...task,
@@ -217,16 +219,15 @@ export default function ChantierDetail() {
         }
 
         // 4. Documents
-        const { data: d, error: errD } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (errD) throw errD;
+        const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
         if (d) setDocuments(d);
 
         // 5. Matériel
-        const { data: m, error: errM } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
-        if (errM) throw errM;
+        const { data: m } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
         if (m) setMaterielPrevu(m);
 
         // 6. Fournitures (AVEC JOINTURE STOCK)
+        // ATTENTION : Si la table fournitures_stock n'existe pas, ça plantera ici.
         const { data: f, error: errF } = await supabase
             .from('chantier_fournitures')
             .select(`
@@ -234,7 +235,8 @@ export default function ChantierDetail() {
                 fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
             `)
             .eq('chantier_id', id);
-        if (errF) throw errF;
+        
+        if (errF) console.error("Erreur Fournitures (Table manquante ?):", errF);
         if (f) setFournituresPrevu(f);
 
         // 7. Catalogues
@@ -242,17 +244,18 @@ export default function ChantierDetail() {
         if (catMat) setCatalogueMateriel(catMat);
 
         // Catalogue Stock Fournitures
-        const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
+        const { data: stock, error: errStock } = await supabase.from('fournitures_stock').select('*').order('nom');
+        if (errStock) console.error("Erreur Stock:", errStock);
         if (stock) setStockFournitures(stock);
 
     } catch (error: any) {
-        console.error("Erreur chargement global:", error);
-        // On n'affiche pas d'alerte bloquante, mais on log l'erreur pour débogage
+        console.error("ERREUR CRITIQUE CHARGEMENT:", error);
+        alert("Erreur de chargement: " + (error.message || "Inconnue"));
     } finally {
+        console.log("Fin du chargement."); // DEBUG
         setLoading(false);
     }
   }
-
   // =================================================================================================
   //                             LOGIQUE MÉTIER
   // =================================================================================================
