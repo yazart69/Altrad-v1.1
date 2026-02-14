@@ -5,30 +5,35 @@ import { supabase } from '@/lib/supabase';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
-  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2, Container
+  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2, Container,
+  Palette, Box, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function MaterielPage() {
-  const [activeTab, setActiveTab] = useState<'inventaire' | 'suivi' | 'fournitures'>('inventaire');
+  // On réorganise les onglets : Stock Fournitures en premier pour le magasinier
+  const [activeTab, setActiveTab] = useState<'stock_fournitures' | 'inventaire' | 'suivi' | 'fournitures_chantier'>('stock_fournitures');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Tous'); // Tous, Interne, Externe, Base Logistique
   const [filterCat, setFilterCat] = useState('Toutes');
    
   // États de données
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [fournitures, setFournitures] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]); // Matériel (Outils)
+  const [locations, setLocations] = useState<any[]>([]); // Locations
+  const [fournitures, setFournitures] = useState<any[]>([]); // Fournitures assignées aux chantiers
+  const [stockFournitures, setStockFournitures] = useState<any[]>([]); // BASE DE DONNÉES STOCK
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantierId, setSelectedChantierId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
-  // État Modale Ajout
+  // État Modale Ajout MATERIEL
   const [showAddModal, setShowAddModal] = useState(false);
-  // Ajout du type 'base' pour Base Logistique
   const [modalTab, setModalTab] = useState<'interne' | 'externe' | 'base'>('interne'); 
 
-  // State pour le formulaire
+  // État Modale Ajout STOCK FOURNITURE
+  const [showAddSupplyModal, setShowAddSupplyModal] = useState(false);
+
+  // State pour le formulaire MATERIEL
   const [newItem, setNewItem] = useState({
       nom: '',
       categorie: 'Outillage',
@@ -43,6 +48,17 @@ export default function MaterielPage() {
       date_fin: ''
   });
 
+  // State pour le formulaire STOCK FOURNITURE
+  const [newSupply, setNewSupply] = useState({
+      nom: '', 
+      categorie: 'Peinture', 
+      ral: '', 
+      conditionnement: '', 
+      unite: 'U', 
+      qte_stock: 0,
+      seuil_alerte: 5
+  });
+
   // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     fetchData();
@@ -51,25 +67,31 @@ export default function MaterielPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Récupérer l'inventaire global
+    // 1. Matériel
     const { data: matData } = await supabase.from('materiel').select('*').order('nom');
     
-    // 2. Récupérer les locations (actives et passées)
+    // 2. Locations
     const { data: locData } = await supabase
       .from('chantier_materiel')
-      .select('*, materiel(*), chantiers(id, nom)') // On récupère l'ID et le NOM du chantier
+      .select('*, materiel(*), chantiers(id, nom)') 
       .order('date_debut', { ascending: false });
 
-    // 3. Récupérer les fournitures
+    // 3. Fournitures Chantier
     const { data: fournData } = await supabase
       .from('chantier_fournitures')
       .select('*, chantiers(nom)')
       .order('created_at', { ascending: false });
 
-    // 4. Récupérer la liste des chantiers pour le filtre
+    // 4. Chantiers
     const { data: chantData } = await supabase
       .from('chantiers')
       .select('id, nom')
+      .order('nom');
+
+    // 5. STOCK FOURNITURES (Nouveau)
+    const { data: stockData } = await supabase
+      .from('fournitures_stock')
+      .select('*')
       .order('nom');
 
     if (matData) {
@@ -91,15 +113,14 @@ export default function MaterielPage() {
     if (locData) setLocations(locData);
     if (fournData) setFournitures(fournData);
     if (chantData) setChantiers(chantData);
+    if (stockData) setStockFournitures(stockData);
     
     setLoading(false);
   };
 
-  // --- AJOUT MATERIEL ---
+  // --- ACTIONS MATERIEL ---
   const handleAddItem = async () => {
       if (!newItem.nom) return alert("Le nom est obligatoire");
-      
-      // Définition du type de stock selon l'onglet
       let stockType = 'Interne';
       if (modalTab === 'externe') stockType = 'Externe';
       if (modalTab === 'base') stockType = 'Base Logistique';
@@ -115,20 +136,11 @@ export default function MaterielPage() {
           fournisseur: newItem.fournisseur
       };
 
-      // 1. Insertion MATERIEL
-      const { data: createdMat, error: matError } = await supabase
-        .from('materiel')
-        .insert([itemToSave])
-        .select()
-        .single();
-      
-      if (matError) {
-          return alert("Erreur création matériel : " + matError.message);
-      }
+      const { data: createdMat, error: matError } = await supabase.from('materiel').insert([itemToSave]).select().single();
+      if (matError) return alert("Erreur création matériel : " + matError.message);
 
-      // 2. Si Location Externe AVEC Chantier -> Insertion CHANTIER_MATERIEL
       if (modalTab === 'externe' && newItem.chantier_id && createdMat) {
-          const { error: locError } = await supabase.from('chantier_materiel').insert([{
+          await supabase.from('chantier_materiel').insert([{
               chantier_id: newItem.chantier_id,
               materiel_id: createdMat.id,
               date_debut: newItem.date_debut || null,
@@ -136,54 +148,68 @@ export default function MaterielPage() {
               qte_prise: newItem.qte_totale,
               statut: 'en_cours'
           }]);
-
-          if (locError) console.error("Erreur affectation chantier:", locError);
       }
 
-      alert("✅ Enregistré avec succès !");
+      alert("✅ Matériel enregistré !");
       setShowAddModal(false);
-      setNewItem({ 
-          nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, 
-          prix_location: 0, image: '', responsable: '', fournisseur: '',
-          chantier_id: '', date_debut: '', date_fin: ''
-      });
+      setNewItem({ nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, prix_location: 0, image: '', responsable: '', fournisseur: '', chantier_id: '', date_debut: '', date_fin: '' });
       fetchData();
   };
 
-  // --- SUPPRESSION MATERIEL ---
   const handleDeleteItem = async (id: string, nom: string) => {
-      if(confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nom}" ?\nCette action est irréversible et supprimera l'historique associé.`)) {
-          const { error } = await supabase.from('materiel').delete().eq('id', id);
-          if(error) {
-              alert("Erreur : " + error.message);
-          } else {
-              setInventory(prev => prev.filter(item => item.id !== id));
-              alert("Matériel supprimé.");
-          }
+      if(confirm(`⚠️ Supprimer "${nom}" ?`)) {
+          await supabase.from('materiel').delete().eq('id', id);
+          setInventory(prev => prev.filter(item => item.id !== id));
+      }
+  };
+
+  // --- ACTIONS STOCK FOURNITURES (MAGASINIER) ---
+  const handleAddSupply = async () => {
+      if(!newSupply.nom) return alert("Nom obligatoire");
+      
+      const { error } = await supabase.from('fournitures_stock').insert([newSupply]);
+      
+      if(error) {
+          alert("Erreur ajout stock : " + error.message);
+      } else {
+          alert("✅ Référence ajoutée au stock !");
+          setShowAddSupplyModal(false);
+          setNewSupply({ nom: '', categorie: 'Peinture', ral: '', conditionnement: '', unite: 'U', qte_stock: 0, seuil_alerte: 5 });
+          fetchData();
+      }
+  };
+
+  const updateStockQty = async (id: string, newQty: number) => {
+      const safeQty = Math.max(0, newQty);
+      // Optimistic Update
+      setStockFournitures(prev => prev.map(s => s.id === id ? { ...s, qte_stock: safeQty } : s));
+      // DB Update
+      await supabase.from('fournitures_stock').update({ qte_stock: safeQty }).eq('id', id);
+  };
+
+  const handleDeleteSupply = async (id: string) => {
+      if(confirm("Supprimer cette référence du stock ?")) {
+          await supabase.from('fournitures_stock').delete().eq('id', id);
+          setStockFournitures(prev => prev.filter(s => s.id !== id));
       }
   };
 
   // --- FILTRES ---
   const filteredInventory = inventory.filter(item => {
     const matchSearch = item.nom.toLowerCase().includes(searchTerm.toLowerCase());
-    // Modification filtre type pour inclure Base Logistique
     let matchType = true;
-    if (filterType !== 'Tous') {
-        matchType = item.type_stock === filterType;
-    }
+    if (filterType !== 'Tous') matchType = item.type_stock === filterType;
     const matchCat = filterCat === 'Toutes' || item.categorie === filterCat;
     return matchSearch && matchType && matchCat;
   });
 
-  const filteredLocations = locations.filter(loc => {
-    if (selectedChantierId === 'all') return true;
-    return loc.chantier_id === selectedChantierId;
-  });
+  const filteredStockSupplies = stockFournitures.filter(s => 
+    s.nom.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (s.ral && s.ral.includes(searchTerm))
+  );
 
-  const filteredFournitures = fournitures.filter(f => {
-    if (selectedChantierId === 'all') return true;
-    return f.chantier_id === selectedChantierId;
-  });
+  const filteredLocations = locations.filter(loc => selectedChantierId === 'all' || loc.chantier_id === selectedChantierId);
+  const filteredFournituresChantier = fournitures.filter(f => selectedChantierId === 'all' || f.chantier_id === selectedChantierId);
 
   const getStatusColor = (statut: string) => {
     switch (statut) {
@@ -207,10 +233,10 @@ export default function MaterielPage() {
             </Link>
             <div>
               <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436] flex items-center gap-2">
-                <Truck className="text-[#0984e3]" /> Matériel & Location
+                <Warehouse className="text-orange-500" /> Espace Magasinier
               </h1>
               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                Gestion Logistique & Parc
+                Gestion Stocks & Parc Matériel
               </p>
             </div>
           </div>
@@ -229,10 +255,17 @@ export default function MaterielPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Total Matériel</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Stock Fournitures</p>
+                    <p className="text-2xl font-black text-orange-500">{stockFournitures.length} Réf.</p>
+                </div>
+                <div className="bg-orange-50 p-2 rounded-xl text-orange-500"><Package size={20}/></div>
+            </div>
+            <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
+                <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Parc Matériel</p>
                     <p className="text-2xl font-black text-[#2d3436]">{inventory.reduce((acc, i) => acc + (i.qte_totale || 0), 0)}</p>
                 </div>
-                <div className="bg-gray-100 p-2 rounded-xl text-gray-600"><Package size={20}/></div>
+                <div className="bg-gray-100 p-2 rounded-xl text-gray-600"><Wrench size={20}/></div>
             </div>
             <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
@@ -243,36 +276,26 @@ export default function MaterielPage() {
             </div>
             <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Prévu</p>
-                    <p className="text-2xl font-black text-purple-500">{locations.filter(l => l.statut === 'prevu').length}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Alertes Stock</p>
+                    <p className="text-2xl font-black text-red-500">{stockFournitures.filter(s => s.qte_stock <= s.seuil_alerte).length}</p>
                 </div>
-                <div className="bg-purple-50 p-2 rounded-xl text-purple-500"><Calendar size={20}/></div>
-            </div>
-            <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
-                <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Fournitures</p>
-                    <p className="text-2xl font-black text-orange-500">{fournitures.length}</p>
-                </div>
-                <div className="bg-orange-50 p-2 rounded-xl text-orange-500"><ClipboardList size={20}/></div>
+                <div className="bg-red-50 p-2 rounded-xl text-red-500"><AlertCircle size={20}/></div>
             </div>
         </div>
 
         {/* --- ONGLETS --- */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
             <div className="flex gap-2 bg-white p-1.5 rounded-2xl w-fit shadow-sm border border-gray-100">
-                <button onClick={() => setActiveTab('inventaire')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'inventaire' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><LayoutGrid size={16}/> Inventaire</button>
-                <button onClick={() => setActiveTab('suivi')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'suivi' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><List size={16}/> Suivi Locations</button>
-                <button onClick={() => setActiveTab('fournitures')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'fournitures' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><Package size={16}/> Fournitures</button>
+                <button onClick={() => setActiveTab('stock_fournitures')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'stock_fournitures' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><Package size={16}/> Stock Fournitures</button>
+                <button onClick={() => setActiveTab('inventaire')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'inventaire' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><LayoutGrid size={16}/> Parc Matériel</button>
+                <button onClick={() => setActiveTab('suivi')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'suivi' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><List size={16}/> Suivi Chantiers</button>
+                <button onClick={() => setActiveTab('fournitures_chantier')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'fournitures_chantier' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><ClipboardList size={16}/> Besoins Chantiers</button>
             </div>
 
-            {(activeTab === 'suivi' || activeTab === 'fournitures') && (
+            {(activeTab === 'suivi' || activeTab === 'fournitures_chantier') && (
                 <div className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase text-gray-400 ml-2">Filtrer par Chantier :</span>
-                    <select 
-                        className="bg-gray-50 text-sm font-bold p-2 rounded-lg outline-none cursor-pointer border border-transparent hover:border-gray-200 transition-colors"
-                        value={selectedChantierId}
-                        onChange={(e) => setSelectedChantierId(e.target.value)}
-                    >
+                    <select className="bg-gray-50 text-sm font-bold p-2 rounded-lg outline-none cursor-pointer border border-transparent hover:border-gray-200 transition-colors" value={selectedChantierId} onChange={(e) => setSelectedChantierId(e.target.value)}>
                         <option value="all">Tous les chantiers</option>
                         {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                     </select>
@@ -280,7 +303,79 @@ export default function MaterielPage() {
             )}
         </div>
 
-        {/* ================= CONTENU : INVENTAIRE GLOBAL ================= */}
+        {/* ================= CONTENU : STOCK FOURNITURES (NOUVEAU) ================= */}
+        {activeTab === 'stock_fournitures' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6">
+                
+                {/* Actions Bar */}
+                <div className="flex justify-between items-center bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100 w-full md:w-auto">
+                        <Search size={18} className="text-gray-400 ml-2" />
+                        <input type="text" placeholder="Chercher (Nom, RAL...)" className="bg-transparent outline-none text-sm font-bold w-full md:w-64" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    </div>
+                    <button onClick={() => setShowAddSupplyModal(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all font-bold uppercase flex items-center gap-2 text-xs">
+                        <Plus size={16} /> Nouvelle Référence
+                    </button>
+                </div>
+
+                {/* Tableau Stock */}
+                <div className="bg-white rounded-[30px] border border-gray-100 shadow-sm overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Produit</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Détails (RAL/Cond.)</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">En Stock</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filteredStockSupplies.map((item) => (
+                                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="p-5">
+                                        <div className="font-black text-sm text-gray-800">{item.nom}</div>
+                                        <div className="text-[10px] text-gray-400 font-bold uppercase bg-gray-100 px-2 py-0.5 rounded w-fit mt-1">{item.categorie}</div>
+                                    </td>
+                                    <td className="p-5">
+                                        <div className="flex flex-col gap-1">
+                                            {item.ral && (
+                                                <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                                                    <Palette size={12} className="text-purple-500"/> RAL {item.ral}
+                                                </div>
+                                            )}
+                                            {item.conditionnement && (
+                                                <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                                                    <Box size={12} className="text-blue-500"/> {item.conditionnement}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-5 text-center">
+                                        <div className="flex items-center justify-center gap-3">
+                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) - 1)} className="w-6 h-6 bg-gray-100 rounded-full hover:bg-gray-200 font-bold">-</button>
+                                            <div className="flex flex-col items-center">
+                                                <span className={`text-lg font-black ${item.qte_stock <= item.seuil_alerte ? 'text-red-500' : 'text-emerald-600'}`}>{item.qte_stock}</span>
+                                                <span className="text-[9px] text-gray-400 uppercase">{item.unite}</span>
+                                            </div>
+                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) + 1)} className="w-6 h-6 bg-gray-100 rounded-full hover:bg-gray-200 font-bold">+</button>
+                                        </div>
+                                        {item.qte_stock <= item.seuil_alerte && <div className="text-[8px] font-black text-red-500 uppercase mt-1 flex items-center justify-center gap-1"><AlertTriangle size={8}/> Stock bas</div>}
+                                    </td>
+                                    <td className="p-5 text-right">
+                                        <button onClick={() => handleDeleteSupply(item.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors">
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {filteredStockSupplies.length === 0 && <div className="p-10 text-center text-gray-400">Aucune référence trouvée.</div>}
+                </div>
+            </div>
+        )}
+
+        {/* ================= CONTENU : INVENTAIRE MATERIEL ================= */}
         {activeTab === 'inventaire' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6">
                 
@@ -374,30 +469,15 @@ export default function MaterielPage() {
                                         {item.statut}
                                     </span>
                                     <div className="flex gap-2">
-                                        {/* BOUTON SUPPRIMER */}
-                                        <button 
-                                            onClick={() => handleDeleteItem(item.id, item.nom)}
-                                            className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
-                                            title="Supprimer"
-                                        >
+                                        <button onClick={() => handleDeleteItem(item.id, item.nom)} className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors" title="Supprimer">
                                             <Trash2 size={16} />
                                         </button>
-
-                                        {/* BOUTON FLÈCHE VERS CHANTIER */}
                                         {activeLocation ? (
-                                            <Link 
-                                                href={`/chantiers/${activeLocation.chantier_id}`}
-                                                className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors shadow-lg group-hover:scale-110"
-                                                title={`Aller au chantier : ${activeLocation.chantiers?.nom}`}
-                                            >
+                                            <Link href={`/chantiers/${activeLocation.chantier_id}`} className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors shadow-lg group-hover:scale-110" title={`Aller au chantier : ${activeLocation.chantiers?.nom}`}>
                                                 <ArrowRight size={18} />
                                             </Link>
                                         ) : (
-                                            <button 
-                                                disabled 
-                                                className="w-10 h-10 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center cursor-not-allowed"
-                                                title="En stock (non assigné)"
-                                            >
+                                            <button disabled className="w-10 h-10 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center cursor-not-allowed" title="En stock (non assigné)">
                                                 <ArrowRight size={18} />
                                             </button>
                                         )}
@@ -458,8 +538,8 @@ export default function MaterielPage() {
             </div>
         )}
 
-        {/* FOURNITURES */}
-        {activeTab === 'fournitures' && (
+        {/* FOURNITURES CHANTIERS */}
+        {activeTab === 'fournitures_chantier' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-white rounded-[30px] border border-gray-100 shadow-sm overflow-hidden">
                     <table className="w-full text-left">
@@ -472,7 +552,7 @@ export default function MaterielPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {filteredFournitures.map((item) => (
+                            {filteredFournituresChantier.map((item) => (
                                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="p-5 font-bold text-sm text-gray-800">{item.nom}</td>
                                     <td className="p-5"><span className="bg-orange-50 text-orange-600 px-2 py-1 rounded text-[10px] font-bold uppercase">{item.categorie}</span></td>
@@ -488,7 +568,7 @@ export default function MaterielPage() {
 
       </div>
 
-      {/* ================= MODALE AJOUT ================= */}
+      {/* ================= MODALE AJOUT MATERIEL ================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 animate-in zoom-in-95">
@@ -572,6 +652,66 @@ export default function MaterielPage() {
                 </div>
             </div>
         </div>
+      )}
+
+      {/* ================= MODALE AJOUT STOCK FOURNITURE ================= */}
+      {showAddSupplyModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 animate-in zoom-in-95">
+                    <h3 className="font-black text-xl text-[#2d3436] mb-6 flex items-center gap-2"><Package className="text-orange-500"/> Nouvelle Référence Stock</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom Produit</label>
+                            <input className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" placeholder="Ex: Striasol" value={newSupply.nom} onChange={e => setNewSupply({...newSupply, nom: e.target.value})}/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Catégorie</label>
+                                <select className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" value={newSupply.categorie} onChange={e => setNewSupply({...newSupply, categorie: e.target.value})}>
+                                    <option value="Peinture">Peinture</option>
+                                    <option value="Consommable">Consommable</option>
+                                    <option value="Visserie">Visserie</option>
+                                    <option value="EPI">EPI</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Unité</label>
+                                <select className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" value={newSupply.unite} onChange={e => setNewSupply({...newSupply, unite: e.target.value})}>
+                                    <option value="U">Unité (U)</option>
+                                    <option value="L">Litres (L)</option>
+                                    <option value="Kg">Kilos (Kg)</option>
+                                    <option value="M2">m²</option>
+                                    <option value="Rlx">Rouleaux</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">RAL / Ref</label>
+                                <input className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" placeholder="Ex: 7016" value={newSupply.ral} onChange={e => setNewSupply({...newSupply, ral: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Conditionnement</label>
+                                <input className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" placeholder="Ex: Pot 15L" value={newSupply.conditionnement} onChange={e => setNewSupply({...newSupply, conditionnement: e.target.value})}/>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Stock Initial</label>
+                                <input type="number" className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" value={newSupply.qte_stock} onChange={e => setNewSupply({...newSupply, qte_stock: parseInt(e.target.value)})}/>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Seuil Alerte</label>
+                                <input type="number" className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none text-orange-500" value={newSupply.seuil_alerte} onChange={e => setNewSupply({...newSupply, seuil_alerte: parseInt(e.target.value)})}/>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-2">
+                        <button onClick={() => setShowAddSupplyModal(false)} className="px-4 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Annuler</button>
+                        <button onClick={handleAddSupply} className="px-6 py-2 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 shadow-lg">Enregistrer</button>
+                    </div>
+                </div>
+            </div>
       )}
 
     </div>
