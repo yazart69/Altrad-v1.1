@@ -21,7 +21,7 @@ export default function PlanningPage() {
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
+   
   // Initialisation au Lundi
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
@@ -203,8 +203,17 @@ export default function PlanningPage() {
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00b894]" size={40} /></div>;
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0">
+    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0 print:m-0 print:min-h-0">
       
+      {/* STYLE SPÉCIFIQUE POUR L'IMPRESSION */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          @page { size: landscape; margin: 5mm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .no-print { display: none !important; }
+        }
+      `}} />
+
       {/* HEADER (Masqué print) */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4 print:hidden">
         <div>
@@ -251,37 +260,42 @@ export default function PlanningPage() {
       </div>
 
       {/* HEADER IMPRESSION */}
-      <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
-          <h1 className="text-2xl font-black uppercase">Relevé d'Heures / Planning</h1>
-          <p className="text-sm">Semaine du {weekDays[0].toLocaleDateString('fr-FR')}</p>
+      <div className="hidden print:flex justify-between items-center mb-4 border-b-2 border-black pb-2">
+          <div>
+            <h1 className="text-xl font-black uppercase">Planning Hebdomadaire</h1>
+            <p className="text-xs text-gray-600">Semaine du {weekDays[0].toLocaleDateString('fr-FR')} au {weekDays[4].toLocaleDateString('fr-FR')}</p>
+          </div>
+          <div className="text-right">
+             <p className="text-[10px] uppercase font-bold text-gray-400">Généré le {new Date().toLocaleDateString()}</p>
+          </div>
       </div>
 
       {/* TABLEAU PRINCIPAL */}
-      <div className="bg-white rounded-[20px] shadow-sm overflow-hidden border border-gray-200 overflow-x-auto print:border-none print:shadow-none">
-        <table className="w-full min-w-[900px] border-collapse text-left">
+      <div className="bg-white rounded-[20px] shadow-sm overflow-hidden border border-gray-200 overflow-x-auto print:border-none print:shadow-none print:overflow-visible print:rounded-none">
+        <table className="w-full min-w-[900px] border-collapse text-left print:min-w-0 print:w-full print:table-fixed">
           <thead>
-            <tr className="bg-gray-100 border-b border-gray-200 print:bg-gray-200">
-              <th className="p-4 w-[250px] sticky left-0 bg-gray-100 z-20 font-black uppercase text-xs text-gray-500 border-r border-gray-200 print:border-gray-400">
+            <tr className="bg-gray-100 border-b border-gray-200 print:bg-white print:border-black print:border-b-2">
+              <th className="p-4 w-[250px] sticky left-0 bg-gray-100 z-20 font-black uppercase text-xs text-gray-500 border-r border-gray-200 print:static print:bg-white print:text-black print:border print:border-black print:w-[200px]">
                 Chantiers / Projets
               </th>
               {weekDays.map((day, i) => (
-                <th key={i} className="p-3 border-l border-gray-200 text-center min-w-[140px] print:border-gray-400">
-                  <p className="text-[10px] uppercase font-black text-gray-500 mb-1">{day.toLocaleDateString('fr-FR', { weekday: 'long' })}</p>
-                  <span className="inline-block px-2 py-0.5 rounded text-sm font-black text-gray-800 bg-white border border-gray-200 print:border-black">{day.getDate()}</span>
+                <th key={i} className="p-3 border-l border-gray-200 text-center min-w-[140px] print:border print:border-black print:min-w-0">
+                  <p className="text-[10px] uppercase font-black text-gray-500 mb-1 print:text-black">{day.toLocaleDateString('fr-FR', { weekday: 'long' })}</p>
+                  <span className="inline-block px-2 py-0.5 rounded text-sm font-black text-gray-800 bg-white border border-gray-200 print:border-0 print:text-lg">{day.getDate()}</span>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 print:divide-black">
             {/* LIGNES CHANTIERS */}
             {chantiers.map((chantier) => (
               <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
-                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:border-gray-400">
+                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2">
                   <div className="flex items-start gap-3">
-                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:text-black print:border print:border-black print:bg-white"><HardHat size={18} /></div>
+                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:hidden"><HardHat size={18} /></div>
                       <div>
-                          <p className="font-black text-gray-800 text-sm uppercase leading-tight">{chantier.nom}</p>
-                          <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate">{chantier.adresse || 'Localisation non définie'}</p>
+                          <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs">{chantier.nom}</p>
+                          <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate print:text-gray-600 print:whitespace-normal">{chantier.adresse || 'Localisation non définie'}</p>
                       </div>
                   </div>
                 </td>
@@ -291,24 +305,24 @@ export default function PlanningPage() {
                   const dailyMissions = assignments.filter(a => a.chantier_id === chantier.id && a.date_debut === dateStr);
                   
                   return (
-                    <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border-gray-400 print:h-auto">
+                    <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border print:border-black print:h-auto print:p-1">
                       <div className="flex flex-col gap-1.5 h-full">
                           {dailyMissions.map((mission) => (
-                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:bg-white print:border print:border-black print:text-black ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'}`}>
+                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'} print:bg-white print:text-black print:border print:border-black print:shadow-none print:p-1`}>
                                   <div className="flex items-center gap-2 w-full">
                                       {!modePointage && (
-                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold print:bg-black/10 shrink-0">
+                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold shrink-0 print:bg-black print:text-white print:w-4 print:h-4 print:text-[8px]">
                                               {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
                                           </div>
                                       )}
                                       <div className="flex-1 min-w-0">
-                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white print:text-black'}`}>
+                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-black print:text-[9px] print:whitespace-normal`}>
                                               {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
                                           </span>
                                           
                                           {/* MODE POINTAGE : INPUT HEURES */}
                                           {modePointage && (
-                                              <div className="flex items-center gap-1 mt-1">
+                                              <div className="flex items-center gap-1 mt-1 print:hidden">
                                                   <input 
                                                       type="number" 
                                                       min="0" max="24"
@@ -319,6 +333,10 @@ export default function PlanningPage() {
                                                   <span className="text-[9px] text-gray-400">h</span>
                                               </div>
                                           )}
+                                          {/* Mode impression : Afficher heures si renseignées */}
+                                          <div className="hidden print:block text-[8px] font-bold mt-0.5">
+                                             {mission.heures > 0 ? `${mission.heures}h` : ''}
+                                          </div>
                                       </div>
                                   </div>
 
@@ -350,13 +368,13 @@ export default function PlanningPage() {
             ))}
 
             {/* SECTION HORS CHANTIER */}
-            <tr className="bg-gray-50 border-t-4 border-white print:border-gray-400">
-                <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:bg-white print:border-r">
+            <tr className="bg-gray-50 border-t-4 border-white print:border-black print:border-t-2 print:bg-white print:break-inside-avoid">
+                <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:static print:bg-white print:border print:border-black print:p-2">
                     <div className="flex items-center gap-3">
-                        <div className="bg-gray-400 p-2 rounded-lg text-white print:text-black print:border print:border-black print:bg-white"><Activity size={18} /></div>
+                        <div className="bg-gray-400 p-2 rounded-lg text-white print:hidden"><Activity size={18} /></div>
                         <div>
-                            <p className="font-black text-gray-600 text-xs uppercase leading-tight">Hors Chantier</p>
-                            <p className="text-[9px] text-gray-400 uppercase mt-0.5">Absences / Formations</p>
+                            <p className="font-black text-gray-600 text-xs uppercase leading-tight print:text-black">Hors Chantier</p>
+                            <p className="text-[9px] text-gray-400 uppercase mt-0.5 print:text-gray-600">Absences / Formations</p>
                         </div>
                     </div>
                 </td>
@@ -364,16 +382,16 @@ export default function PlanningPage() {
                     const dateStr = toLocalISOString(day);
                     const dailyOffs = assignments.filter(a => !a.chantier_id && a.date_debut === dateStr);
                     return (
-                        <td key={i} className="p-2 border-l border-gray-200 align-top h-24 print:border-gray-400">
+                        <td key={i} className="p-2 border-l border-gray-200 align-top h-24 print:border print:border-black print:h-auto print:p-1">
                             <div className="flex flex-col gap-1.5">
                                 {dailyOffs.map((mission) => {
                                     let color = "bg-gray-400";
                                     if(mission.type === 'conge') color = "bg-[#e17055]";
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
                                     return (
-                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-black print:text-black`}>
-                                            <span className="text-[10px] font-bold uppercase truncate">{mission.users?.nom || 'Inconnu'}</span>
-                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-gray-300">{mission.type}</span>
+                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-dashed print:border-black print:text-black print:shadow-none print:p-1`}>
+                                            <span className="text-[10px] font-bold uppercase truncate print:text-[9px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
+                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100 print:text-black">{mission.type}</span>
                                             {!modePointage && <button onClick={() => deleteAssignment(mission.id)} className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"><X size={12} /></button>}
                                         </div>
                                     )
