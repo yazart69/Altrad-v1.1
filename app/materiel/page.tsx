@@ -6,7 +6,7 @@ import {
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
   ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2, Container,
-  Palette, Box, AlertTriangle, Save
+  Palette, Box, AlertTriangle, Save, Calculator
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -58,6 +58,22 @@ export default function MagasinierPage() {
       qte_stock: 0,
       seuil_alerte: 5
   });
+
+  // --- FONCTION UTILITAIRE : CALCUL DES POTS ---
+  const calculateContainers = (totalStock: number, conditionnement: string) => {
+      if (!conditionnement || totalStock <= 0) return null;
+      // Regex pour trouver le premier nombre dans la chaîne (ex: "Pot 15L" -> 15)
+      const match = conditionnement.match(/(\d+(\.\d+)?)/);
+      if (match) {
+          const volumeParPot = parseFloat(match[0]);
+          if (volumeParPot > 0) {
+              const nbPots = totalStock / volumeParPot;
+              // On affiche avec 1 décimale max si ce n'est pas rond, sinon entier
+              return Number.isInteger(nbPots) ? nbPots : nbPots.toFixed(1);
+          }
+      }
+      return null;
+  };
 
   // --- CHARGEMENT DES DONNÉES (SÉCURISÉ) ---
   useEffect(() => {
@@ -192,7 +208,6 @@ export default function MagasinierPage() {
           chantier_id: '', date_debut: '', date_fin: ''
       });
       
-      // Rechargement simple (on peut optimiser mais restons simple pour la stabilité)
       window.location.reload(); 
   };
 
@@ -394,7 +409,7 @@ export default function MagasinierPage() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {/* Le bouton d'ajout est dans le header mais on peut le mettre ici aussi si on veut */}
+                    {/* Le bouton d'ajout est dans le header */}
                 </div>
 
                 {/* Tableau Stock */}
@@ -403,8 +418,8 @@ export default function MagasinierPage() {
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
                                 <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Produit</th>
-                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Détails (RAL/Cond.)</th>
-                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">En Stock</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Détails & Conditionnement</th>
+                                <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Quantité Stock</th>
                                 <th className="p-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
                             </tr>
                         </thead>
@@ -414,8 +429,12 @@ export default function MagasinierPage() {
                                     <td colSpan={4} className="p-10 text-center text-gray-400 font-bold">Aucune référence trouvée.</td>
                                 </tr>
                             )}
-                            {filteredStockSupplies.map((item) => (
-                                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                            {filteredStockSupplies.map((item) => {
+                                // Calcul automatique du nombre de bidons/pots
+                                const nbContainers = calculateContainers(item.qte_stock, item.conditionnement);
+
+                                return (
+                                <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
                                     <td className="p-5">
                                         <div className="font-black text-sm text-gray-800">{item.nom}</div>
                                         <div className="text-[10px] text-gray-400 font-bold uppercase bg-gray-100 px-2 py-0.5 rounded w-fit mt-1">{item.categorie}</div>
@@ -425,6 +444,9 @@ export default function MagasinierPage() {
                                             {item.ral && (
                                                 <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
                                                     <Palette size={12} className="text-purple-500"/> RAL {item.ral}
+                                                    {/* Affichage de l'unité ici aussi si pertinent */}
+                                                    <span className="text-gray-300">|</span> 
+                                                    <span className="text-gray-400">{item.unite}</span>
                                                 </div>
                                             )}
                                             {item.conditionnement && (
@@ -432,28 +454,44 @@ export default function MagasinierPage() {
                                                     <Box size={12} className="text-blue-500"/> {item.conditionnement}
                                                 </div>
                                             )}
+                                            {/* Affichage du calcul de pots si disponible */}
+                                            {nbContainers && (
+                                                <div className="flex items-center gap-1 text-[10px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded w-fit mt-1">
+                                                    <Calculator size={10}/> ~ {nbContainers} contenants/pots
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="p-5 text-center">
                                         <div className="flex items-center justify-center gap-3">
-                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) - 1)} className="w-6 h-6 bg-gray-100 rounded-full hover:bg-gray-200 font-bold">-</button>
+                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) - 1)} className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-500 transition-colors">-</button>
+                                            
+                                            {/* INPUT MANUEL POUR LE STOCK */}
                                             <div className="flex flex-col items-center">
-                                                <span className={`text-lg font-black ${item.qte_stock <= item.seuil_alerte ? 'text-red-500' : 'text-emerald-600'}`}>{item.qte_stock}</span>
-                                                <span className="text-[9px] text-gray-400 uppercase">{item.unite}</span>
+                                                <input 
+                                                    type="number" 
+                                                    className="w-20 text-center font-black text-lg bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-orange-400 outline-none transition-colors"
+                                                    value={item.qte_stock}
+                                                    onChange={(e) => updateStockQty(item.id, parseInt(e.target.value) || 0)}
+                                                />
+                                                <span className="text-[9px] text-gray-400 uppercase font-bold">{item.unite}</span>
                                             </div>
-                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) + 1)} className="w-6 h-6 bg-gray-100 rounded-full hover:bg-gray-200 font-bold">+</button>
+
+                                            <button onClick={() => updateStockQty(item.id, (item.qte_stock || 0) + 1)} className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-500 transition-colors">+</button>
                                         </div>
-                                        {item.qte_stock <= item.seuil_alerte && <div className="text-[8px] font-black text-red-500 uppercase mt-1 flex items-center justify-center gap-1"><AlertTriangle size={8}/> Stock bas</div>}
+                                        {item.qte_stock <= item.seuil_alerte && <div className="text-[9px] font-bold text-red-500 uppercase mt-2 flex items-center justify-center gap-1 animate-pulse"><AlertTriangle size={10}/> Stock bas</div>}
                                     </td>
                                     <td className="p-5 text-right">
-                                        <button onClick={() => handleDeleteSupply(item.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors">
+                                        <button onClick={() => handleDeleteSupply(item.id)} className="p-2 bg-white border border-gray-200 text-gray-300 rounded-xl hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all">
                                             <Trash2 size={16}/>
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
+                    {filteredStockSupplies.length === 0 && <div className="p-10 text-center text-gray-400">Aucune référence trouvée.</div>}
                 </div>
             </div>
         )}
