@@ -41,7 +41,9 @@ import {
   Palette,      
   Box,          
   AlertOctagon, 
-  Search        
+  Search,
+  TrendingUp,
+  Scale
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -83,7 +85,8 @@ const TYPE_CHANTIER_OPTIONS = [
 ];
 
 export default function ChantierDetail() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string;
   
   // --- ÉTATS D'INTERFACE ---
   const [loading, setLoading] = useState(true);
@@ -156,7 +159,7 @@ export default function ChantierDetail() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [searchWrapperRef]);
+  }, []); 
 
 
   // =================================================================================================
@@ -164,94 +167,79 @@ export default function ChantierDetail() {
   // =================================================================================================
 
   useEffect(() => { 
-      fetchChantierData(); 
+      let isMounted = true;
+
+      const fetchData = async () => {
+        if (!id) return;
+        setLoading(true);
+
+        try {
+            const results = await Promise.allSettled([
+                supabase.from('employes').select('id, nom, prenom').order('nom'),
+                supabase.from('chantiers').select('*').eq('id', id).single(),
+                supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+                supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+                supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id),
+                supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
+                supabase.from('materiel').select('*').order('nom'),
+                supabase.from('fournitures_stock').select('*').order('nom')
+            ]);
+
+            if (!isMounted) return;
+
+            if (results[0].status === 'fulfilled' && results[0].value.data) setEmployes(results[0].value.data);
+
+            if (results[1].status === 'fulfilled' && results[1].value.data) {
+                const c = results[1].value.data;
+                setChantier({
+                    ...c,
+                    date_debut: c.date_debut || '',
+                    date_fin: c.date_fin || '',
+                    effectif_prevu: c.effectif_prevu || 0,
+                    taux_reussite: c.taux_reussite ?? 100,
+                    statut: c.statut || 'en_cours',
+                    risques: c.risques || [],
+                    epi: c.epi || [],
+                    mesures_acqpa: c.mesures_acqpa || {},
+                    type_precision: c.type_precision || '',
+                    client_email: c.client_email || '',
+                    client_telephone: c.client_telephone || ''
+                });
+                
+                const currentAcqpa = c.mesures_acqpa || {};
+                if (!currentAcqpa.couches) {
+                    currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
+                }
+                setAcqpaData(currentAcqpa);
+                setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
+            }
+
+            if (results[2].status === 'fulfilled' && results[2].value.data) {
+                const t = results[2].value.data;
+                const formattedTasks = t.map((task: any) => ({
+                    ...task,
+                    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
+                }));
+                setTasks(formattedTasks);
+            }
+
+            if (results[3].status === 'fulfilled' && results[3].value.data) setDocuments(results[3].value.data);
+            if (results[4].status === 'fulfilled' && results[4].value.data) setMaterielPrevu(results[4].value.data);
+            if (results[5].status === 'fulfilled' && results[5].value.data) setFournituresPrevu(results[5].value.data);
+            if (results[6].status === 'fulfilled' && results[6].value.data) setCatalogueMateriel(results[6].value.data);
+            if (results[7].status === 'fulfilled' && results[7].value.data) setStockFournitures(results[7].value.data);
+
+        } catch (error: any) {
+            console.error("Erreur chargement global:", error);
+        } finally {
+            if (isMounted) setLoading(false);
+        }
+      };
+
+      fetchData();
+      return () => { isMounted = false; };
   }, [id]);
 
-  async function fetchChantierData() {
-    if (!id) return;
-    setLoading(true);
-
-    try {
-        // 1. Employés
-        const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
-        if (errEmp) throw errEmp;
-        if (emp) setEmployes(emp);
-
-        // 2. Chantier
-        const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
-        if (errC) throw errC;
-        
-        if (c) {
-            setChantier({
-                ...c,
-                date_debut: c.date_debut || '',
-                date_fin: c.date_fin || '',
-                effectif_prevu: c.effectif_prevu || 0,
-                taux_reussite: c.taux_reussite ?? 100,
-                statut: c.statut || 'en_cours',
-                risques: c.risques || [],
-                epi: c.epi || [],
-                mesures_acqpa: c.mesures_acqpa || {},
-                type_precision: c.type_precision || '',
-                client_email: c.client_email || '',
-                client_telephone: c.client_telephone || ''
-            });
-            
-            const currentAcqpa = c.mesures_acqpa || {};
-            if (!currentAcqpa.couches) {
-                currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
-            }
-            setAcqpaData(currentAcqpa);
-            setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
-        }
-
-        // 3. Tâches
-        const { data: t, error: errT } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (errT) throw errT;
-        if (t) {
-            const formattedTasks = t.map(task => ({
-                ...task,
-                subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
-            }));
-            setTasks(formattedTasks);
-        }
-
-        // 4. Documents
-        const { data: d, error: errD } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (errD) throw errD;
-        if (d) setDocuments(d);
-
-        // 5. Matériel
-        const { data: m, error: errM } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
-        if (errM) throw errM;
-        if (m) setMaterielPrevu(m);
-
-        // 6. Fournitures (AVEC JOINTURE STOCK)
-        const { data: f, error: errF } = await supabase
-            .from('chantier_fournitures')
-            .select(`
-                *,
-                fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
-            `)
-            .eq('chantier_id', id);
-        if (errF) throw errF;
-        if (f) setFournituresPrevu(f);
-
-        // 7. Catalogues
-        const { data: catMat } = await supabase.from('materiel').select('*').order('nom');
-        if (catMat) setCatalogueMateriel(catMat);
-
-        // Catalogue Stock Fournitures
-        const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
-        if (stock) setStockFournitures(stock);
-
-    } catch (error: any) {
-        console.error("Erreur chargement global:", error);
-        // On n'affiche pas d'alerte bloquante, mais on log l'erreur pour débogage
-    } finally {
-        setLoading(false);
-    }
-  }
 
   // =================================================================================================
   //                             LOGIQUE MÉTIER
@@ -299,48 +287,70 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- GESTION FOURNITURES (CORRIGÉE : AJOUT DU NOM) ---
+  // --- GESTION FOURNITURES ---
   const addFourniture = async () => {
       if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit dans la liste");
       
-      // 1. Récupérer les infos du stock pour remplir les champs obligatoires (nom, unité)
       const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
       const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
       const uniteProduit = selectedItem ? selectedItem.unite : 'U';
 
-      const { error } = await supabase.from('chantier_fournitures').insert([{
+      const { data, error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
           fourniture_ref_id: newFourniture.fourniture_ref_id,
-          nom: nomProduit, // ICI : On ajoute le nom pour satisfaire la contrainte NOT NULL
-          unite: uniteProduit, // Optionnel mais conseillé si ta table l'attend
+          nom: nomProduit, 
+          unite: uniteProduit, 
           qte_prevue: newFourniture.qte_prevue || 0,
           qte_restante: newFourniture.qte_prevue || 0,
+          qte_consommee: 0,
           seuil_alerte: 0 
-      }]);
+      }]).select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`);
 
       if(error) {
           alert("Erreur ajout fourniture: " + error.message);
-      } else {
+      } else if (data) {
+          setFournituresPrevu([data[0], ...fournituresPrevu]);
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
           setSupplySearch(""); 
-          fetchChantierData();
+      }
+  };
+
+  const updateConsommation = async (fournitureId: string, newConso: number) => {
+      const safeConso = Math.max(0, newConso);
+      
+      setFournituresPrevu(prev => prev.map(f => {
+          if (f.id === fournitureId) {
+              return { ...f, qte_consommee: safeConso };
+          }
+          return f;
+      }));
+
+      const { error } = await supabase
+          .from('chantier_fournitures')
+          .update({ qte_consommee: safeConso })
+          .eq('id', fournitureId);
+
+      if (error) {
+          console.error("Erreur mise à jour consommation:", error);
       }
   };
 
   const deleteFourniture = async (fId: string) => {
       if(confirm("Retirer cette fourniture ?")) {
-          await supabase.from('chantier_fournitures').delete().eq('id', fId);
-          fetchChantierData();
+          const { error } = await supabase.from('chantier_fournitures').delete().eq('id', fId);
+          if(!error) {
+             setFournituresPrevu(prev => prev.filter(f => f.id !== fId));
+          } else {
+              alert("Erreur suppression: " + error.message);
+          }
       }
   };
 
-  // --- HELPER : Récupérer l'unité du produit sélectionné ---
   const getSelectedUnit = () => {
       const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
       return selected ? selected.unite : '';
   };
 
-  // --- FILTRE POUR AUTOCOMPLETE ---
   const filteredStock = stockFournitures.filter(s => 
     s.nom.toLowerCase().includes(supplySearch.toLowerCase()) ||
     (s.ral && s.ral.includes(supplySearch))
@@ -349,26 +359,27 @@ export default function ChantierDetail() {
   // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
-      const { error } = await supabase.from('chantier_materiel').insert([{
+      const { data, error } = await supabase.from('chantier_materiel').insert([{
           chantier_id: id,
           materiel_id: newMat.materiel_id,
           date_debut: newMat.date_debut || null,
           date_fin: newMat.date_fin || null,
           qte_prise: newMat.qte || 1,
           statut: 'prevu'
-      }]);
-      if (!error) { 
+      }]).select('*, materiel(*)');
+
+      if (!error && data) { 
+          setMaterielPrevu([data[0], ...materielPrevu]);
           setShowAddMaterielModal(false); 
-          fetchChantierData(); 
       } else {
-          alert("Erreur ajout matériel : " + error.message);
+          alert("Erreur ajout matériel : " + error?.message);
       }
   };
 
   const deleteMateriel = async (matId: string) => {
       if (confirm('Retirer ce matériel du chantier ?')) {
           await supabase.from('chantier_materiel').delete().eq('id', matId);
-          fetchChantierData();
+          setMaterielPrevu(prev => prev.filter(m => m.id !== matId));
       }
   };
 
@@ -445,16 +456,16 @@ export default function ChantierDetail() {
     const { error } = await supabase.storage.from('documents').upload(filePath, file);
     if(!error) {
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
-        await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]);
-        fetchChantierData(); 
+        const { data } = await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]).select();
+        if (data) setDocuments([data[0], ...documents]);
     }
     setUploading(false);
   };
   
-  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
+  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); setDocuments(prev => prev.filter(d => d.id !== docId)); } };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
-  const percent = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
+  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all">
@@ -469,7 +480,7 @@ export default function ChantierDetail() {
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                        Budget : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percent}%)
+                        Budget : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)
                     </p>
                 </div>
             </div>
@@ -498,9 +509,7 @@ export default function ChantierDetail() {
             ))}
         </div>
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 1 : INFOS & TÂCHES                                                                    */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 1 : INFOS */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="space-y-6">
@@ -647,7 +656,7 @@ export default function ChantierDetail() {
                                                 <span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span>
                                             </div>
                                             <div className="flex gap-2 text-white/50 items-center">
-                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu pour cette étape">
+                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu">
                                                     <Users size={10} className="text-blue-300"/>
                                                     <span className="font-black text-blue-200">{st.effectif || 1}p</span>
                                                 </div>
@@ -683,9 +692,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 2 : LOGISTIQUE & MATÉRIEL                                                             */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 2 : LOGISTIQUE */}
         {activeTab === 'logistique' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-center mb-6">
@@ -726,163 +733,195 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 3 : FOURNITURES (AVEC AUTOCOMPLETE)                                                   */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 3 : FOURNITURES (SUIVI DÉTAILLÉ) */}
         {activeTab === 'fournitures' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
                 
-                {/* Formulaire Ajout Fourniture (Connecté au Stock + Autocomplete) */}
-                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20">
-                    <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
-                        <Package className="text-yellow-500"/> Ajouter Besoin
-                    </h3>
-                    <div className="space-y-4">
-                        
-                        {/* CHAMP RECHERCHE AVEC SUGGESTIONS */}
-                        <div className="relative" ref={searchWrapperRef}>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Recherche)</label>
-                            <div className="relative">
-                                <input 
-                                    type="text" 
-                                    className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors"
-                                    placeholder="Tapez pour chercher..."
-                                    value={supplySearch}
-                                    onChange={(e) => {
-                                        setSupplySearch(e.target.value);
-                                        setShowSupplyList(true);
-                                        // Reset sélection si on modifie le texte
-                                        if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''});
-                                    }}
-                                    onFocus={() => setShowSupplyList(true)}
-                                />
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                            </div>
-
-                            {/* Liste déroulante des suggestions */}
-                            {showSupplyList && supplySearch && (
-                                <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto custom-scrollbar z-50 animate-in fade-in slide-in-from-top-2">
-                                    {filteredStock.length > 0 ? (
-                                        filteredStock.map(s => (
-                                            <div 
-                                                key={s.id} 
-                                                className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0"
-                                                onClick={() => {
-                                                    setSupplySearch(s.nom); // Met le nom dans l'input
-                                                    setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); // Stocke l'ID
-                                                    setShowSupplyList(false); // Cache la liste
-                                                }}
-                                            >
-                                                <div className="font-bold text-sm text-gray-800">{s.nom}</div>
-                                                <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">
-                                                    {s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}
-                                                    {s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}
-                                                    <span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-4 text-center text-xs text-gray-400 font-bold">Aucun produit trouvé.</div>
-                                    )}
+                {/* 1. SECTIONS AJOUT ET BESOINS MAGASINIER */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Bloc Ajout Besoin */}
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20">
+                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
+                            <Package className="text-yellow-500"/> Ajouter Besoin
+                        </h3>
+                        <div className="space-y-4">
+                            <div className="relative" ref={searchWrapperRef}>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Recherche)</label>
+                                <div className="relative">
+                                    <input type="text" className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" placeholder="Tapez pour chercher..." value={supplySearch} onChange={(e) => { setSupplySearch(e.target.value); setShowSupplyList(true); if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); }} onFocus={() => setShowSupplyList(true)} />
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                                 </div>
-                            )}
-                        </div>
-                        
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">
-                                Quantité Nécessaire {newFourniture.fourniture_ref_id && <span className="text-blue-500 normal-case">(en {getSelectedUnit()})</span>}
-                            </label>
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    type="number" 
-                                    value={newFourniture.qte_prevue || ''} 
-                                    onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
-                                    className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
-                                />
-                                {newFourniture.fourniture_ref_id && (
-                                    <span className="bg-gray-100 text-gray-500 font-bold text-xs px-3 py-3 rounded-xl">
-                                        {getSelectedUnit()}
-                                    </span>
+                                {showSupplyList && supplySearch && (
+                                    <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto custom-scrollbar z-50 animate-in fade-in slide-in-from-top-2">
+                                        {filteredStock.length > 0 ? (
+                                            filteredStock.map(s => (
+                                                <div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}>
+                                                    <div className="font-bold text-sm text-gray-800">{s.nom}</div>
+                                                    <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">{s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}{s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}<span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span></div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="p-4 text-center text-xs text-gray-400 font-bold">Aucun produit trouvé.</div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Nécessaire {newFourniture.fourniture_ref_id && <span className="text-blue-500 normal-case">(en {getSelectedUnit()})</span>}</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="number" value={newFourniture.qte_prevue || ''} onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" />
+                                    {newFourniture.fourniture_ref_id && (<span className="bg-gray-100 text-gray-500 font-bold text-xs px-3 py-3 rounded-xl">{getSelectedUnit()}</span>)}
+                                </div>
+                            </div>
+                            <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Valider le besoin</button>
                         </div>
-                        
-                        <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                            Valider le besoin
-                        </button>
+                    </div>
+
+                    {/* Bloc Besoins Magasinier */}
+                    <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10">
+                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
+                            <TrendingUp className="text-blue-500"/> Besoins & Commandes Atelier
+                        </h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
+                                    <tr>
+                                        <th className="p-3">Produit</th>
+                                        <th className="p-3">Détails</th>
+                                        <th className="p-3 text-center">Prévu</th>
+                                        <th className="p-3 text-center bg-blue-50/50 text-blue-600">Stock Magasin</th>
+                                        <th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th>
+                                        <th className="p-3 text-right">Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {fournituresPrevu.map(f => {
+                                        const stockInfo = f.fournitures_stock || {};
+                                        const besoin = f.qte_prevue || 0;
+                                        const stockAtelier = stockInfo.qte_stock || 0;
+                                        const aCommander = Math.max(0, besoin - stockAtelier);
+                                        return (
+                                            <tr key={f.id} className="hover:bg-gray-50 transition-colors">
+                                                <td className="p-3 font-bold text-sm text-gray-800">
+                                                    {stockInfo.nom || f.nom}
+                                                    <button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="flex flex-col gap-1">
+                                                        {stockInfo.ral && (<span className="text-[9px] font-bold bg-gray-100 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit"><Palette size={10}/> RAL {stockInfo.ral}</span>)}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 text-center font-black">{besoin} {stockInfo.unite}</td>
+                                                <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockAtelier}</td>
+                                                <td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>{aCommander > 0 ? aCommander : '-'}</td>
+                                                <td className="p-3 text-right">
+                                                    {stockAtelier >= besoin ? (
+                                                        <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                {/* Tableau Calcul Automatique */}
-                <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10">
-                    <h3 className="font-black uppercase text-gray-700 mb-4">Calcul des Besoins & Commandes</h3>
+                {/* 2. TUILE SUIVI DE CONSOMMATION RÉELLE SUR LE TERRAIN */}
+                <div className="bg-white rounded-[35px] p-8 shadow-xl border border-gray-100 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                        <TrendingUp size={150} />
+                    </div>
+                    <div className="flex justify-between items-center mb-6 relative z-10">
+                        <div>
+                            <h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2">
+                                <TrendingUp className="text-emerald-500"/> Suivi de Consommation Terrain
+                            </h3>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Gestion du stock déporté en temps réel</p>
+                        </div>
+                        <div className="bg-emerald-50 p-2 rounded-xl text-emerald-600">
+                            <Scale size={24}/>
+                        </div>
+                    </div>
+
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
+                            <thead className="bg-gray-50/50 text-[11px] font-black uppercase text-gray-400">
                                 <tr>
-                                    <th className="p-3 rounded-l-xl">Produit</th>
-                                    <th className="p-3">Détails</th>
-                                    <th className="p-3 text-center">Besoin</th>
-                                    <th className="p-3 text-center bg-blue-50/50 text-blue-600">En Stock</th>
-                                    <th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th>
-                                    <th className="p-3 text-right rounded-r-xl">Statut</th>
+                                    <th className="p-4">Fourniture</th>
+                                    <th className="p-4 text-center">Progression Conso</th>
+                                    <th className="p-4 text-center">Quantité Utilisée</th>
+                                    <th className="p-4 text-center bg-emerald-50/50 text-emerald-700">Stock Chantier</th>
+                                    <th className="p-4 text-right">Écart (Delta)</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {fournituresPrevu.length === 0 && (
-                                    <tr><td colSpan={6} className="p-8 text-center text-gray-400 italic">Aucune fourniture prévue.</td></tr>
-                                )}
+                            <tbody className="divide-y divide-gray-100">
                                 {fournituresPrevu.map(f => {
-                                    // Données provenant de la jointure
                                     const stockInfo = f.fournitures_stock || {};
-                                    const stockDispo = stockInfo.qte_stock || 0;
-                                    const besoin = f.qte_prevue || 0;
-                                    const aCommander = Math.max(0, besoin - stockDispo);
-                                    const isStockOK = stockDispo >= besoin;
-
+                                    const prevu = f.qte_prevue || 1;
+                                    const conso = f.qte_consommee || 0;
+                                    const stockSurPlace = Math.max(0, prevu - conso);
+                                    const ratio = Math.min(100, Math.round((conso / prevu) * 100));
+                                    
                                     return (
-                                        <tr key={f.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="p-3 font-bold text-sm text-gray-800">
-                                                {stockInfo.nom || 'Produit Inconnu'}
-                                                <button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="flex flex-col gap-1">
-                                                    {stockInfo.ral && (
-                                                        <span className="text-[9px] font-bold bg-gray-100 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
-                                                            <Palette size={10}/> RAL {stockInfo.ral}
-                                                        </span>
-                                                    )}
-                                                    {stockInfo.conditionnement && (
-                                                        <span className="text-[9px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
-                                                            <Box size={10}/> {stockInfo.conditionnement}
-                                                        </span>
-                                                    )}
+                                        <tr key={f.id} className="hover:bg-gray-50/80 transition-all group">
+                                            <td className="p-4">
+                                                <p className="font-black text-gray-800">{stockInfo.nom || f.nom}</p>
+                                                <div className="flex gap-2 mt-1">
+                                                    <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Initial: {prevu} {stockInfo.unite}</span>
                                                 </div>
                                             </td>
-                                            <td className="p-3 text-center font-black text-gray-800">
-                                                {besoin} {stockInfo.unite}
+                                            <td className="p-4 w-48">
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] font-black uppercase">
+                                                        <span className="text-gray-400">Utilisation</span>
+                                                        <span className={ratio > 90 ? 'text-red-500' : 'text-emerald-600'}>{ratio}%</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden flex">
+                                                        <div className={`h-full transition-all duration-500 ${ratio > 100 ? 'bg-red-500' : ratio > 75 ? 'bg-orange-400' : 'bg-emerald-500'}`} style={{ width: `${ratio}%` }}></div>
+                                                    </div>
+                                                </div>
                                             </td>
-                                            <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">
-                                                {stockDispo}
+                                            <td className="p-4">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button onClick={() => updateConsommation(f.id, conso - 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><Minus size={14}/></button>
+                                                    <input 
+                                                        type="number" 
+                                                        className="w-16 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none"
+                                                        value={conso}
+                                                        onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)}
+                                                    />
+                                                    <button onClick={() => updateConsommation(f.id, conso + 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"><Plus size={14}/></button>
+                                                </div>
                                             </td>
-                                            <td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>
-                                                {aCommander > 0 ? aCommander : '-'}
+                                            <td className="p-4 text-center bg-emerald-50/30">
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`text-lg font-black ${stockSurPlace <= 1 ? 'text-red-500' : 'text-emerald-700'}`}>{stockSurPlace}</span>
+                                                    <span className="text-[9px] font-bold text-emerald-400 uppercase">{stockInfo.unite} restants</span>
+                                                </div>
                                             </td>
-                                            <td className="p-3 text-right">
-                                                {isStockOK ? (
-                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
-                                                        <CheckCircle2 size={10}/> Stock OK
-                                                    </span>
+                                            <td className="p-4 text-right">
+                                                {conso > prevu ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-red-500 font-black flex items-center gap-1 text-sm"><AlertTriangle size={12}/> +{(conso - prevu).toFixed(1)}</span>
+                                                        <span className="text-[8px] font-bold uppercase text-red-300">Sur-conso</span>
+                                                    </div>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100 animate-pulse">
-                                                        <AlertOctagon size={10}/> Commander
-                                                    </span>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-emerald-500 font-black text-sm">{(prevu - conso).toFixed(1)}</span>
+                                                        <span className="text-[8px] font-bold uppercase text-emerald-300">Reliquat</span>
+                                                    </div>
                                                 )}
                                             </td>
                                         </tr>
                                     );
                                 })}
+                                {fournituresPrevu.length === 0 && (
+                                    <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-bold italic">Ajoutez des besoins ci-dessus pour lancer le suivi terrain.</td></tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -890,9 +929,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 4 : PLANNING (INCHANGÉ)                                                               */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 4 : PLANNING */}
         {activeTab === 'planning' && (
             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-center mb-6">
@@ -935,9 +972,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 5 : HSE / SÉCURITÉ (INCHANGÉ)                                                         */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 5 : HSE */}
         {activeTab === 'hse' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-[#e17055] text-white rounded-[30px] p-6 shadow-xl relative overflow-hidden">
@@ -971,9 +1006,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 6 : ACQPA (INCHANGÉ)                                                                  */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 6 : ACQPA */}
         {activeTab === 'acqpa' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 {!chantier.mesures_obligatoires ? (
@@ -1005,9 +1038,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ============================================================================================ */}
-        {/* ONGLET 7 : DOCUMENTS (INCHANGÉ)                                                              */}
-        {/* ============================================================================================ */}
+        {/* ONGLET 7 : DOCUMENTS */}
         {activeTab === 'docs' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-[#6c5ce7] p-8 rounded-[30px] text-white shadow-xl flex flex-col items-center justify-center text-center border-4 border-dashed border-white/20 relative overflow-hidden group mb-6 hover:bg-[#5f27cd] cursor-pointer transition-colors">
@@ -1036,9 +1067,7 @@ export default function ChantierDetail() {
 
       </div>
 
-      {/* ============================================================================================ */}
-      {/* MODALE ACQPA (INCHANGÉE)                                                                     */}
-      {/* ============================================================================================ */}
+      {/* MODALE ACQPA */}
       {showACQPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
@@ -1082,9 +1111,7 @@ export default function ChantierDetail() {
         </div>
       )}
 
-      {/* ============================================================================================ */}
-      {/* MODALE AJOUT MATÉRIEL (INCHANGÉE)                                                            */}
-      {/* ============================================================================================ */}
+      {/* MODALE MATÉRIEL */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
