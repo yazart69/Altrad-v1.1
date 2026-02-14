@@ -8,11 +8,21 @@ import {
   X, Loader2, Eraser, CalendarDays, Save, Check 
 } from 'lucide-react';
 
-// --- HELPER: Format Local Date to YYYY-MM-DD ---
+// --- HELPERS ---
+
+// Format Local Date to YYYY-MM-DD
 const toLocalISOString = (date: Date) => {
   const offset = date.getTimezoneOffset();
   const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
   return adjustedDate.toISOString().split('T')[0];
+};
+
+// Calcul Numéro de Semaine (ISO 8601)
+const getWeekNumber = (d: Date) => {
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
 export default function PlanningPage() {
@@ -232,7 +242,7 @@ export default function PlanningPage() {
             <div className="flex items-center bg-white rounded-xl p-1 shadow-sm border border-gray-200">
                 <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><ChevronLeft size={20}/></button>
                 <div className="px-4 text-center min-w-[140px]">
-                    <span className="block text-[10px] font-black uppercase text-gray-400">Semaine du</span>
+                    <span className="block text-[10px] font-black uppercase text-gray-400">Semaine {getWeekNumber(weekDays[0])}</span>
                     <span className="block text-sm font-black text-gray-800">{weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</span>
                 </div>
                 <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><ChevronRight size={20}/></button>
@@ -243,8 +253,8 @@ export default function PlanningPage() {
       {/* HEADER IMPRESSION */}
       <div className="hidden print:flex justify-between items-center mb-4 border-b-2 border-black pb-2">
           <div>
-            <h1 className="text-xl font-black uppercase">Planning Hebdomadaire</h1>
-            <p className="text-xs text-gray-600">Semaine du {weekDays[0].toLocaleDateString('fr-FR')} au {weekDays[4].toLocaleDateString('fr-FR')}</p>
+            <h1 className="text-xl font-black uppercase">Planning - Semaine {getWeekNumber(weekDays[0])}</h1>
+            <p className="text-xs text-gray-600">Du {weekDays[0].toLocaleDateString('fr-FR')} au {weekDays[4].toLocaleDateString('fr-FR')}</p>
           </div>
           <div className="text-right">
              <p className="text-[10px] uppercase font-bold text-gray-400">Généré le {new Date().toLocaleDateString()}</p>
@@ -304,7 +314,8 @@ export default function PlanningPage() {
                                           </div>
                                       )}
                                       <div className="flex-1 min-w-0">
-                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-[9px] print:whitespace-normal`}>
+                                          {/* MODIFICATION TAILLE POLICE ICI : text-[11px] print:text-[11px] */}
+                                          <span className={`text-[11px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-[11px] print:whitespace-normal`}>
                                               {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
                                           </span>
                                           
@@ -366,7 +377,7 @@ export default function PlanningPage() {
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
                                     return (
                                         <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:shadow-none print:p-1`}>
-                                            <span className="text-[10px] font-bold uppercase truncate print:text-[9px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
+                                            <span className="text-[11px] font-bold uppercase truncate print:text-[11px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
                                             <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100">{mission.type}</span>
                                             {!modePointage && <button onClick={() => deleteAssignment(mission.id)} className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"><X size={12} /></button>}
                                         </div>
