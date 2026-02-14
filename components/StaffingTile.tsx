@@ -9,13 +9,22 @@ interface StaffingTileProps {
   staffCount?: number;
 }
 
+// Helper pour garantir la date locale (identique page Planning)
+const toLocalISOString = (date: Date) => {
+  const offset = date.getTimezoneOffset();
+  const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return adjustedDate.toISOString().split('T')[0];
+};
+
 export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
   const [staffing, setStaffing] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCount, setActiveCount] = useState(0);
 
   useEffect(() => {
     async function fetchCurrentStaffing() {
-      const today = new Date().toISOString().split('T')[0];
+      // Utilisation de la date locale pour matcher avec la BDD
+      const today = toLocalISOString(new Date());
 
       // 1. On récupère les affectations du planning pour AUJOURD'HUI
       const { data: assignments, error: planError } = await supabase
@@ -27,28 +36,35 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
           employes (id, nom, prenom, role, statut_actuel)
         `)
         .eq('date_debut', today)
-        .eq('type', 'chantier');
+        .eq('type', 'chantier'); // On ne veut que les chantiers, pas les congés
 
       if (assignments) {
         // 2. On regroupe les employés par chantier
         const grouped: any = {};
+        let count = 0;
 
         assignments.forEach((assign: any) => {
-          // On n'affiche que ceux qui sont "disponible" (pas en congés/maladie)
-          if (assign.employes?.statut_actuel === 'disponible') {
-            const chantierId = assign.chantiers?.id;
+          // Sécurité : Vérifier que les relations existent (employé et chantier non nuls)
+          if (assign.employes && assign.chantiers) {
+             // Optionnel : Filtrer par statut si besoin (ici on prend tout ce qui est planifié sur chantier)
+             // Si l'employé est malade MAIS planifié par erreur, il apparaîtra. 
+             // Pour être strict : if (assign.employes.statut_actuel === 'disponible') ...
+            
+            const chantierId = assign.chantiers.id;
             if (!grouped[chantierId]) {
               grouped[chantierId] = {
-                nom: assign.chantiers?.nom,
+                nom: assign.chantiers.nom,
                 equipe: []
               };
             }
             grouped[chantierId].equipe.push(assign.employes);
+            count++;
           }
         });
 
         // Transformer l'objet en tableau pour le map
         setStaffing(Object.values(grouped));
+        setActiveCount(count);
       }
       setLoading(false);
     }
@@ -74,7 +90,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </span>
                 <p className="text-[10px] text-orange-50 font-bold uppercase tracking-widest opacity-80">
-                En direct • {staffCount} Actifs
+                En direct • {activeCount} Actifs
                 </p>
             </div>
         </Link>
@@ -118,7 +134,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_5px_rgba(74,222,128,0.8)]"></div>
                     <span className="text-[10px] font-bold text-white uppercase tracking-tighter">
-                      {emp.nom} {emp.prenom.substring(0,1)}.
+                      {emp.nom} {emp.prenom?.substring(0,1)}.
                     </span>
                   </div>
                 ))}
