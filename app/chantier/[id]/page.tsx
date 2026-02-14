@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -40,7 +40,8 @@ import {
   UserPlus,
   Palette,      // NOUVEAU
   Box,          // NOUVEAU
-  AlertOctagon  // NOUVEAU
+  AlertOctagon, // NOUVEAU
+  Search        // NOUVEAU
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -140,8 +141,22 @@ export default function ChantierDetail() {
   // Matériel
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   
-  // Fournitures (MODIFIÉ : UTILISE UNE RÉFÉRENCE ID AU LIEU D'UN NOM)
+  // Fournitures (MODIFIÉ : UTILISE UNE RÉFÉRENCE ID + AUTOCOMPLETE)
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
+  const [supplySearch, setSupplySearch] = useState(""); // Ce que l'utilisateur tape
+  const [showSupplyList, setShowSupplyList] = useState(false); // Afficher/Cacher la liste
+  const searchWrapperRef = useRef<HTMLDivElement>(null); // Pour fermer quand on clique dehors
+
+  // Fermer la liste si on clique ailleurs
+  useEffect(() => {
+    function handleClickOutside(event: any) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
+        setShowSupplyList(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [searchWrapperRef]);
 
 
   // =================================================================================================
@@ -279,7 +294,7 @@ export default function ChantierDetail() {
 
   // --- GESTION FOURNITURES (INTELLIGENTE) ---
   const addFourniture = async () => {
-      if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit");
+      if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit dans la liste");
       
       const { error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
@@ -292,6 +307,7 @@ export default function ChantierDetail() {
           alert("Erreur ajout fourniture: " + error.message);
       } else {
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
+          setSupplySearch(""); // Reset recherche
           fetchChantierData();
       }
   };
@@ -302,6 +318,18 @@ export default function ChantierDetail() {
           fetchChantierData();
       }
   };
+
+  // --- HELPER : Récupérer l'unité du produit sélectionné ---
+  const getSelectedUnit = () => {
+      const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
+      return selected ? selected.unite : '';
+  };
+
+  // --- FILTRE POUR AUTOCOMPLETE ---
+  const filteredStock = stockFournitures.filter(s => 
+    s.nom.toLowerCase().includes(supplySearch.toLowerCase()) ||
+    (s.ral && s.ral.includes(supplySearch))
+  );
 
   // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
@@ -684,51 +712,94 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 3 : FOURNITURES (INTELLIGENT)                                                         */}
+        {/* ONGLET 3 : FOURNITURES (AVEC AUTOCOMPLETE)                                                   */}
         {/* ============================================================================================ */}
         {activeTab === 'fournitures' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 
-                {/* Formulaire Ajout Fourniture (Connecté au Stock) */}
-                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit">
+                {/* Formulaire Ajout Fourniture (Connecté au Stock + Autocomplete) */}
+                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20">
                     <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
                         <Package className="text-yellow-500"/> Ajouter Besoin
                     </h3>
                     <div className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Stock)</label>
-                            <select 
-                                className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none cursor-pointer"
-                                value={newFourniture.fourniture_ref_id}
-                                onChange={e => setNewFourniture({...newFourniture, fourniture_ref_id: e.target.value})}
-                            >
-                                <option value="">-- Sélectionner --</option>
-                                {stockFournitures.map(s => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.nom} {s.ral ? `(RAL ${s.ral})` : ''} - {s.qte_stock} {s.unite} dispo
-                                    </option>
-                                ))}
-                            </select>
+                        
+                        {/* CHAMP RECHERCHE AVEC SUGGESTIONS */}
+                        <div className="relative" ref={searchWrapperRef}>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Recherche)</label>
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors"
+                                    placeholder="Tapez pour chercher..."
+                                    value={supplySearch}
+                                    onChange={(e) => {
+                                        setSupplySearch(e.target.value);
+                                        setShowSupplyList(true);
+                                        // Reset sélection si on modifie le texte
+                                        if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''});
+                                    }}
+                                    onFocus={() => setShowSupplyList(true)}
+                                />
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                            </div>
+
+                            {/* Liste déroulante des suggestions */}
+                            {showSupplyList && supplySearch && (
+                                <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto custom-scrollbar z-50 animate-in fade-in slide-in-from-top-2">
+                                    {filteredStock.length > 0 ? (
+                                        filteredStock.map(s => (
+                                            <div 
+                                                key={s.id} 
+                                                className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0"
+                                                onClick={() => {
+                                                    setSupplySearch(s.nom); // Met le nom dans l'input
+                                                    setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); // Stocke l'ID
+                                                    setShowSupplyList(false); // Cache la liste
+                                                }}
+                                            >
+                                                <div className="font-bold text-sm text-gray-800">{s.nom}</div>
+                                                <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">
+                                                    {s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}
+                                                    {s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}
+                                                    <span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-4 text-center text-xs text-gray-400 font-bold">Aucun produit trouvé.</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         
                         <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Nécessaire</label>
-                            <input 
-                                type="number" 
-                                value={newFourniture.qte_prevue || ''} 
-                                onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
-                                className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none" 
-                            />
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">
+                                Quantité Nécessaire {newFourniture.fourniture_ref_id && <span className="text-blue-500 normal-case">(en {getSelectedUnit()})</span>}
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="number" 
+                                    value={newFourniture.qte_prevue || ''} 
+                                    onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
+                                    className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
+                                />
+                                {newFourniture.fourniture_ref_id && (
+                                    <span className="bg-gray-100 text-gray-500 font-bold text-xs px-3 py-3 rounded-xl">
+                                        {getSelectedUnit()}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         
-                        <button onClick={addFourniture} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95">
+                        <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
                             Valider le besoin
                         </button>
                     </div>
                 </div>
 
                 {/* Tableau Calcul Automatique */}
-                <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100">
+                <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10">
                     <h3 className="font-black uppercase text-gray-700 mb-4">Calcul des Besoins & Commandes</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
