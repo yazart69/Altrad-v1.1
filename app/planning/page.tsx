@@ -4,9 +4,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
-  Printer, Trash2, Activity, Check, 
-  Send, FileCheck, X, User, Users, Loader2, 
-  Clock, AlertTriangle, Eraser, CalendarDays, Save
+  Printer, Trash2, Activity, 
+  X, Loader2, Eraser, CalendarDays, Save
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -31,7 +30,7 @@ export default function PlanningPage() {
   });
 
   // MODES
-  const [modePointage, setModePointage] = useState(false); // Bascule entre Planning et Pointage
+  const [modePointage, setModePointage] = useState(false); // Par défaut false, bouton supprimé donc reste false
 
   // ÉTATS UI
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,7 +51,6 @@ export default function PlanningPage() {
     if (chan) setChantiers(chan);
     
     // Planning (Sur une plage large pour éviter les rechargements constants)
-    // On pourrait optimiser en filtrant par date, mais pour l'instant on charge tout pour la synchro
     const { data: plan } = await supabase
         .from('planning')
         .select(`
@@ -88,7 +86,6 @@ export default function PlanningPage() {
       const stats: any = {};
       assignments.forEach(a => {
           if (!a.employe_id || !a.heures) return;
-          // Vérifier si l'assignation est dans la semaine affichée
           const aDate = new Date(a.date_debut);
           if (aDate >= weekDays[0] && aDate <= weekDays[4]) {
               stats[a.employe_id] = (stats[a.employe_id] || 0) + (a.heures || 0);
@@ -151,12 +148,9 @@ export default function PlanningPage() {
     
     // Pour chaque jour de la plage
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        // Ignorer samedi/dimanche si voulu (ici on inclut tout, à affiner si besoin)
         const currentIso = toLocalISOString(d);
 
-        // Pour chaque employé sélectionné
         selectedEmployes.forEach(empId => {
-            // Vérifier doublon (Optionnel: ici on autorise doublon chantier si besoin de pointer matin/aprem, sinon bloquer)
             const exists = assignments.find(a => 
                 a.employe_id === empId && 
                 a.date_debut === currentIso && 
@@ -168,10 +162,10 @@ export default function PlanningPage() {
                     employe_id: empId,
                     chantier_id: selection.chantierId,
                     date_debut: currentIso,
-                    date_fin: currentIso, // Planning hebdo = granularité jour
+                    date_fin: currentIso, 
                     type: finalType,
                     odm_envoye: false,
-                    heures: 0 // Par défaut
+                    heures: 0 
                 });
             }
         });
@@ -189,13 +183,10 @@ export default function PlanningPage() {
     }
   };
 
-  // Mise à jour des heures (Mode Pointage)
+  // Mise à jour des heures (Mode Pointage - Fonctions conservées même si bouton masqué)
   const updateHours = async (id: string, hours: number) => {
-      // Optimistic UI update
       const newAssignments = assignments.map(a => a.id === id ? { ...a, heures: hours } : a);
       setAssignments(newAssignments);
-
-      // Debounce ou save direct (ici direct pour simplicité)
       await supabase.from('planning').update({ heures: hours }).eq('id', id);
   };
 
@@ -203,13 +194,15 @@ export default function PlanningPage() {
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00b894]" size={40} /></div>;
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0 print:m-0 print:min-h-0">
+    <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0 print:m-0 print:min-h-0 print:w-full print:absolute print:top-0 print:left-0 z-50">
       
       {/* STYLE SPÉCIFIQUE POUR L'IMPRESSION */}
+      {/* Modification : Force l'affichage des background-colors et cache les sidebars/navs globaux */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           @page { size: landscape; margin: 5mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          aside, nav, header, .sidebar, .navbar { display: none !important; } 
           .no-print { display: none !important; }
         }
       `}} />
@@ -218,30 +211,19 @@ export default function PlanningPage() {
       <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4 print:hidden">
         <div>
           <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">
-              {modePointage ? <span className="text-orange-500">Pointage Heures</span> : <span>Planning <span className="text-[#00b894]">Chantiers</span></span>}
+              <span>Planning <span className="text-[#00b894]">Chantiers</span></span>
           </h1>
           <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">
-              {modePointage ? "Saisie des temps réalisés" : "Vue Équipes & Affectations"}
+              Vue Équipes & Affectations
           </p>
         </div>
         
         <div className="flex flex-wrap gap-3 items-center">
             
-            {/* BOUTON POINTAGE / PLANNING */}
-            <button 
-                onClick={() => setModePointage(!modePointage)} 
-                className={`px-4 py-2 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-sm transition-all ${modePointage ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-            >
-                {modePointage ? <Check size={16}/> : <Clock size={16}/>}
-                {modePointage ? 'Terminer Pointage' : 'Saisir Heures'}
-            </button>
-
             {/* BOUTON RESET */}
-            {!modePointage && (
-                <button onClick={resetWeek} className="bg-red-50 text-red-500 border border-red-100 px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-red-100 flex items-center gap-2">
-                    <Eraser size={16} /> Reset Semaine
-                </button>
-            )}
+            <button onClick={resetWeek} className="bg-red-50 text-red-500 border border-red-100 px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-red-100 flex items-center gap-2">
+                <Eraser size={16} /> Reset Semaine
+            </button>
 
             <button onClick={() => window.print()} className="bg-[#2d3436] text-white px-4 py-2 rounded-xl font-bold uppercase text-xs hover:bg-black flex items-center gap-2 shadow-lg">
                 <Printer size={16} />
@@ -292,7 +274,8 @@ export default function PlanningPage() {
               <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
                 <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2">
                   <div className="flex items-start gap-3">
-                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 print:hidden"><HardHat size={18} /></div>
+                      {/* Retour de la couleur à l'impression */}
+                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1"><HardHat size={18} /></div>
                       <div>
                           <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs">{chantier.nom}</p>
                           <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate print:text-gray-600 print:whitespace-normal">{chantier.adresse || 'Localisation non définie'}</p>
@@ -308,31 +291,19 @@ export default function PlanningPage() {
                     <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border print:border-black print:h-auto print:p-1">
                       <div className="flex flex-col gap-1.5 h-full">
                           {dailyMissions.map((mission) => (
-                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'} print:bg-white print:text-black print:border print:border-black print:shadow-none print:p-1`}>
+                              // Retour des couleurs (suppression des overrides print noir et blanc)
+                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'} print:shadow-none print:p-1`}>
                                   <div className="flex items-center gap-2 w-full">
                                       {!modePointage && (
-                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold shrink-0 print:bg-black print:text-white print:w-4 print:h-4 print:text-[8px]">
+                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold shrink-0 print:text-white print:w-4 print:h-4 print:text-[8px]">
                                               {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
                                           </div>
                                       )}
                                       <div className="flex-1 min-w-0">
-                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-black print:text-[9px] print:whitespace-normal`}>
+                                          <span className={`text-[10px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-[9px] print:whitespace-normal`}>
                                               {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
                                           </span>
                                           
-                                          {/* MODE POINTAGE : INPUT HEURES */}
-                                          {modePointage && (
-                                              <div className="flex items-center gap-1 mt-1 print:hidden">
-                                                  <input 
-                                                      type="number" 
-                                                      min="0" max="24"
-                                                      className="w-12 p-1 text-xs font-bold border border-orange-200 rounded bg-white text-center outline-none focus:border-orange-500"
-                                                      value={mission.heures || 0}
-                                                      onChange={(e) => updateHours(mission.id, parseFloat(e.target.value))}
-                                                  />
-                                                  <span className="text-[9px] text-gray-400">h</span>
-                                              </div>
-                                          )}
                                           {/* Mode impression : Afficher heures si renseignées */}
                                           <div className="hidden print:block text-[8px] font-bold mt-0.5">
                                              {mission.heures > 0 ? `${mission.heures}h` : ''}
@@ -340,7 +311,7 @@ export default function PlanningPage() {
                                       </div>
                                   </div>
 
-                                  {/* Actions Rapides (Suppression) - Masqué en mode Pointage pour éviter fausse manip */}
+                                  {/* Actions Rapides (Suppression) */}
                                   {!modePointage && (
                                       <div className="hidden group-hover/card:flex gap-1 print:hidden">
                                           <button onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}} className="p-1 rounded bg-red-500/80 hover:bg-red-500 text-white">
@@ -351,7 +322,7 @@ export default function PlanningPage() {
                               </div>
                           ))}
 
-                          {/* Bouton Ajouter (Masqué en mode Pointage) */}
+                          {/* Bouton Ajouter */}
                           {!modePointage && (
                               <button 
                                 onClick={() => openAssignmentModal(chantier.id, day, 'chantier')}
@@ -371,7 +342,7 @@ export default function PlanningPage() {
             <tr className="bg-gray-50 border-t-4 border-white print:border-black print:border-t-2 print:bg-white print:break-inside-avoid">
                 <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:static print:bg-white print:border print:border-black print:p-2">
                     <div className="flex items-center gap-3">
-                        <div className="bg-gray-400 p-2 rounded-lg text-white print:hidden"><Activity size={18} /></div>
+                        <div className="bg-gray-400 p-2 rounded-lg text-white"><Activity size={18} /></div>
                         <div>
                             <p className="font-black text-gray-600 text-xs uppercase leading-tight print:text-black">Hors Chantier</p>
                             <p className="text-[9px] text-gray-400 uppercase mt-0.5 print:text-gray-600">Absences / Formations</p>
@@ -389,9 +360,10 @@ export default function PlanningPage() {
                                     if(mission.type === 'conge') color = "bg-[#e17055]";
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
                                     return (
-                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:bg-white print:border print:border-dashed print:border-black print:text-black print:shadow-none print:p-1`}>
+                                        // Retour couleurs
+                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:shadow-none print:p-1`}>
                                             <span className="text-[10px] font-bold uppercase truncate print:text-[9px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
-                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100 print:text-black">{mission.type}</span>
+                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100">{mission.type}</span>
                                             {!modePointage && <button onClick={() => deleteAssignment(mission.id)} className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"><X size={12} /></button>}
                                         </div>
                                     )
@@ -406,7 +378,7 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION (ENRICHIE) */}
+      {/* MODAL D'AFFECTATION */}
       {isModalOpen && selection && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden animate-in fade-in">
           <div className="bg-white rounded-[30px] p-6 w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -439,7 +411,7 @@ export default function PlanningPage() {
                     <div className="max-h-[200px] overflow-y-auto border border-gray-100 rounded-xl">
                         {employes.map(e => {
                             const isSelected = selectedEmployes.includes(e.id);
-                            // Calcul heures déjà planifiées (optionnel, pour info)
+                            // Calcul heures déjà planifiées
                             const currentHours = weeklyHours[e.id] || 0;
                             const isOverload = currentHours > 39;
 
@@ -462,7 +434,7 @@ export default function PlanningPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {isOverload && <AlertTriangle size={14} className="text-orange-500" />}
+                                        {/* {isOverload && <AlertTriangle size={14} className="text-orange-500" />} */}
                                         {isSelected && <Check className="text-blue-500" size={16} />}
                                     </div>
                                 </div>
