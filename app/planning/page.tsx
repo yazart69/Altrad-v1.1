@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, 
-  X, Loader2, Eraser, CalendarDays, Save
+  X, Loader2, Eraser, CalendarDays, Save, Check // <-- Check réintégré ici
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -30,7 +30,7 @@ export default function PlanningPage() {
   });
 
   // MODES
-  const [modePointage, setModePointage] = useState(false); // Par défaut false, bouton supprimé donc reste false
+  const [modePointage, setModePointage] = useState(false); 
 
   // ÉTATS UI
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -197,7 +197,6 @@ export default function PlanningPage() {
     <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0 print:m-0 print:min-h-0 print:w-full print:absolute print:top-0 print:left-0 z-50">
       
       {/* STYLE SPÉCIFIQUE POUR L'IMPRESSION */}
-      {/* Modification : Force l'affichage des background-colors et cache les sidebars/navs globaux */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           @page { size: landscape; margin: 5mm; }
@@ -274,7 +273,6 @@ export default function PlanningPage() {
               <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
                 <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2">
                   <div className="flex items-start gap-3">
-                      {/* Retour de la couleur à l'impression */}
                       <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1"><HardHat size={18} /></div>
                       <div>
                           <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs">{chantier.nom}</p>
@@ -291,7 +289,6 @@ export default function PlanningPage() {
                     <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border print:border-black print:h-auto print:p-1">
                       <div className="flex flex-col gap-1.5 h-full">
                           {dailyMissions.map((mission) => (
-                              // Retour des couleurs (suppression des overrides print noir et blanc)
                               <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'} print:shadow-none print:p-1`}>
                                   <div className="flex items-center gap-2 w-full">
                                       {!modePointage && (
@@ -360,7 +357,6 @@ export default function PlanningPage() {
                                     if(mission.type === 'conge') color = "bg-[#e17055]";
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
                                     return (
-                                        // Retour couleurs
                                         <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:shadow-none print:p-1`}>
                                             <span className="text-[10px] font-bold uppercase truncate print:text-[9px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
                                             <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100">{mission.type}</span>
@@ -434,7 +430,6 @@ export default function PlanningPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {/* {isOverload && <AlertTriangle size={14} className="text-orange-500" />} */}
                                         {isSelected && <Check className="text-blue-500" size={16} />}
                                     </div>
                                 </div>
