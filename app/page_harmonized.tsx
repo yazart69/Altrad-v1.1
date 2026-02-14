@@ -9,7 +9,10 @@ import TasksTile from "@/components/TasksTile";
 import StaffingTile from "@/components/StaffingTile"; 
 import MiddleTiles from "@/components/MiddleTiles";
 import HSETile from "@/components/HSETile"; 
-import PointageTile from "@/components/PointageTile"; 
+import PointageTile from "@/components/PointageTile";
+import CalendarTile from "@/components/CalendarTile";
+import StatsTile from "@/components/StatsTile";
+import EventsListTile from "@/components/EventsListTile";
 
 export default function Home() {
   const [stats, setStats] = useState({ staff: 0, alerts: 0, activeSites: 0 });
@@ -33,19 +36,38 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="font-['Fredoka'] pb-4">
+    <div className="font-['Fredoka'] pb-4 space-y-6">
       
-      {/* CONTENEUR RESPONSIVE : 
-          - Mobile : Flex Vertical (col)
-          - Desktop : Grid complexe
-      */}
-      <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6">
+      {/* ============================================
+          SECTION 1 : BARRE ÉVÉNEMENTS (Top Banner)
+          ============================================ */}
+      <div className="w-full">
+        <EventsListTile />
+      </div>
 
-        {/* --- BLOC PRINCIPAL (GAUCHE sur PC, HAUT sur Mobile) --- */}
+      {/* ============================================
+          SECTION 2 : GRILLE PRINCIPALE
+          ============================================ */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+        {/* COLONNE GAUCHE (9 cols sur desktop) */}
         <div className="xl:col-span-9 flex flex-col gap-6">
           
-          {/* LIGNE 1 : RH & LOGISTIQUE */}
-          {/* Mobile : Stack vertical | Tablette : Grid 2 cols | PC : Grid 12 cols */}
+          {/* Ligne 1 : Stats Graphique + Calendar */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-6 xl:h-[350px]">
+            
+            {/* StatsTile (Graphique tendance) */}
+            <div className="xl:col-span-6 h-[300px] xl:h-full">
+              <StatsTile />
+            </div>
+            
+            {/* CalendarTile (Planning semaine) */}
+            <div className="xl:col-span-6 h-[300px] xl:h-full">
+              <CalendarTile />
+            </div>
+          </div>
+
+          {/* Ligne 2 : RH & Logistique */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-6 xl:h-[320px]">
             
             {/* LeavesTile (Congés) */}
@@ -59,42 +81,42 @@ export default function Home() {
             </div>
           </div>
 
-          {/* LIGNE 2 : BUDGET */}
+          {/* Ligne 3 : Budget Heures Chantiers */}
           <div className="w-full h-[350px] md:h-[400px]">
             <BudgetHeuresTile />
           </div>
 
         </div>
 
-        {/* --- BLOC SECONDAIRE (DROITE sur PC, MILIEU sur Mobile) --- */}
-        {/* Tasks (Tâches Prioritaires) */}
-        <div className="xl:col-span-3 h-[400px] xl:h-[744px]"> 
+        {/* COLONNE DROITE (3 cols sur desktop) */}
+        <div className="xl:col-span-3 h-[400px] xl:h-[1054px]">
           <TasksTile />
         </div>
 
       </div>
 
 
-      {/* --- BLOC INFÉRIEUR (OPÉRATIONS) --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-6 mt-6 xl:h-[350px]">
+      {/* ============================================
+          SECTION 3 : BLOC OPÉRATIONS (Bas du dashboard)
+          ============================================ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-6 xl:h-[350px]">
         
-        {/* Staffing */}
+        {/* Staffing Terrain */}
         <div className="xl:col-span-4 h-[300px] xl:h-full">
           <StaffingTile staffCount={stats.staff} />
         </div>
 
-        {/* Répartition & Pointage (Empilés sur mobile/PC, côte à côte sur tablette ?) */}
-        {/* Ici on garde l'empilement vertical interne pour la cohérence */}
-        <div className="xl:col-span-2 h-full flex flex-col gap-4 min-h-[300px]">
-          <div className="flex-1 overflow-hidden h-[140px] xl:h-auto">
-              <TeamTile isCompact={true} />
+        {/* Mini-Tuiles empilées (Répartition + Pointage) */}
+        <div className="xl:col-span-2 flex flex-col gap-4 h-full min-h-[300px]">
+          <div className="flex-1 overflow-hidden min-h-[140px]">
+            <TeamTile isCompact={true} />
           </div>
-          <div className="flex-1 overflow-hidden h-[140px] xl:h-auto">
-              <PointageTile />
+          <div className="flex-1 overflow-hidden min-h-[140px]">
+            <PointageTile />
           </div>
         </div>
 
-        {/* HSE (Sécurité) */}
+        {/* HSE & Sécurité */}
         <div className="xl:col-span-6 h-[300px] xl:h-full">
           <HSETile />
         </div>
@@ -104,5 +126,3 @@ export default function Home() {
     </div>
   );
 }
-
-
