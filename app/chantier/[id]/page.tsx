@@ -38,10 +38,10 @@ import {
   CornerDownRight,
   AlertCircle,
   UserPlus,
-  Palette,      // NOUVEAU
-  Box,          // NOUVEAU
-  AlertOctagon, // NOUVEAU
-  Search        // NOUVEAU
+  Palette,      
+  Box,          
+  AlertOctagon, 
+  Search        
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -128,7 +128,7 @@ export default function ChantierDetail() {
   const [fournituresPrevu, setFournituresPrevu] = useState<any[]>([]);
   const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
   
-  // NOUVEAU : LISTE GLOBALE DU STOCK POUR LE SELECT
+  // LISTE GLOBALE DU STOCK POUR LE SELECT
   const [stockFournitures, setStockFournitures] = useState<any[]>([]); 
   
   // --- ÉTATS FORMULAIRES VOLATILES ---
@@ -141,11 +141,11 @@ export default function ChantierDetail() {
   // Matériel
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   
-  // Fournitures (MODIFIÉ : UTILISE UNE RÉFÉRENCE ID + AUTOCOMPLETE)
+  // Fournitures (ID + AUTOCOMPLETE)
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
-  const [supplySearch, setSupplySearch] = useState(""); // Ce que l'utilisateur tape
-  const [showSupplyList, setShowSupplyList] = useState(false); // Afficher/Cacher la liste
-  const searchWrapperRef = useRef<HTMLDivElement>(null); // Pour fermer quand on clique dehors
+  const [supplySearch, setSupplySearch] = useState(""); 
+  const [showSupplyList, setShowSupplyList] = useState(false); 
+  const searchWrapperRef = useRef<HTMLDivElement>(null); 
 
   // Fermer la liste si on clique ailleurs
   useEffect(() => {
@@ -173,11 +173,13 @@ export default function ChantierDetail() {
 
     try {
         // 1. Employés
-        const { data: emp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
+        const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
+        if (errEmp) throw errEmp;
         if (emp) setEmployes(emp);
 
         // 2. Chantier
-        const { data: c } = await supabase.from('chantiers').select('*').eq('id', id).single();
+        const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
+        if (errC) throw errC;
         
         if (c) {
             setChantier({
@@ -204,7 +206,8 @@ export default function ChantierDetail() {
         }
 
         // 3. Tâches
-        const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+        const { data: t, error: errT } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+        if (errT) throw errT;
         if (t) {
             const formattedTasks = t.map(task => ({
                 ...task,
@@ -214,33 +217,37 @@ export default function ChantierDetail() {
         }
 
         // 4. Documents
-        const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+        const { data: d, error: errD } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+        if (errD) throw errD;
         if (d) setDocuments(d);
 
         // 5. Matériel
-        const { data: m } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
+        const { data: m, error: errM } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
+        if (errM) throw errM;
         if (m) setMaterielPrevu(m);
 
-        // 6. Fournitures (MODIFIÉ : JOINTURE AVEC STOCK)
-        const { data: f } = await supabase
+        // 6. Fournitures (AVEC JOINTURE STOCK)
+        const { data: f, error: errF } = await supabase
             .from('chantier_fournitures')
             .select(`
                 *,
                 fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
             `)
             .eq('chantier_id', id);
+        if (errF) throw errF;
         if (f) setFournituresPrevu(f);
 
         // 7. Catalogues
-        const { data: cat } = await supabase.from('materiel').select('*').order('nom');
-        if (cat) setCatalogueMateriel(cat);
+        const { data: catMat } = await supabase.from('materiel').select('*').order('nom');
+        if (catMat) setCatalogueMateriel(catMat);
 
-        // NOUVEAU : Catalogue Stock Fournitures
+        // Catalogue Stock Fournitures
         const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
         if (stock) setStockFournitures(stock);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erreur chargement global:", error);
+        // On n'affiche pas d'alerte bloquante, mais on log l'erreur pour débogage
     } finally {
         setLoading(false);
     }
@@ -292,22 +299,30 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- GESTION FOURNITURES (INTELLIGENTE) ---
+  // --- GESTION FOURNITURES (CORRIGÉE : AJOUT DU NOM) ---
   const addFourniture = async () => {
       if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit dans la liste");
       
+      // 1. Récupérer les infos du stock pour remplir les champs obligatoires (nom, unité)
+      const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
+      const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
+      const uniteProduit = selectedItem ? selectedItem.unite : 'U';
+
       const { error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
-          fourniture_ref_id: newFourniture.fourniture_ref_id, // Clé étrangère
+          fourniture_ref_id: newFourniture.fourniture_ref_id,
+          nom: nomProduit, // ICI : On ajoute le nom pour satisfaire la contrainte NOT NULL
+          unite: uniteProduit, // Optionnel mais conseillé si ta table l'attend
           qte_prevue: newFourniture.qte_prevue || 0,
-          qte_restante: newFourniture.qte_prevue || 0
+          qte_restante: newFourniture.qte_prevue || 0,
+          seuil_alerte: 0 
       }]);
 
       if(error) {
           alert("Erreur ajout fourniture: " + error.message);
       } else {
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
-          setSupplySearch(""); // Reset recherche
+          setSupplySearch(""); 
           fetchChantierData();
       }
   };
@@ -484,7 +499,7 @@ export default function ChantierDetail() {
         </div>
 
         {/* ============================================================================================ */}
-        {/* ONGLET 1 : INFOS & TÂCHES (INCHANGÉ)                                                         */}
+        {/* ONGLET 1 : INFOS & TÂCHES                                                                    */}
         {/* ============================================================================================ */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
@@ -669,7 +684,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 2 : LOGISTIQUE & MATÉRIEL (INCHANGÉ)                                                  */}
+        {/* ONGLET 2 : LOGISTIQUE & MATÉRIEL                                                             */}
         {/* ============================================================================================ */}
         {activeTab === 'logistique' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
