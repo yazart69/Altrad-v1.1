@@ -43,6 +43,8 @@ import {
   AlertOctagon, 
   Search,
   TrendingUp,
+  TrendingDown,
+  UserCheck,
   Scale
 } from 'lucide-react';
 import Link from 'next/link';
@@ -130,27 +132,18 @@ export default function ChantierDetail() {
   const [materielPrevu, setMaterielPrevu] = useState<any[]>([]); 
   const [fournituresPrevu, setFournituresPrevu] = useState<any[]>([]);
   const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
-  
-  // LISTE GLOBALE DU STOCK POUR LE SELECT
   const [stockFournitures, setStockFournitures] = useState<any[]>([]); 
   
   // --- ÉTATS FORMULAIRES VOLATILES ---
-  
-  // Tâches
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
-
-  // Matériel
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
-  
-  // Fournitures (ID + AUTOCOMPLETE)
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
   const [supplySearch, setSupplySearch] = useState(""); 
   const [showSupplyList, setShowSupplyList] = useState(false); 
   const searchWrapperRef = useRef<HTMLDivElement>(null); 
 
-  // Fermer la liste si on clique ailleurs
   useEffect(() => {
     function handleClickOutside(event: any) {
       if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
@@ -174,7 +167,7 @@ export default function ChantierDetail() {
         const results = await Promise.allSettled([
             supabase.from('employes').select('id, nom, prenom').order('nom'),
             supabase.from('chantiers').select('*').eq('id', id).single(),
-            supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+            supabase.from('chantier_tasks').select('*, responsable:employes(id, nom, prenom)').eq('chantier_id', id).order('created_at', { ascending: false }),
             supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
             supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id),
             supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
@@ -182,12 +175,8 @@ export default function ChantierDetail() {
             supabase.from('fournitures_stock').select('*').order('nom')
         ]);
 
-        // 1. Employés
-        if (results[0].status === 'fulfilled' && results[0].value.data) {
-            setEmployes(results[0].value.data);
-        }
+        if (results[0].status === 'fulfilled' && results[0].value.data) setEmployes(results[0].value.data);
 
-        // 2. Chantier
         if (results[1].status === 'fulfilled' && results[1].value.data) {
             const c = results[1].value.data;
             setChantier({
@@ -204,49 +193,24 @@ export default function ChantierDetail() {
                 client_email: c.client_email || '',
                 client_telephone: c.client_telephone || ''
             });
-            
             const currentAcqpa = c.mesures_acqpa || {};
-            if (!currentAcqpa.couches) {
-                currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
-            }
+            if (!currentAcqpa.couches) currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
             setAcqpaData(currentAcqpa);
             setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
         }
 
-        // 3. Tâches
         if (results[2].status === 'fulfilled' && results[2].value.data) {
-            const t = results[2].value.data;
-            const formattedTasks = t.map((task: any) => ({
+            setTasks(results[2].value.data.map((task: any) => ({
                 ...task,
                 subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
-            }));
-            setTasks(formattedTasks);
+            })));
         }
 
-        // 4. Documents
-        if (results[3].status === 'fulfilled' && results[3].value.data) {
-            setDocuments(results[3].value.data);
-        }
-
-        // 5. Matériel
-        if (results[4].status === 'fulfilled' && results[4].value.data) {
-            setMaterielPrevu(results[4].value.data);
-        }
-
-        // 6. Fournitures (Avec Jointure)
-        if (results[5].status === 'fulfilled' && results[5].value.data) {
-            setFournituresPrevu(results[5].value.data);
-        }
-
-        // 7. Catalogues Materiel
-        if (results[6].status === 'fulfilled' && results[6].value.data) {
-            setCatalogueMateriel(results[6].value.data);
-        }
-
-        // 8. Catalogue Stock
-        if (results[7].status === 'fulfilled' && results[7].value.data) {
-            setStockFournitures(results[7].value.data);
-        }
+        if (results[3].status === 'fulfilled' && results[3].value.data) setDocuments(results[3].value.data);
+        if (results[4].status === 'fulfilled' && results[4].value.data) setMaterielPrevu(results[4].value.data);
+        if (results[5].status === 'fulfilled' && results[5].value.data) setFournituresPrevu(results[5].value.data);
+        if (results[6].status === 'fulfilled' && results[6].value.data) setCatalogueMateriel(results[6].value.data);
+        if (results[7].status === 'fulfilled' && results[7].value.data) setStockFournitures(results[7].value.data);
 
     } catch (error: any) {
         console.error("Erreur chargement global:", error);
@@ -258,46 +222,22 @@ export default function ChantierDetail() {
   useEffect(() => { 
       fetchChantierData();
   }, [id]);
-
-
   // =================================================================================================
   //                             LOGIQUE MÉTIER
   // =================================================================================================
 
-  const updateProgress = async (currentTasks: any[]) => {
-    let totalConsumed = 0;
-    currentTasks.forEach(t => {
-        if (t.subtasks && t.subtasks.length > 0) {
-            t.subtasks.forEach((st: any) => { if (st.done) totalConsumed += (parseFloat(st.heures) || 0); });
-        } else {
-            if (t.done) totalConsumed += (t.objectif_heures || 0);
-        }
-    });
-    await supabase.from('chantiers').update({ heures_consommees: totalConsumed }).eq('id', id);
-    setChantier((prev: any) => ({ ...prev, heures_consommees: totalConsumed }));
+  const updateChantierTotalHours = async (currentTasks: any[]) => {
+    // Calcul basé sur les heures réelles des tâches terminées
+    const totalRealConsumed = currentTasks
+        .filter(t => t.done)
+        .reduce((sum, t) => sum + (parseFloat(t.heures_reelles) || t.objectif_heures || 0), 0);
+
+    await supabase.from('chantiers').update({ heures_consommees: totalRealConsumed }).eq('id', id);
+    setChantier((prev: any) => ({ ...prev, heures_consommees: totalRealConsumed }));
   };
 
   const handleSave = async () => {
-    const toSave = {
-        nom: chantier.nom,
-        client: chantier.client,
-        adresse: chantier.adresse,
-        responsable: chantier.responsable || null,
-        client_email: chantier.client_email,
-        client_telephone: chantier.client_telephone,
-        type: chantier.type,
-        type_precision: chantier.type === 'Autre' ? chantier.type_precision : null,
-        date_debut: chantier.date_debut || null,
-        date_fin: chantier.date_fin || null,
-        statut: chantier.statut,
-        heures_budget: chantier.heures_budget || 0,
-        effectif_prevu: chantier.effectif_prevu || 0,
-        taux_reussite: chantier.taux_reussite || 100,
-        risques: chantier.risques,
-        epi: chantier.epi,
-        mesures_obligatoires: chantier.mesures_obligatoires,
-        mesures_acqpa: acqpaData 
-    };
+    const toSave = { ...chantier, mesures_acqpa: acqpaData, responsable: chantier.responsable || null };
     const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
     if (error) alert("Erreur : " + error.message);
     else {
@@ -306,67 +246,110 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- GESTION FOURNITURES ---
+  // --- GESTION TÂCHES (INCLUANT RENTABILITÉ) ---
+  const updateTaskField = async (taskId: string, field: string, value: any) => {
+    const { error } = await supabase.from('chantier_tasks').update({ [field]: value }).eq('id', taskId);
+    if (!error) {
+        const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t);
+        setTasks(updatedTasks);
+        if (field === 'heures_reelles' || field === 'done') {
+            updateChantierTotalHours(updatedTasks);
+        }
+    }
+  };
+
+  const addTask = async () => {
+    if (!newTaskLabel) return;
+    const { data } = await supabase.from('chantier_tasks').insert([{ 
+        chantier_id: id, 
+        label: newTaskLabel, 
+        objectif_heures: 0, 
+        heures_reelles: 0,
+        done: false, 
+        subtasks: [] 
+    }]).select();
+    if (data) setTasks([data[0], ...tasks]);
+    setNewTaskLabel("");
+  };
+
+  const toggleTask = async (task: any) => {
+    const newStatus = !task.done;
+    // Si on termine, on initialise le réel avec le prévu par défaut pour faciliter la saisie
+    const realHoursValue = newStatus ? (task.heures_reelles || task.objectif_heures) : 0;
+    const updatedSubtasks = (task.subtasks || []).map((st: any) => ({ ...st, done: newStatus }));
+
+    const { error } = await supabase.from('chantier_tasks').update({ 
+        done: newStatus, 
+        heures_reelles: realHoursValue,
+        subtasks: updatedSubtasks
+    }).eq('id', task.id);
+
+    if (!error) {
+        const newTasks = tasks.map(t => t.id === task.id ? { ...t, done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks } : t);
+        setTasks(newTasks);
+        updateChantierTotalHours(newTasks);
+    }
+  };
+
+  const addSubTask = async (parentId: string) => {
+      if(!newSubTask.label) return;
+      const parentTask = tasks.find(t => t.id === parentId);
+      if(!parentTask) return;
+      const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false }];
+      const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0);
+      await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId);
+      const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
+      setTasks(newTasks);
+      setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 });
+      setActiveParentTask(null);
+  };
+
+  const toggleSubTask = async (parentId: string, subtaskId: number) => {
+      const parentTask = tasks.find(t => t.id === parentId);
+      if(!parentTask) return;
+      const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st);
+      const allDone = updatedSubtasks.every((st: any) => st.done);
+      
+      const { error } = await supabase.from('chantier_tasks').update({ 
+          subtasks: updatedSubtasks,
+          done: allDone,
+          heures_reelles: allDone ? (parentTask.heures_reelles || parentTask.objectif_heures) : parentTask.heures_reelles
+      }).eq('id', parentId);
+
+      if (!error) {
+          const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t);
+          setTasks(newTasks);
+          updateChantierTotalHours(newTasks);
+      }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    if(confirm('Supprimer cette tâche ?')) {
+        await supabase.from('chantier_tasks').delete().eq('id', taskId);
+        const updatedList = tasks.filter(t => t.id !== taskId);
+        setTasks(updatedList);
+        updateChantierTotalHours(updatedList);
+    }
+  };
+
+  // --- GESTION FOURNITURES & MATERIEL ---
   const addFourniture = async () => {
-      if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit dans la liste");
-      
+      if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit");
       const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
-      const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
-      const uniteProduit = selectedItem ? selectedItem.unite : 'U';
-
-      const { error } = await supabase.from('chantier_fournitures').insert([{
-          chantier_id: id,
-          fourniture_ref_id: newFourniture.fourniture_ref_id,
-          nom: nomProduit, 
-          unite: uniteProduit, 
-          qte_prevue: newFourniture.qte_prevue || 0,
-          qte_restante: newFourniture.qte_prevue || 0,
-          qte_consommee: 0,
-          seuil_alerte: 0 
-      }]);
-
-      if(error) {
-          alert("Erreur ajout fourniture: " + error.message);
-      } else {
-          setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
-          setSupplySearch(""); 
-          fetchChantierData();
-      }
+      const { error } = await supabase.from('chantier_fournitures').insert([{ chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom, unite: selectedItem?.unite, qte_prevue: newFourniture.qte_prevue || 0, qte_restante: newFourniture.qte_prevue || 0, qte_consommee: 0 }]);
+      if(!error) { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); }
   };
-
-  const updateConsommation = async (fournitureId: string, newConso: number) => {
-      const safeConso = Math.max(0, newConso);
-      
-      // Mise à jour locale pour la réactivité
-      setFournituresPrevu(prev => prev.map(f => {
-          if (f.id === fournitureId) {
-              return { ...f, qte_consommee: safeConso };
-          }
-          return f;
-      }));
-
-      // Mise à jour BDD
-      const { error } = await supabase
-          .from('chantier_fournitures')
-          .update({ qte_consommee: safeConso })
-          .eq('id', fournitureId);
-
-      if (error) {
-          console.error("Erreur mise à jour consommation:", error);
-      }
+  
+  const updateConsommation = async (fId: string, val: number) => {
+    const safeVal = Math.max(0, val);
+    setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: safeVal } : f));
+    await supabase.from('chantier_fournitures').update({ qte_consommee: safeVal }).eq('id', fId);
   };
-
-  const deleteFourniture = async (fId: string) => {
-      if(confirm("Retirer cette fourniture ?")) {
-          const { error } = await supabase.from('chantier_fournitures').delete().eq('id', fId);
-          if(!error) {
-             fetchChantierData();
-          } else {
-              alert("Erreur suppression: " + error.message);
-          }
-      }
+  
+  const deleteFourniture = async (fId: string) => { 
+      if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } 
   };
-
+  
   const getSelectedUnit = () => {
       const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
       return selected ? selected.unite : '';
@@ -377,86 +360,14 @@ export default function ChantierDetail() {
     (s.ral && s.ral.includes(supplySearch))
   );
 
-  // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
-      const { error } = await supabase.from('chantier_materiel').insert([{
-          chantier_id: id,
-          materiel_id: newMat.materiel_id,
-          date_debut: newMat.date_debut || null,
-          date_fin: newMat.date_fin || null,
-          qte_prise: newMat.qte || 1,
-          statut: 'prevu'
-      }]);
-
-      if (!error) { 
-          setShowAddMaterielModal(false); 
-          fetchChantierData();
-      } else {
-          alert("Erreur ajout matériel : " + error?.message);
-      }
+      const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]);
+      if (!error) { setShowAddMaterielModal(false); fetchChantierData(); }
   };
-
-  const deleteMateriel = async (matId: string) => {
-      if (confirm('Retirer ce matériel du chantier ?')) {
-          const { error } = await supabase.from('chantier_materiel').delete().eq('id', matId);
-          if (!error) fetchChantierData();
-      }
-  };
-
-  // --- GESTION TÂCHES ---
-  const addTask = async () => {
-    if (!newTaskLabel) return;
-    const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, done: false, subtasks: [] }]).select();
-    if (data) setTasks([data[0], ...tasks]);
-    setNewTaskLabel("");
-  };
-
-  const toggleTask = async (task: any) => {
-    const updatedList = tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t);
-    setTasks(updatedList);
-    await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
-    updateProgress(updatedList);
-  };
-
-  const addSubTask = async (parentId: string) => {
-      if(!newSubTask.label) return;
-      const parentTask = tasks.find(t => t.id === parentId);
-      if(!parentTask) return;
-
-      const updatedSubtasks = [...(parentTask.subtasks || []), {
-          id: Date.now(), label: newSubTask.label,
-          heures: parseFloat(newSubTask.heures.toString()) || 0,
-          effectif: parseInt(newSubTask.effectif.toString()) || 1,
-          date: newSubTask.date, done: false
-      }];
-
-      const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0);
-      await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId);
-      const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
-      setTasks(newTasks);
-      updateProgress(newTasks);
-      setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 });
-      setActiveParentTask(null);
-  };
-
-  const toggleSubTask = async (parentId: string, subtaskId: number) => {
-      const parentTask = tasks.find(t => t.id === parentId);
-      if(!parentTask) return;
-      const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st);
-      await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks }).eq('id', parentId);
-      const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks } : t);
-      setTasks(newTasks);
-      updateProgress(newTasks);
-  };
-
-  const deleteTask = async (taskId: string) => {
-    if(confirm('Supprimer cette tâche ?')) {
-        await supabase.from('chantier_tasks').delete().eq('id', taskId);
-        const updatedList = tasks.filter(t => t.id !== taskId);
-        setTasks(updatedList);
-        updateProgress(updatedList);
-    }
+  
+  const deleteMateriel = async (matId: string) => { 
+      if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); fetchChantierData(); } 
   };
 
   // --- AUTRES ---
@@ -469,7 +380,11 @@ export default function ChantierDetail() {
     setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] });
   };
   
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const deleteDocument = async (docId: string) => { 
+      if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } 
+  };
+  
+  const handleFileUpload = async (e: any) => {
     if (!e.target.files?.length) return;
     setUploading(true);
     const file = e.target.files[0];
@@ -482,8 +397,12 @@ export default function ChantierDetail() {
     }
     setUploading(false);
   };
-  
-  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
+
+  // --- CALCULS RENTABILITÉ ---
+  const finishedTasks = tasks.filter(t => t.done);
+  const totalPlannedHours = finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0);
+  const totalRealHours = finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0);
+  const globalDelta = totalPlannedHours - totalRealHours;
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
@@ -500,9 +419,11 @@ export default function ChantierDetail() {
                 </Link>
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                        Budget Heures : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)
-                    </p>
+                    <div className="flex items-center gap-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Pointage Réel : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)
+                        </p>
+                    </div>
                 </div>
             </div>
             <button onClick={handleSave} className="bg-[#00b894] hover:bg-[#00a383] text-white px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2">
@@ -529,54 +450,120 @@ export default function ChantierDetail() {
                 </button>
             ))}
         </div>
-
-        {/* ONGLET 1 : INFOS */}
+        {/* ============================================================================================ */}
+        {/* ONGLET 1 : INFOS & TÂCHES (CONTENU)                                                          */}
+        {/* ============================================================================================ */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
+                
+                {/* COLONNE GAUCHE : INFOS GÉNÉRALES & RENTABILITÉ */}
                 <div className="space-y-6">
+                    
+                    {/* BLOC IDENTIFICATION */}
                     <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
-                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><FileText size={20}/> Identification Complète</h3>
+                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
+                            <FileText size={20}/> Identification
+                        </h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom du Chantier</label>
-                                <input value={chantier.nom || ''} onChange={e => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894] transition-colors" />
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom Chantier</label>
+                                <input 
+                                    value={chantier.nom || ''} 
+                                    onChange={e => setChantier({...chantier, nom: e.target.value})} 
+                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894] transition-colors" 
+                                />
                             </div>
-                            
                             <div className="col-span-2 grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                                 <div className="col-span-2">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom Client</label>
-                                    <input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" placeholder="Nom de l'entreprise..." />
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label>
+                                    <input 
+                                        value={chantier.client || ''} 
+                                        onChange={e => setChantier({...chantier, client: e.target.value})} 
+                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none" 
+                                    />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Phone size={10}/> Téléphone</label>
-                                    <input value={chantier.client_telephone || ''} onChange={e => setChantier({...chantier, client_telephone: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" placeholder="06..." />
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                        <Phone size={10}/> Tel
+                                    </label>
+                                    <input 
+                                        value={chantier.client_telephone || ''} 
+                                        onChange={e => setChantier({...chantier, client_telephone: e.target.value})} 
+                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none" 
+                                    />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Mail size={10}/> Email</label>
-                                    <input value={chantier.client_email || ''} onChange={e => setChantier({...chantier, client_email: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" placeholder="@..." />
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                        <Mail size={10}/> Email
+                                    </label>
+                                    <input 
+                                        value={chantier.client_email || ''} 
+                                        onChange={e => setChantier({...chantier, client_email: e.target.value})} 
+                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none" 
+                                    />
                                 </div>
                             </div>
-
                             <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Localisation</label>
-                                <input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label>
+                                <input 
+                                    value={chantier.adresse || ''} 
+                                    onChange={e => setChantier({...chantier, adresse: e.target.value})} 
+                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" 
+                                />
                             </div>
-
-                            <div className={chantier.type === 'Autre' ? 'col-span-1' : 'col-span-2'}>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</label>
-                                <select value={chantier.type || 'Industriel'} onChange={e => setChantier({...chantier, type: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer">
-                                    {TYPE_CHANTIER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                                </select>
-                            </div>
-                            {chantier.type === 'Autre' && (
-                                <div className="col-span-1">
-                                    <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Précision</label>
-                                    <input value={chantier.type_precision || ''} onChange={e => setChantier({...chantier, type_precision: e.target.value})} className="w-full bg-blue-50 text-blue-900 p-3 rounded-xl font-bold outline-none" placeholder="Ex: Nucléaire..." />
-                                </div>
-                            )}
                         </div>
                     </div>
 
+                    {/* BLOC TABLEAU RÉCAPITULATIF RENTABILITÉ (NOUVEAU) */}
+                    <div className="bg-[#2d3436] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Scale size={100}/>
+                        </div>
+                        <h3 className="font-black uppercase text-gray-100 mb-4 flex items-center gap-2 relative z-10">
+                            <TrendingUp className="text-[#00b894]"/> Rentabilité Tâches
+                        </h3>
+                        <div className="space-y-4 relative z-10">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="bg-white/5 p-3 rounded-2xl text-center">
+                                    <p className="text-[9px] font-bold uppercase text-gray-400">Total Prévu</p>
+                                    <p className="text-xl font-black">
+                                        {finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0)}h
+                                    </p>
+                                </div>
+                                <div className="bg-white/5 p-3 rounded-2xl text-center">
+                                    <p className="text-[9px] font-bold uppercase text-gray-400">Total Réel</p>
+                                    <p className="text-xl font-black text-[#ff9f43]">
+                                        {finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0)}h
+                                    </p>
+                                </div>
+                                <div className={`p-3 rounded-2xl text-center ${globalDelta >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                    <p className="text-[9px] font-bold uppercase opacity-60">Delta</p>
+                                    <p className="text-xl font-black">
+                                        {globalDelta > 0 ? '+' : ''}{globalDelta.toFixed(1)}h
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                    <span>Consommation vs Prévision</span>
+                                    <span>{totalPlannedHours > 0 ? Math.round((totalRealHours / totalPlannedHours) * 100) : 0}%</span>
+                                </div>
+                                <div className="w-full bg-white/5 h-4 rounded-full overflow-hidden flex border border-white/5">
+                                    <div className="h-full bg-blue-500/50 flex items-center justify-center text-[8px] font-black" style={{ width: '50%' }}>
+                                        PRÉVU
+                                    </div>
+                                    <div 
+                                        className={`h-full flex items-center justify-center text-[8px] font-black ${globalDelta >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                                        style={{ width: `${totalPlannedHours > 0 ? (totalRealHours / (totalPlannedHours * 2)) * 100 : 0}%` }}
+                                    >
+                                        RÉEL
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* BLOC PLANNING */}
                     <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Calendar size={20}/> Planning & Ressources</h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -644,48 +631,90 @@ export default function ChantierDetail() {
                     </div>
                 </div>
 
-                {/* COLONNE DROITE : TÂCHES */}
+                {/* COLONNE DROITE : TÂCHES AVEC RESPONSABLE ET RÉEL */}
                 <div className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col h-full min-h-[600px]">
                     <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none"><CheckCircle2 size={200} /></div>
-                    <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2 relative z-10"><CheckCircle2 size={20}/> Tâches & Planning</h3>
+                    <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2 relative z-10"><CheckCircle2 size={20}/> Suivi Opérationnel</h3>
                     
                     <div className="flex gap-2 mb-4 relative z-10">
-                        <input placeholder="Nouvelle tâche principale..." value={newTaskLabel} onChange={(e) => setNewTaskLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" />
+                        <input placeholder="Nouvelle étape de travaux..." value={newTaskLabel} onChange={(e) => setNewTaskLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" />
                         <button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] shadow-lg transition-transform active:scale-95"><Plus size={20}/></button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 relative z-10">
                         {tasks.map((t) => (
-                            <div key={t.id} className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                                <div className="flex justify-between items-center mb-2">
-                                    <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => toggleTask(t)}>
-                                        {t.done ? <CheckCircle2 size={20} className="text-[#00b894] shrink-0" /> : <Circle size={20} className="text-[#ff9f43] shrink-0" />}
-                                        <span className={`text-sm font-black uppercase ${t.done ? 'line-through opacity-40' : 'text-[#ff9f43]'}`}>{t.label}</span>
+                            <div key={t.id} className={`p-4 rounded-2xl border transition-all ${t.done ? 'bg-black/20 border-transparent opacity-80' : 'bg-white/5 border-white/5'}`}>
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-start gap-3">
+                                        <button onClick={() => toggleTask(t)} className={`mt-1 transition-colors ${t.done ? 'text-[#00b894]' : 'text-gray-500 hover:text-white'}`}>
+                                            {t.done ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                                        </button>
+                                        <div className="flex-1">
+                                            <p className={`text-sm font-black uppercase tracking-tight ${t.done ? 'line-through text-gray-500' : 'text-[#ff9f43]'}`}>{t.label}</p>
+                                            
+                                            {/* SÉLECTEUR RESPONSABLE */}
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-1 bg-black/30 px-2 py-0.5 rounded-lg border border-white/5">
+                                                    <UserPlus size={10} className="text-blue-400"/>
+                                                    <select 
+                                                        className="bg-transparent text-[9px] font-bold text-blue-200 outline-none cursor-pointer w-24" 
+                                                        value={t.responsable_id || ''} 
+                                                        onChange={(e) => updateTaskField(t.id, 'responsable_id', e.target.value)}
+                                                    >
+                                                        <option value="" className="text-gray-800">Assigner...</option>
+                                                        {employes.map(emp => (
+                                                            <option key={emp.id} value={emp.id} className="text-gray-800">{emp.nom} {emp.prenom}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs bg-white/10 px-2 py-1 rounded font-bold">{t.objectif_heures}h</span>
-                                        <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-white/50 hover:text-white transition-colors" title="Ajouter sous-tâche"><Plus size={16}/></button>
-                                        <button onClick={() => deleteTask(t.id)} className="text-white/20 hover:text-red-400 transition-colors" title="Supprimer"><Trash2 size={16}/></button>
+                                    <div className="text-right">
+                                        <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase justify-end">
+                                            <Clock size={10}/> Prévu: {t.objectif_heures}h
+                                        </div>
+                                        {/* INPUT HEURES RÉELLES SI TÂCHE FINIE */}
+                                        {t.done && (
+                                            <div className="mt-1 flex items-center gap-2 justify-end animate-in fade-in">
+                                                <span className="text-[9px] font-black uppercase text-[#ff9f43]">Réel :</span>
+                                                <input 
+                                                    type="number" 
+                                                    className="w-12 bg-white/10 text-center rounded border border-white/10 text-[10px] font-black py-0.5 outline-none focus:border-[#ff9f43] text-white" 
+                                                    value={t.heures_reelles} 
+                                                    onChange={(e) => updateTaskField(t.id, 'heures_reelles', parseFloat(e.target.value) || 0)} 
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="space-y-1 pl-4 border-l-2 border-white/10">
+                                {/* DELTA RENTABILITÉ */}
+                                {t.done && (
+                                    <div className={`mt-2 p-2 rounded-xl flex items-center justify-between text-[10px] font-black uppercase animate-in slide-in-from-top-1 ${t.objectif_heures - t.heures_reelles >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                        <div className="flex items-center gap-1">
+                                            {t.objectif_heures - t.heures_reelles >= 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                                            Delta Rentabilité
+                                        </div>
+                                        <span>{(t.objectif_heures - t.heures_reelles).toFixed(1)}h</span>
+                                    </div>
+                                )}
+
+                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">
                                     {t.subtasks && t.subtasks.map((st: any) => (
-                                        <div key={st.id} className="flex items-center justify-between text-xs py-1 group/sub">
+                                        <div key={st.id} className="flex items-center justify-between text-[11px] py-1">
                                             <div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>
                                                 {st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}
                                                 <span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span>
                                             </div>
-                                            <div className="flex gap-2 text-white/50 items-center">
-                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu pour cette étape">
-                                                    <Users size={10} className="text-blue-300"/>
-                                                    <span className="font-black text-blue-200">{st.effectif || 1}p</span>
-                                                </div>
-                                                <span>{st.date ? new Date(st.date).toLocaleDateString() : ''}</span>
-                                                <span className="font-bold text-white">{st.heures}h</span>
-                                            </div>
+                                            <span className="text-[9px] font-bold text-white/40">{st.heures}h</span>
                                         </div>
                                     ))}
+                                    {!t.done && (
+                                        <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors">
+                                            + Ajouter sous-tâche
+                                        </button>
+                                    )}
                                 </div>
 
                                 {activeParentTask === t.id && (
@@ -695,7 +724,7 @@ export default function ChantierDetail() {
                                             <input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} />
                                             <div className="flex items-center gap-1 bg-white/5 rounded px-2">
                                                 <Users size={12} className="text-blue-400"/>
-                                                <input type="number" placeholder="Pers." className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} />
+                                                <input type="number" placeholder="P" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} />
                                             </div>
                                             <div className="flex items-center gap-1 bg-white/5 rounded px-2">
                                                 <Clock size={12} className="text-orange-400"/>
@@ -707,18 +736,22 @@ export default function ChantierDetail() {
                                 )}
                             </div>
                         ))}
-                        {tasks.length === 0 && <div className="text-center py-10 opacity-30"><CheckCircle2 size={40} className="mx-auto mb-2"/><p className="text-sm font-bold">Aucune tâche planifiée</p></div>}
                     </div>
                 </div>
             </div>
         )}
-
-        {/* ONGLET 2 : LOGISTIQUE */}
+        {/* ============================================================================================ */}
+        {/* ONGLET 2 : LOGISTIQUE                                                                        */}
+        {/* ============================================================================================ */}
         {activeTab === 'logistique' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2"><Truck className="text-[#6c5ce7]"/> Matériel & Locations</h3>
-                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2"><Plus size={16}/> Ajouter / Réserver</button>
+                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2">
+                        <Truck className="text-[#6c5ce7]"/> Matériel & Locations
+                    </h3>
+                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2">
+                        <Plus size={16}/> Ajouter / Réserver
+                    </button>
                 </div>
                 <div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden">
                     <table className="w-full">
@@ -732,34 +765,28 @@ export default function ChantierDetail() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {materielPrevu.length === 0 ? (
-                                <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-bold">Aucun matériel prévu sur ce chantier.</td></tr>
-                            ) : (
-                                materielPrevu.map(m => (
-                                    <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-4">
-                                            <span className="font-bold text-sm text-gray-800">{m.materiel?.nom || 'Inconnu'}</span>
-                                            <div className="text-[10px] text-gray-400">{m.materiel?.categorie}</div>
-                                        </td>
-                                        <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>{m.materiel?.type_stock || 'N/A'}</span></td>
-                                        <td className="p-4 text-xs font-bold text-gray-600">{m.date_debut ? `${new Date(m.date_debut).toLocaleDateString()} ➔ ${new Date(m.date_fin).toLocaleDateString()}` : 'Dates non définies'}</td>
-                                        <td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td>
-                                        <td className="p-4 text-center"><button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
-                                    </tr>
-                                ))
-                            )}
+                            {materielPrevu.map(m => (
+                                <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="p-4 font-bold text-sm text-gray-800">{m.materiel?.nom}</td>
+                                    <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>{m.materiel?.type_stock}</span></td>
+                                    <td className="p-4 text-xs font-bold text-gray-600">{m.date_debut} ➔ {m.date_fin}</td>
+                                    <td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td>
+                                    <td className="p-4 text-center"><button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </div>
         )}
 
-        {/* ONGLET 3 : FOURNITURES (MISE À JOUR MAJEURE) */}
+        {/* ============================================================================================ */}
+        {/* ONGLET 3 : FOURNITURES (SUIVI DÉTAILLÉ)                                                      */}
+        {/* ============================================================================================ */}
         {activeTab === 'fournitures' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-                
-                {/* 1. SECTIONS AJOUT ET BESOINS MAGASINIER */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
                     {/* Bloc Ajout Besoin */}
                     <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
@@ -767,76 +794,58 @@ export default function ChantierDetail() {
                         </h3>
                         <div className="space-y-4">
                             <div className="relative" ref={searchWrapperRef}>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Recherche)</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Produit</label>
                                 <div className="relative">
                                     <input 
                                         type="text" 
-                                        className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors"
-                                        placeholder="Tapez pour chercher..."
-                                        value={supplySearch}
-                                        onChange={(e) => {
-                                            setSupplySearch(e.target.value);
-                                            setShowSupplyList(true);
-                                            if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''});
-                                        }}
-                                        onFocus={() => setShowSupplyList(true)}
+                                        className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" 
+                                        placeholder="Chercher..." 
+                                        value={supplySearch} 
+                                        onChange={(e) => { 
+                                            setSupplySearch(e.target.value); 
+                                            setShowSupplyList(true); 
+                                            if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); 
+                                        }} 
+                                        onFocus={() => setShowSupplyList(true)} 
                                     />
                                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                                 </div>
                                 {showSupplyList && supplySearch && (
-                                    <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto custom-scrollbar z-50 animate-in fade-in slide-in-from-top-2">
-                                        {filteredStock.length > 0 ? (
-                                            filteredStock.map(s => (
-                                                <div 
-                                                    key={s.id} 
-                                                    className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0"
-                                                    onClick={() => {
-                                                        setSupplySearch(s.nom);
-                                                        setNewFourniture({...newFourniture, fourniture_ref_id: s.id});
-                                                        setShowSupplyList(false);
-                                                    }}
-                                                >
-                                                    <div className="font-bold text-sm text-gray-800">{s.nom}</div>
-                                                    <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">
-                                                        {s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}
-                                                        {s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}
-                                                        <span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="p-4 text-center text-xs text-gray-400 font-bold">Aucun produit trouvé.</div>
-                                        )}
+                                    <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50">
+                                        {filteredStock.map(s => (
+                                            <div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}>
+                                                <div className="font-bold text-sm text-gray-800">{s.nom}</div>
+                                                <div className="text-[10px] text-gray-400">{s.ral} - {s.qte_stock} {s.unite} dispo</div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Nécessaire {newFourniture.fourniture_ref_id && <span className="text-blue-500 normal-case">(en {getSelectedUnit()})</span>}</label>
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="number" 
-                                        value={newFourniture.qte_prevue || ''} 
-                                        onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
-                                        className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
-                                    />
-                                    {newFourniture.fourniture_ref_id && (<span className="bg-gray-100 text-gray-500 font-bold text-xs px-3 py-3 rounded-xl">{getSelectedUnit()}</span>)}
-                                </div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Prévue ({getSelectedUnit()})</label>
+                                <input 
+                                    type="number" 
+                                    value={newFourniture.qte_prevue || ''} 
+                                    onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
+                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
+                                />
                             </div>
-                            <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Valider le besoin</button>
+                            <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg">
+                                Valider le besoin
+                            </button>
                         </div>
                     </div>
 
-                    {/* Bloc Besoins Magasinier */}
+                    {/* Bloc Besoins & Commandes */}
                     <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
-                            <TrendingUp className="text-blue-500"/> Besoins & Commandes Atelier
+                            <TrendingUp className="text-blue-500"/> Besoins Atelier
                         </h3>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
                                     <tr>
                                         <th className="p-3">Produit</th>
-                                        <th className="p-3">Détails</th>
                                         <th className="p-3 text-center">Prévu</th>
                                         <th className="p-3 text-center bg-blue-50/50 text-blue-600">Stock Magasin</th>
                                         <th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th>
@@ -846,134 +855,83 @@ export default function ChantierDetail() {
                                 <tbody className="divide-y divide-gray-50">
                                     {fournituresPrevu.map(f => {
                                         const stockInfo = f.fournitures_stock || {};
-                                        const besoin = f.qte_prevue || 0;
-                                        const stockAtelier = stockInfo.qte_stock || 0;
-                                        const aCommander = Math.max(0, besoin - stockAtelier);
+                                        const aCommander = Math.max(0, f.qte_prevue - stockInfo.qte_stock);
                                         return (
                                             <tr key={f.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="p-3 font-bold text-sm text-gray-800">
-                                                    {stockInfo.nom || f.nom}
+                                                    {f.nom}
                                                     <button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button>
                                                 </td>
-                                                <td className="p-3">
-                                                    <div className="flex flex-col gap-1">
-                                                        {stockInfo.ral && (<span className="text-[9px] font-bold bg-gray-100 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit"><Palette size={10}/> RAL {stockInfo.ral}</span>)}
-                                                    </div>
-                                                </td>
-                                                <td className="p-3 text-center font-black">{besoin} {stockInfo.unite}</td>
-                                                <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockAtelier}</td>
+                                                <td className="p-3 text-center font-black">{f.qte_prevue} {f.unite}</td>
+                                                <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockInfo.qte_stock}</td>
                                                 <td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>{aCommander > 0 ? aCommander : '-'}</td>
-                                                <td className="p-3 text-right">
-                                                    {stockAtelier >= besoin ? (
-                                                        <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>
-                                                    ) : (
-                                                        <span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>
-                                                    )}
-                                                </td>
+                                                <td className="p-3 text-right">{stockInfo.qte_stock >= f.qte_prevue ? (<span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>) : (<span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>)}</td>
                                             </tr>
                                         );
                                     })}
-                                    {fournituresPrevu.length === 0 && (
-                                        <tr><td colSpan={6} className="p-8 text-center text-gray-400 italic">Aucune fourniture prévue.</td></tr>
-                                    )}
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
 
-                {/* 2. TUILE SUIVI DE CONSOMMATION RÉELLE SUR LE TERRAIN */}
+                {/* Tuile Suivi Terrain */}
                 <div className="bg-white rounded-[35px] p-8 shadow-xl border border-gray-100 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                        <TrendingUp size={150} />
-                    </div>
+                    <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none"><TrendingUp size={150} /></div>
                     <div className="flex justify-between items-center mb-6 relative z-10">
                         <div>
-                            <h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2">
-                                <TrendingUp className="text-emerald-500"/> Suivi de Consommation Terrain
-                            </h3>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Gestion du stock déporté en temps réel</p>
+                            <h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2"><TrendingUp className="text-emerald-500"/> Consommation Terrain</h3>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Stock déporté en temps réel</p>
                         </div>
-                        <div className="bg-emerald-50 p-2 rounded-xl text-emerald-600">
-                            <Scale size={24}/>
-                        </div>
+                        <div className="bg-emerald-50 p-2 rounded-xl text-emerald-600"><Scale size={24}/></div>
                     </div>
-
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-gray-50/50 text-[11px] font-black uppercase text-gray-400">
+                            <thead className="bg-gray-50 text-[11px] font-black uppercase text-gray-400">
                                 <tr>
                                     <th className="p-4">Fourniture</th>
-                                    <th className="p-4 text-center">Progression Conso</th>
+                                    <th className="p-4 text-center">Progression</th>
                                     <th className="p-4 text-center">Quantité Utilisée</th>
                                     <th className="p-4 text-center bg-emerald-50/50 text-emerald-700">Stock Chantier</th>
-                                    <th className="p-4 text-right">Écart (Delta)</th>
+                                    <th className="p-4 text-right">Delta</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {fournituresPrevu.map(f => {
-                                    const stockInfo = f.fournitures_stock || {};
-                                    const prevu = f.qte_prevue || 1;
-                                    const conso = f.qte_consommee || 0;
-                                    const stockSurPlace = Math.max(0, prevu - conso);
+                                    const prevu = f.qte_prevue || 1; 
+                                    const conso = f.qte_consommee || 0; 
                                     const ratio = Math.min(100, Math.round((conso / prevu) * 100));
                                     
                                     return (
                                         <tr key={f.id} className="hover:bg-gray-50/80 transition-all group">
                                             <td className="p-4">
-                                                <p className="font-black text-gray-800">{stockInfo.nom || f.nom}</p>
-                                                <div className="flex gap-2 mt-1">
-                                                    <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Initial: {prevu} {stockInfo.unite}</span>
-                                                </div>
+                                                <p className="font-black text-gray-800">{f.nom}</p>
+                                                <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Init: {prevu} {f.unite}</span>
                                             </td>
                                             <td className="p-4 w-48">
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between text-[9px] font-black uppercase">
-                                                        <span className="text-gray-400">Utilisation</span>
-                                                        <span className={ratio > 90 ? 'text-red-500' : 'text-emerald-600'}>{ratio}%</span>
-                                                    </div>
-                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden flex">
-                                                        <div className={`h-full transition-all duration-500 ${ratio > 100 ? 'bg-red-500' : ratio > 75 ? 'bg-orange-400' : 'bg-emerald-500'}`} style={{ width: `${ratio}%` }}></div>
-                                                    </div>
+                                                    <div className="flex justify-between text-[9px] font-black uppercase"><span className="text-gray-400">Utilisation</span><span className={ratio > 90 ? 'text-red-500' : 'text-emerald-600'}>{ratio}%</span></div>
+                                                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden flex"><div className={`h-full transition-all duration-500 ${ratio > 100 ? 'bg-red-500' : ratio > 75 ? 'bg-orange-400' : 'bg-emerald-500'}`} style={{ width: `${ratio}%` }}></div></div>
                                                 </div>
                                             </td>
-                                            <td className="p-4">
+                                            <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button onClick={() => updateConsommation(f.id, conso - 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><Minus size={14}/></button>
-                                                    <input 
-                                                        type="number" 
-                                                        className="w-16 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none"
-                                                        value={conso}
-                                                        onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)}
-                                                    />
+                                                    <input type="number" className="w-16 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none" value={conso} onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)} />
                                                     <button onClick={() => updateConsommation(f.id, conso + 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"><Plus size={14}/></button>
                                                 </div>
                                             </td>
-                                            <td className="p-4 text-center bg-emerald-50/30">
-                                                <div className="flex flex-col items-center">
-                                                    <span className={`text-lg font-black ${stockSurPlace <= 1 ? 'text-red-500' : 'text-emerald-700'}`}>{stockSurPlace}</span>
-                                                    <span className="text-[9px] font-bold text-emerald-400 uppercase">{stockInfo.unite} restants</span>
-                                                </div>
-                                            </td>
+                                            <td className="p-4 text-center bg-emerald-50/30 font-black text-emerald-700">{Math.max(0, prevu - conso)} Restants</td>
                                             <td className="p-4 text-right">
                                                 {conso > prevu ? (
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-red-500 font-black flex items-center gap-1 text-sm"><AlertTriangle size={12}/> +{(conso - prevu).toFixed(1)}</span>
-                                                        <span className="text-[8px] font-bold uppercase text-red-300">Sur-conso</span>
-                                                    </div>
+                                                    <div className="flex flex-col items-end text-red-500"><span className="font-black text-sm"><AlertTriangle size={12}/> +{(conso - prevu).toFixed(1)}</span><span className="text-[8px] font-bold uppercase">Sur-conso</span></div>
                                                 ) : (
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-emerald-500 font-black text-sm">{(prevu - conso).toFixed(1)}</span>
-                                                        <span className="text-[8px] font-bold uppercase text-emerald-300">Reliquat</span>
-                                                    </div>
+                                                    <div className="flex flex-col items-end text-emerald-500"><span className="font-black text-sm">{(prevu - conso).toFixed(1)}</span><span className="text-[8px] font-bold uppercase">Reliquat</span></div>
                                                 )}
                                             </td>
                                         </tr>
                                     );
                                 })}
-                                {fournituresPrevu.length === 0 && (
-                                    <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-bold italic">Ajoutez des besoins ci-dessus pour lancer le suivi terrain.</td></tr>
-                                )}
                             </tbody>
                         </table>
                     </div>
@@ -1007,19 +965,17 @@ export default function ChantierDetail() {
                                     <CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/>
                                     <div className="w-40 text-xs text-gray-500 truncate flex justify-between pr-4">
                                         <span>{st.label}</span>
-                                        <span className="font-black text-blue-500">{st.effectif || 1}p</span>
+                                        <span className="font-black text-blue-500">{st.effectif}p</span>
                                     </div>
                                     <div className="flex-1 bg-gray-50 h-6 rounded-full relative">
-                                        <div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} 
-                                            style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>
-                                            {st.heures}h | {st.effectif || 1}p
+                                        <div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>
+                                            {st.heures}h | {st.effectif}p
                                         </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     ))}
-                    {tasks.length === 0 && <p className="text-center text-gray-400 italic">Aucune tâche planifiée.</p>}
                 </div>
             </div>
         )}
@@ -1065,14 +1021,14 @@ export default function ChantierDetail() {
                     <div className="bg-white rounded-[30px] p-10 text-center border border-gray-100 shadow-sm">
                         <ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" />
                         <h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3>
-                        <p className="text-gray-400 font-bold mb-4">Veuillez activer "Mesures ACQPA Obligatoires" dans l'onglet Infos.</p>
+                        <p className="text-gray-400 font-bold mb-4">Activez les mesures dans l'onglet Infos.</p>
                     </div>
                 ) : (
                     <div className="space-y-6">
                         <div className="bg-[#0984e3] text-white p-6 rounded-[30px] shadow-xl flex justify-between items-center relative overflow-hidden">
                             <div className="relative z-10">
                                 <h3 className="font-black uppercase text-xl">Relevés Peinture (ACQPA)</h3>
-                                <p className="text-blue-200 font-bold text-sm">Suivi qualité et conformité application</p>
+                                <p className="text-blue-200 font-bold text-sm">Suivi qualité application</p>
                             </div>
                             <button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">
                                 Ouvrir / Modifier
@@ -1119,12 +1075,12 @@ export default function ChantierDetail() {
 
       </div>
 
-      {/* MODALE ACQPA */}
+      {/* MODALES ACQPA */}
       {showACQPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
                 <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0">
-                    <div><h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2><p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture Industrielle</p></div>
+                    <div><h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2><p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture</p></div>
                     <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors"><X size={24} /></button>
                 </div>
                 <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
