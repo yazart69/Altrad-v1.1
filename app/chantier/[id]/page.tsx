@@ -4,51 +4,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, 
-  Save, 
-  FileText, 
-  UploadCloud, 
-  X, 
-  Eye, 
-  Trash2, 
-  AlertTriangle, 
-  Shield, 
-  CheckSquare, 
-  Thermometer, 
-  Droplets, 
-  Layers, 
-  Ruler, 
-  ClipboardCheck, 
-  FolderOpen,
-  Calendar, 
-  MonitorPlay, 
-  CheckCircle2, 
-  Circle, 
-  Clock, 
-  Plus, 
-  Minus,
-  Users, 
-  Percent, 
-  Truck, 
-  Package, 
-  Wrench, 
-  Mail, 
-  Phone, 
-  BarChart2, 
-  CornerDownRight,
-  AlertCircle,
-  UserPlus,
-  Palette,      
-  Box,          
-  AlertOctagon, 
-  Search,
-  TrendingUp,
-  TrendingDown,
-  UserCheck,
-  Scale,
-  Printer,
-  PieChart,
-  Target
+  ArrowLeft, Save, FileText, UploadCloud, X, Eye, Trash2, AlertTriangle, Shield, CheckSquare, 
+  Thermometer, Droplets, Layers, Ruler, ClipboardCheck, FolderOpen, Calendar, MonitorPlay, 
+  CheckCircle2, Circle, Clock, Plus, Minus, Users, Percent, Truck, Package, Wrench, Mail, 
+  Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
+  Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
+  Euro, HardHat, Briefcase, Zap, MapPin
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -63,7 +24,7 @@ export default function ChantierDetail() {
   
   // --- ÉTATS ---
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('infos');
+  const [activeTab, setActiveTab] = useState('suivi'); // Démarrage sur le Dashboard
   const [showACQPAModal, setShowACQPAModal] = useState(false);
   const [showAddMaterielModal, setShowAddMaterielModal] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -150,7 +111,46 @@ export default function ChantierDetail() {
   };
 
   useEffect(() => { fetchChantierData(); }, [id]);
-  // --- LOGIQUE MÉTIER ---
+
+  // --- LOGIQUE MÉTIER & CALCULS KPI ---
+  
+  // 1. Calculs MO & Budget
+  const finishedTasks = tasks.filter(t => t.done);
+  const totalPlannedHours = finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0);
+  const totalRealHours = finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0);
+  const globalDelta = totalPlannedHours - totalRealHours;
+  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
+
+  // 2. Calculs Logistique (Matériel)
+  const totalMateriel = materielPrevu.length;
+  const activeMateriel = materielPrevu.filter(m => {
+      const today = new Date().toISOString().split('T')[0];
+      return (!m.date_fin || m.date_fin >= today);
+  }).length;
+
+  // 3. Calculs Fournitures (Consommation)
+  const totalFournituresPlanned = fournituresPrevu.reduce((acc, f) => acc + (f.qte_prevue || 0), 0);
+  const totalFournituresConsumed = fournituresPrevu.reduce((acc, f) => acc + (f.qte_consommee || 0), 0);
+  const percentFournitures = totalFournituresPlanned > 0 ? Math.round((totalFournituresConsumed / totalFournituresPlanned) * 100) : 0;
+
+  // 4. Calculs Performance Employé
+  const employeeStats = tasks.reduce((acc: any, task: any) => {
+      const respId = task.responsable_id || 'unassigned';
+      if (!acc[respId]) {
+          acc[respId] = {
+              name: task.responsable ? `${task.responsable.prenom} ${task.responsable.nom}` : 'Non assigné',
+              planned: 0, real: 0, tasks: 0
+          };
+      }
+      if (task.done) {
+          acc[respId].planned += task.objectif_heures || 0;
+          acc[respId].real += parseFloat(task.heures_reelles) || 0;
+          acc[respId].tasks += 1;
+      }
+      return acc;
+  }, {});
+
+  // --- ACTIONS ---
   const updateChantierTotalHours = async (currentTasks: any[]) => {
     const totalRealConsumed = currentTasks.filter(t => t.done).reduce((sum, t) => sum + (parseFloat(t.heures_reelles) || t.objectif_heures || 0), 0);
     await supabase.from('chantiers').update({ heures_consommees: totalRealConsumed }).eq('id', id);
@@ -164,7 +164,6 @@ export default function ChantierDetail() {
     else { alert('✅ Sauvegardé !'); fetchChantierData(); }
   };
 
-  // Gestion Tâches
   const updateTaskField = async (taskId: string, field: string, value: any) => {
     const { error } = await supabase.from('chantier_tasks').update({ [field]: value }).eq('id', taskId);
     if (!error) {
@@ -173,110 +172,61 @@ export default function ChantierDetail() {
         if (field === 'heures_reelles' || field === 'done') updateChantierTotalHours(updatedTasks);
     }
   };
-
-  const addTask = async () => {
-    if (!newTaskLabel) return;
-    const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select();
-    if (data) setTasks([data[0], ...tasks]);
-    setNewTaskLabel("");
-  };
-
   const toggleTask = async (task: any) => {
     const newStatus = !task.done;
     const realHoursValue = newStatus ? (task.heures_reelles || task.objectif_heures) : 0;
     const updatedSubtasks = (task.subtasks || []).map((st: any) => ({ ...st, done: newStatus }));
     const { error } = await supabase.from('chantier_tasks').update({ done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks }).eq('id', task.id);
-    if (!error) {
-        const newTasks = tasks.map(t => t.id === task.id ? { ...t, done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks } : t);
-        setTasks(newTasks);
-        updateChantierTotalHours(newTasks);
-    }
+    if (!error) { const newTasks = tasks.map(t => t.id === task.id ? { ...t, done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks } : t); setTasks(newTasks); updateChantierTotalHours(newTasks); }
   };
-
   const addSubTask = async (parentId: string) => {
       if(!newSubTask.label) return;
       const parentTask = tasks.find(t => t.id === parentId);
-      if(!parentTask) return;
       const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false }];
       const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0);
       await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId);
       const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
-      setTasks(newTasks);
-      setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 });
-      setActiveParentTask(null);
+      setTasks(newTasks); setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 }); setActiveParentTask(null);
   };
-
   const toggleSubTask = async (parentId: string, subtaskId: number) => {
       const parentTask = tasks.find(t => t.id === parentId);
-      if(!parentTask) return;
       const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st);
       const allDone = updatedSubtasks.every((st: any) => st.done);
       const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, done: allDone, heures_reelles: allDone ? (parentTask.heures_reelles || parentTask.objectif_heures) : parentTask.heures_reelles }).eq('id', parentId);
-      if (!error) {
-          const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t);
-          setTasks(newTasks);
-          updateChantierTotalHours(newTasks);
-      }
+      if (!error) { const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t); setTasks(newTasks); updateChantierTotalHours(newTasks); }
   };
-
-  const deleteTask = async (taskId: string) => { if(confirm('Supprimer cette tâche ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter(t => t.id !== taskId); setTasks(updatedList); updateChantierTotalHours(updatedList); } };
-
-  // Gestion Fournitures & Matériel
-  const addFourniture = async () => {
-      if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit");
-      const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
-      const { error } = await supabase.from('chantier_fournitures').insert([{ chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom, unite: selectedItem?.unite, qte_prevue: newFourniture.qte_prevue || 0, qte_restante: newFourniture.qte_prevue || 0, qte_consommee: 0 }]);
-      if(!error) { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); }
-  };
+  const addTask = async () => { if (!newTaskLabel) return; const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (data) setTasks([data[0], ...tasks]); setNewTaskLabel(""); };
+  const deleteTask = async (taskId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter(t => t.id !== taskId); setTasks(updatedList); updateChantierTotalHours(updatedList); } };
+  const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id); const { error } = await supabase.from('chantier_fournitures').insert([{ chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom, unite: selectedItem?.unite, qte_prevue: newFourniture.qte_prevue || 0, qte_restante: newFourniture.qte_prevue || 0, qte_consommee: 0 }]); if(!error) { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); } };
   const updateConsommation = async (fId: string, val: number) => { setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: Math.max(0, val) } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: Math.max(0, val) }).eq('id', fId); };
   const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
-  const getSelectedUnit = () => { const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id); return selected ? selected.unite : ''; };
-  const filteredStock = stockFournitures.filter(s => s.nom.toLowerCase().includes(supplySearch.toLowerCase()) || (s.ral && s.ral.includes(supplySearch)));
   const handleAddMateriel = async () => { if (!newMat.materiel_id) return alert("Sélectionnez un matériel"); const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]); if (!error) { setShowAddMaterielModal(false); fetchChantierData(); }};
   const deleteMateriel = async (matId: string) => { if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); fetchChantierData(); } };
-
-  // Autres
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
   const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); };
   const updateCouche = (index: number, field: string, value: string) => { const n = [...acqpaData.couches]; n[index][field] = value; setAcqpaData({ ...acqpaData, couches: n }); };
   const toggleArrayItem = (field: 'risques' | 'epi', value: string) => { const current = chantier[field] || []; setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] }); };
   const deleteDocument = async (docId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
-
-  // --- CALCULS POUR "SUIVI AVANCEMENT" ---
-  const finishedTasks = tasks.filter(t => t.done);
-  const totalPlannedHours = finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0);
-  const totalRealHours = finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0);
-  const globalDelta = totalPlannedHours - totalRealHours;
   
-  // Aggrégation par Employé
-  const employeeStats = tasks.reduce((acc: any, task: any) => {
-      const respId = task.responsable_id || 'unassigned';
-      if (!acc[respId]) {
-          acc[respId] = {
-              name: task.responsable ? `${task.responsable.prenom} ${task.responsable.nom}` : 'Non assigné',
-              planned: 0,
-              real: 0,
-              tasks: 0
-          };
-      }
-      if (task.done) {
-          acc[respId].planned += task.objectif_heures || 0;
-          acc[respId].real += parseFloat(task.heures_reelles) || 0;
-          acc[respId].tasks += 1;
-      }
-      return acc;
-  }, {});
-
   const handlePrint = () => { window.print(); };
+  const getSelectedUnit = () => { const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id); return selected ? selected.unite : ''; };
+  const filteredStock = stockFournitures.filter(s => s.nom.toLowerCase().includes(supplySearch.toLowerCase()) || (s.ral && s.ral.includes(supplySearch)));
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
-  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:pb-0">
-      
-      {/* HEADER (Masqué à l'impression) */}
+    <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:p-0 print:m-0 print:w-full">
+      <style jsx global>{`
+        @media print {
+          @page { size: landscape; margin: 5mm; }
+          body { -webkit-print-color-adjust: exact; background: white; }
+          nav, aside, .sidebar, .print-hidden { display: none !important; }
+          .no-break { break-inside: avoid; }
+        }
+      `}</style>
+
+      {/* HEADER */}
       <div className="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200 shadow-sm print:hidden">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
@@ -292,13 +242,13 @@ export default function ChantierDetail() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 print:p-0 print:max-w-none">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 print:max-w-none print:p-2">
         
-        {/* BARRE DE NAVIGATION (Masquée à l'impression) */}
+        {/* NAV BAR */}
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar print:hidden">
             {[
+                { id: 'suivi', label: 'Suivi & KPI', icon: PieChart, color: 'bg-[#00b894]' },
                 { id: 'infos', label: 'Infos & Tâches', icon: FileText, color: 'bg-[#34495e]' },
-                { id: 'suivi', label: 'Suivi Avancement', icon: PieChart, color: 'bg-[#00b894]' }, // NOUVEL ONGLET
                 { id: 'logistique', label: 'Matériel & Loc.', icon: Truck, color: 'bg-[#6c5ce7]' },
                 { id: 'fournitures', label: 'Fournitures', icon: Package, color: 'bg-[#fdcb6e]' },
                 { id: 'planning', label: 'Planning Gantt', icon: BarChart2, color: 'bg-[#00b894]' },
@@ -309,6 +259,161 @@ export default function ChantierDetail() {
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-5 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all shadow-sm flex items-center gap-2 ${activeTab === tab.id ? `${tab.color} text-white shadow-lg scale-105` : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'}`}><tab.icon size={16} /> {tab.label}</button>
             ))}
         </div>
+
+        {/* --- NOUVEL ONGLET 2 : SUIVI AVANCEMENT (DASHBOARD) --- */}
+        {activeTab === 'suivi' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6 print:space-y-4">
+                
+                {/* Header Impression */}
+                <div className="flex justify-between items-end border-b border-gray-200 pb-4 mb-6">
+                    <div>
+                        <h2 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Rapport Direction</h2>
+                        <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{chantier.nom} — {chantier.type} — {new Date().toLocaleDateString()}</p>
+                    </div>
+                    <button onClick={handlePrint} className="bg-[#2d3436] text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold uppercase text-xs shadow-lg print:hidden hover:scale-105 transition-transform"><Printer size={18}/> Imprimer Rapport</button>
+                </div>
+
+                {/* 1. LIGNE DES KPI MAJEURS (CARDS) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4">
+                    {/* KPI 1: MO (Main d'Oeuvre) */}
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><HardHat size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">M.O. / Budget</p>
+                        <div className="mt-2 flex items-baseline gap-2">
+                            <span className="text-3xl font-black text-[#2d3436]">{chantier.heures_consommees}h</span>
+                            <span className="text-xs font-bold text-gray-400">/ {chantier.heures_budget}h</span>
+                        </div>
+                        <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
+                            <div className={`h-full ${percentHeures > 100 ? 'bg-red-500' : 'bg-[#0984e3]'}`} style={{width: `${Math.min(100, percentHeures)}%`}}></div>
+                        </div>
+                        <p className={`text-[10px] font-black mt-2 uppercase ${percentHeures > 100 ? 'text-red-500' : 'text-[#0984e3]'}`}>{percentHeures}% Consommé</p>
+                    </div>
+
+                    {/* KPI 2: Rentabilité (Ecart) */}
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Euro size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Rentabilité Tâches</p>
+                        <div className={`text-3xl font-black mt-2 ${globalDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {globalDelta > 0 ? '+' : ''}{globalDelta.toFixed(1)}h
+                        </div>
+                        <div className="flex items-center gap-1 mt-3">
+                            {globalDelta >= 0 ? <TrendingUp size={14} className="text-emerald-500"/> : <TrendingDown size={14} className="text-red-500"/>}
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Gain/Perte vs Prévu</span>
+                        </div>
+                    </div>
+
+                    {/* KPI 3: Logistique (Fournitures & Mat) */}
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><Package size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Logistique & Conso</p>
+                        <div className="mt-3 space-y-2">
+                            <div className="flex justify-between items-center text-xs font-bold text-gray-700">
+                                <span>Matériel Actif</span>
+                                <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{activeMateriel} / {totalMateriel}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs font-bold text-gray-700">
+                                <span>Conso. Fournitures</span>
+                                <span className="text-orange-500">{percentFournitures}%</span>
+                            </div>
+                        </div>
+                        <div className="w-full bg-gray-100 h-1.5 rounded-full mt-3 overflow-hidden">
+                             <div className="h-full bg-orange-400" style={{width: `${Math.min(100, percentFournitures)}%`}}></div>
+                        </div>
+                    </div>
+
+                    {/* KPI 4: Sous-traitance (Placeholder si pas de données) */}
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-gray-600"><Briefcase size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sous-Traitance</p>
+                        <div className="flex flex-col items-center justify-center h-20">
+                            <span className="text-3xl font-black text-gray-300">0</span>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Prestataires Actifs</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. GRAPHIQUES ET DÉTAILS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
+                    
+                    {/* Performance Équipes */}
+                    <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
+                        <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><UserCheck className="text-[#6c5ce7]"/> Performance Équipes</h3>
+                        <div className="space-y-5">
+                            {Object.entries(employeeStats).map(([id, stats]: any) => {
+                                if(stats.planned === 0 && stats.real === 0) return null;
+                                return (
+                                    <div key={id}>
+                                        <div className="flex justify-between text-xs font-bold uppercase mb-1">
+                                            <span className="text-gray-600 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-gray-300"></div>{stats.name}</span>
+                                            <span className={stats.real > stats.planned ? 'text-red-500' : 'text-emerald-600'}>
+                                                {stats.real}h / {stats.planned}h
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden flex relative">
+                                            {/* Marqueur du prévu (50% de la barre) */}
+                                            <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-black/20 z-10"></div>
+                                            <div className="h-full bg-blue-200" style={{width: '50%'}}></div>
+                                            <div className={`h-full ${stats.real > stats.planned ? 'bg-red-400' : 'bg-emerald-400'}`} style={{width: `${Math.min(50, (stats.real / stats.planned) * 50)}%`}}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {Object.keys(employeeStats).length === 0 && <p className="text-center text-gray-400 italic text-sm">Aucune donnée.</p>}
+                        </div>
+                    </div>
+
+                    {/* Détail Rentabilité Tâches */}
+                    <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
+                        <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Target className="text-[#ff9f43]"/> Rentabilité par Tâche</h3>
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-gray-50 uppercase text-gray-400 font-black">
+                                <tr>
+                                    <th className="p-3 rounded-l-lg">Tâche</th>
+                                    <th className="p-3 text-center">Prévu</th>
+                                    <th className="p-3 text-center">Réel</th>
+                                    <th className="p-3 text-right rounded-r-lg">Ecart</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
+                                {finishedTasks.slice(0, 8).map(t => {
+                                    const delta = (t.objectif_heures || 0) - (parseFloat(t.heures_reelles) || 0);
+                                    return (
+                                        <tr key={t.id}>
+                                            <td className="p-3 truncate max-w-[150px]">{t.label}</td>
+                                            <td className="p-3 text-center text-gray-400">{t.objectif_heures}h</td>
+                                            <td className="p-3 text-center">{t.heures_reelles}h</td>
+                                            <td className={`p-3 text-right ${delta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{delta > 0 ? '+' : ''}{delta.toFixed(1)}h</td>
+                                        </tr>
+                                    );
+                                })}
+                                {finishedTasks.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-400 italic">Aucune tâche terminée.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* 3. CONSOMMATION MATÉRIAUX (TABLEAU VISUEL) */}
+                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
+                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Package className="text-[#fdcb6e]"/> Top Consommables</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {fournituresPrevu.slice(0, 5).map(f => (
+                            <div key={f.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 print:border-gray-200">
+                                <p className="font-bold text-gray-800 text-xs truncate mb-2">{f.nom}</p>
+                                <div className="flex justify-between items-end">
+                                    <span className="text-[10px] font-bold text-gray-400">Utilisé</span>
+                                    <span className="text-sm font-black text-gray-700">{f.qte_consommee}/{f.qte_prevue}</span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                                    <div className={`h-full ${f.qte_consommee > f.qte_prevue ? 'bg-red-400' : 'bg-green-400'}`} style={{width: `${Math.min(100, (f.qte_consommee/f.qte_prevue)*100)}%`}}></div>
+                                </div>
+                            </div>
+                        ))}
+                        {fournituresPrevu.length === 0 && <p className="col-span-5 text-center text-gray-400 italic text-sm">Aucune fourniture suivie.</p>}
+                    </div>
+                </div>
+
+            </div>
+        )}
 
         {/* --- ONGLET 1 : INFOS (SIMPLE) --- */}
         {activeTab === 'infos' && (
@@ -326,7 +431,7 @@ export default function ChantierDetail() {
                             <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label><input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" /></div>
                         </div>
                     </div>
-                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
+                  <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Calendar size={20}/> Planning & Ressources</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Début</label><input type="date" value={chantier.date_debut || ''} onChange={e => setChantier({...chantier, date_debut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" /></div>
@@ -374,486 +479,69 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* --- NOUVEL ONGLET 2 : SUIVI AVANCEMENT (DASHBOARD IMPRIMABLE) --- */}
-        {activeTab === 'suivi' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 space-y-8 print:space-y-4">
-                
-                {/* Header d'impression */}
-                <div className="flex justify-between items-end print:mb-4">
-                    <div>
-                        <h2 className="text-2xl font-black uppercase text-[#2d3436]">Rapport d'Avancement</h2>
-                        <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{chantier.nom} - {new Date().toLocaleDateString()}</p>
-                    </div>
-                    <button onClick={handlePrint} className="bg-[#2d3436] text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold uppercase text-xs shadow-lg print:hidden hover:scale-105 transition-transform">
-                        <Printer size={16}/> Imprimer
-                    </button>
-                </div>
-
-                {/* KPI Globaux */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:grid-cols-3 print:gap-4">
-                    <div className="bg-white p-6 rounded-[25px] shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures</p>
-                        <div className="flex items-end gap-2 mt-2">
-                            <span className="text-3xl font-black text-[#2d3436]">{chantier.heures_consommees}h</span>
-                            <span className="text-sm font-bold text-gray-400 mb-1">/ {chantier.heures_budget}h</span>
-                        </div>
-                        <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-                            <div className={`h-full ${percentHeures > 100 ? 'bg-red-500' : 'bg-[#00b894]'}`} style={{width: `${Math.min(100, percentHeures)}%`}}></div>
-                        </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-[25px] shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Rentabilité Temps</p>
-                        <div className={`text-3xl font-black mt-2 ${globalDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {globalDelta > 0 ? '+' : ''}{globalDelta.toFixed(1)}h
-                        </div>
-                        <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">Écart Prévu / Réel</p>
-                    </div>
-                    <div className="bg-white p-6 rounded-[25px] shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tâches Terminées</p>
-                        <span className="text-3xl font-black text-[#0984e3] mt-2">{finishedTasks.length}</span>
-                        <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">Sur {tasks.length} total</p>
-                    </div>
-                </div>
-
-                {/* Graphique Performance Employés (CSS Only) */}
-                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border">
-                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><UserCheck className="text-[#6c5ce7]"/> Performance par Employé</h3>
-                    <div className="space-y-4">
-                        {Object.entries(employeeStats).map(([id, stats]: any) => {
-                            if(stats.planned === 0 && stats.real === 0) return null;
-                            const efficiency = stats.planned > 0 ? (stats.real / stats.planned) * 100 : 0;
-                            return (
-                                <div key={id} className="space-y-1">
-                                    <div className="flex justify-between text-xs font-bold uppercase">
-                                        <span className="text-gray-600">{stats.name}</span>
-                                        <span className={stats.real > stats.planned ? 'text-red-500' : 'text-emerald-600'}>
-                                            {stats.real}h / {stats.planned}h ({Math.round(efficiency)}%)
-                                        </span>
-                                    </div>
-                                    <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden flex">
-                                        <div className="h-full bg-blue-300" style={{width: '50%'}}></div> {/* Point de repère visuel */}
-                                        <div className={`h-full ${stats.real > stats.planned ? 'bg-red-400' : 'bg-emerald-400'}`} style={{width: `${Math.min(100, (stats.real / (stats.planned * 1.5)) * 100)}%`}}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {Object.keys(employeeStats).length === 0 && <p className="text-center text-gray-400 italic text-sm">Aucune donnée de performance enregistrée.</p>}
-                    </div>
-                </div>
-
-                {/* Tableau Rentabilité Tâches */}
-                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border print:break-inside-avoid">
-                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Target className="text-[#ff9f43]"/> Détail Rentabilité Tâches</h3>
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-gray-50 uppercase text-gray-400 font-black">
-                            <tr>
-                                <th className="p-3 rounded-l-xl">Tâche</th>
-                                <th className="p-3">Responsable</th>
-                                <th className="p-3 text-center">Prévu</th>
-                                <th className="p-3 text-center">Réel</th>
-                                <th className="p-3 text-right rounded-r-xl">Ecart</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
-                            {finishedTasks.map(t => {
-                                const delta = (t.objectif_heures || 0) - (parseFloat(t.heures_reelles) || 0);
-                                return (
-                                    <tr key={t.id}>
-                                        <td className="p-3">{t.label}</td>
-                                        <td className="p-3 text-gray-500">{t.responsable ? `${t.responsable.prenom} ${t.responsable.nom}` : '-'}</td>
-                                        <td className="p-3 text-center">{t.objectif_heures}h</td>
-                                        <td className="p-3 text-center">{t.heures_reelles}h</td>
-                                        <td className={`p-3 text-right ${delta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{delta > 0 ? '+' : ''}{delta.toFixed(1)}h</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Résumé Consommables */}
-                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border print:break-inside-avoid">
-                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Package className="text-[#fdcb6e]"/> Consommation Matériaux</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {fournituresPrevu.map(f => (
-                            <div key={f.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                <p className="font-bold text-gray-800 text-xs truncate">{f.nom}</p>
-                                <p className="text-[10px] text-gray-400 uppercase mt-1">Conso: <span className="font-black text-gray-600">{f.qte_consommee} / {f.qte_prevue} {f.unite}</span></p>
-                                <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 overflow-hidden">
-                                    <div className={`h-full ${f.qte_consommee > f.qte_prevue ? 'bg-red-400' : 'bg-green-400'}`} style={{width: `${Math.min(100, (f.qte_consommee/f.qte_prevue)*100)}%`}}></div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-            </div>
-        )}
         {/* ============================================================================================ */}
         {/* ONGLET 3 : LOGISTIQUE                                                                        */}
         {/* ============================================================================================ */}
         {activeTab === 'logistique' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
-                <div className="flex justify-between items-center mb-6 print:hidden">
-                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2">
-                        <Truck className="text-[#6c5ce7]"/> Matériel & Locations
-                    </h3>
-                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2">
-                        <Plus size={16}/> Ajouter / Réserver
-                    </button>
-                </div>
-                <div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden print:border-none print:shadow-none">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-100">
-                            <tr>
-                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Matériel</th>
-                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Type</th>
-                                <th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Période</th>
-                                <th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase">Quantité</th>
-                                <th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase print:hidden">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {materielPrevu.map(m => (
-                                <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="p-4 font-bold text-sm text-gray-800">{m.materiel?.nom}</td>
-                                    <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>{m.materiel?.type_stock}</span></td>
-                                    <td className="p-4 text-xs font-bold text-gray-600">{m.date_debut} ➔ {m.date_fin}</td>
-                                    <td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td>
-                                    <td className="p-4 text-center print:hidden"><button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <div className="flex justify-between items-center mb-6 print:hidden"><h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2"><Truck className="text-[#6c5ce7]"/> Matériel & Locations</h3><button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2"><Plus size={16}/> Ajouter / Réserver</button></div>
+                <div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden print:border-none print:shadow-none"><table className="w-full"><thead className="bg-gray-50 border-b border-gray-100"><tr><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Matériel</th><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Type</th><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Période</th><th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase">Quantité</th><th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase print:hidden">Action</th></tr></thead><tbody className="divide-y divide-gray-50">{materielPrevu.map(m => (<tr key={m.id} className="hover:bg-gray-50 transition-colors"><td className="p-4 font-bold text-sm text-gray-800">{m.materiel?.nom}</td><td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>{m.materiel?.type_stock}</span></td><td className="p-4 text-xs font-bold text-gray-600">{m.date_debut} ➔ {m.date_fin}</td><td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td><td className="p-4 text-center print:hidden"><button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div>
             </div>
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 4 : FOURNITURES (SAISIE OPÉRATIONNELLE)                                               */}
+        {/* ONGLET 4 : FOURNITURES                                                                       */}
         {/* ============================================================================================ */}
         {activeTab === 'fournitures' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:hidden">
-                    {/* Bloc Ajout Besoin */}
-                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20">
-                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
-                            <Package className="text-yellow-500"/> Ajouter Besoin
-                        </h3>
-                        <div className="space-y-4">
-                            <div className="relative" ref={searchWrapperRef}>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Produit</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" 
-                                        placeholder="Chercher..." 
-                                        value={supplySearch} 
-                                        onChange={(e) => { 
-                                            setSupplySearch(e.target.value); 
-                                            setShowSupplyList(true); 
-                                            if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); 
-                                        }} 
-                                        onFocus={() => setShowSupplyList(true)} 
-                                    />
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                                </div>
-                                {showSupplyList && supplySearch && (
-                                    <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50">
-                                        {filteredStock.map(s => (
-                                            <div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}>
-                                                <div className="font-bold text-sm text-gray-800">{s.nom}</div>
-                                                <div className="text-[10px] text-gray-400">{s.ral} - {s.qte_stock} {s.unite} dispo</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Prévue ({getSelectedUnit()})</label>
-                                <input 
-                                    type="number" 
-                                    value={newFourniture.qte_prevue || ''} 
-                                    onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
-                                    className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
-                                />
-                            </div>
-                            <button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg">
-                                Valider le besoin
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Bloc Besoins & Commandes */}
-                    <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10">
-                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
-                            <TrendingUp className="text-blue-500"/> Besoins Atelier
-                        </h3>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
-                                    <tr>
-                                        <th className="p-3">Produit</th>
-                                        <th className="p-3 text-center">Prévu</th>
-                                        <th className="p-3 text-center bg-blue-50/50 text-blue-600">Stock Magasin</th>
-                                        <th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th>
-                                        <th className="p-3 text-right">Statut</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {fournituresPrevu.map(f => {
-                                        const stockInfo = f.fournitures_stock || {};
-                                        const aCommander = Math.max(0, f.qte_prevue - stockInfo.qte_stock);
-                                        return (
-                                            <tr key={f.id} className="hover:bg-gray-50 transition-colors">
-                                                <td className="p-3 font-bold text-sm text-gray-800">
-                                                    {f.nom}
-                                                    <button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button>
-                                                </td>
-                                                <td className="p-3 text-center font-black">{f.qte_prevue} {f.unite}</td>
-                                                <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockInfo.qte_stock}</td>
-                                                <td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>{aCommander > 0 ? aCommander : '-'}</td>
-                                                <td className="p-3 text-right">{stockInfo.qte_stock >= f.qte_prevue ? (<span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>) : (<span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>)}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Package className="text-yellow-500"/> Ajouter Besoin</h3><div className="space-y-4"><div className="relative" ref={searchWrapperRef}><label className="text-[10px] font-bold text-gray-400 uppercase">Produit</label><div className="relative"><input type="text" className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" placeholder="Chercher..." value={supplySearch} onChange={(e) => { setSupplySearch(e.target.value); setShowSupplyList(true); if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); }} onFocus={() => setShowSupplyList(true)} /><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/></div>{showSupplyList && supplySearch && (<div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50">{filteredStock.map(s => (<div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}><div className="font-bold text-sm text-gray-800">{s.nom}</div><div className="text-[10px] text-gray-400">{s.ral} - {s.qte_stock} {s.unite} dispo</div></div>))}</div>)}</div><div><label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Prévue ({getSelectedUnit()})</label><input type="number" value={newFourniture.qte_prevue || ''} onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" /></div><button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg">Valider le besoin</button></div></div>
+                    <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Besoins Atelier</h3><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400"><tr><th className="p-3">Produit</th><th className="p-3 text-center">Prévu</th><th className="p-3 text-center bg-blue-50/50 text-blue-600">Stock Magasin</th><th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th><th className="p-3 text-right">Statut</th></tr></thead><tbody className="divide-y divide-gray-50">{fournituresPrevu.map(f => { const stockInfo = f.fournitures_stock || {}; const aCommander = Math.max(0, f.qte_prevue - stockInfo.qte_stock); return (<tr key={f.id} className="hover:bg-gray-50 transition-colors"><td className="p-3 font-bold text-sm text-gray-800">{f.nom}<button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button></td><td className="p-3 text-center font-black">{f.qte_prevue} {f.unite}</td><td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockInfo.qte_stock}</td><td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>{aCommander > 0 ? aCommander : '-'}</td><td className="p-3 text-right">{stockInfo.qte_stock >= f.qte_prevue ? (<span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>) : (<span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>)}</td></tr>); })}</tbody></table></div></div>
                 </div>
-
-                {/* Tuile Saisie Consommation Terrain */}
-                <div className="bg-white rounded-[35px] p-8 shadow-xl border border-gray-100 relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-6 relative z-10">
-                        <div>
-                            <h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2"><Scale className="text-emerald-500"/> Saisie Consommation Terrain</h3>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Mise à jour du stock déporté</p>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-50 text-[11px] font-black uppercase text-gray-400">
-                                <tr>
-                                    <th className="p-4">Fourniture</th>
-                                    <th className="p-4 text-center">Quantité Utilisée</th>
-                                    <th className="p-4 text-center bg-emerald-50/50 text-emerald-700">Stock Chantier Restant</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {fournituresPrevu.map(f => {
-                                    const prevu = f.qte_prevue || 1; 
-                                    const conso = f.qte_consommee || 0; 
-                                    return (
-                                        <tr key={f.id} className="hover:bg-gray-50/80 transition-all group">
-                                            <td className="p-4">
-                                                <p className="font-black text-gray-800">{f.nom}</p>
-                                                <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Init: {prevu} {f.unite}</span>
-                                            </td>
-                                            <td className="p-4 text-center">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <button onClick={() => updateConsommation(f.id, conso - 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><Minus size={14}/></button>
-                                                    <input 
-                                                        type="number" 
-                                                        className="w-20 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none" 
-                                                        value={conso} 
-                                                        onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)} 
-                                                    />
-                                                    <button onClick={() => updateConsommation(f.id, conso + 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"><Plus size={14}/></button>
-                                                </div>
-                                            </td>
-                                            <td className="p-4 text-center bg-emerald-50/30 font-black text-emerald-700">{Math.max(0, prevu - conso)} {f.unite}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <div className="bg-white rounded-[35px] p-8 shadow-xl border border-gray-100 relative overflow-hidden"><div className="flex justify-between items-center mb-6 relative z-10"><div><h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2"><Scale className="text-emerald-500"/> Saisie Consommation Terrain</h3><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Mise à jour du stock déporté</p></div></div><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[11px] font-black uppercase text-gray-400"><tr><th className="p-4">Fourniture</th><th className="p-4 text-center">Quantité Utilisée</th><th className="p-4 text-center bg-emerald-50/50 text-emerald-700">Stock Chantier Restant</th></tr></thead><tbody className="divide-y divide-gray-100">{fournituresPrevu.map(f => { const prevu = f.qte_prevue || 1; const conso = f.qte_consommee || 0; return (<tr key={f.id} className="hover:bg-gray-50/80 transition-all group"><td className="p-4"><p className="font-black text-gray-800">{f.nom}</p><span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Init: {prevu} {f.unite}</span></td><td className="p-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => updateConsommation(f.id, conso - 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><Minus size={14}/></button><input type="number" className="w-20 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none" value={conso} onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)} /><button onClick={() => updateConsommation(f.id, conso + 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"><Plus size={14}/></button></div></td><td className="p-4 text-center bg-emerald-50/30 font-black text-emerald-700">{Math.max(0, prevu - conso)} {f.unite}</td></tr>); })}</tbody></table></div></div>
             </div>
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 5 : PLANNING                                                                          */}
+        {/* ONGLET 5 : PLANNING                                                                          */}
         {/* ============================================================================================ */}
         {activeTab === 'planning' && (
-            <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3>
-                    <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl">
-                        <Users size={18} className="text-blue-600"/>
-                        <span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span>
-                    </div>
-                </div>
-                <div className="space-y-6">
-                    {tasks.map((t, idx) => (
-                        <div key={t.id} className="relative">
-                            <div className="flex items-center gap-4 mb-2">
-                                <div className="w-48 font-bold text-sm truncate" title={t.label}>{t.label}</div>
-                                <div className="flex-1 bg-gray-100 h-8 rounded-full relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 h-full bg-[#00b894] opacity-80 flex items-center px-3 text-[10px] text-white font-bold" style={{ width: `${Math.min(100, Math.max(10, t.objectif_heures * 2))}%` }}>
-                                        {t.objectif_heures}h
-                                    </div>
-                                </div>
-                            </div>
-                            {t.subtasks && t.subtasks.map((st: any) => (
-                                <div key={st.id} className="flex items-center gap-4 mb-1 pl-8 relative group">
-                                    <CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/>
-                                    <div className="w-40 text-xs text-gray-500 truncate flex justify-between pr-4">
-                                        <span>{st.label}</span>
-                                        <span className="font-black text-blue-500">{st.effectif}p</span>
-                                    </div>
-                                    <div className="flex-1 bg-gray-50 h-6 rounded-full relative">
-                                        <div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>
-                                            {st.heures}h | {st.effectif}p
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-            </div>
+            <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-center mb-6"><h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3><div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl"><Users size={18} className="text-blue-600"/><span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span></div></div><div className="space-y-6">{tasks.map((t, idx) => (<div key={t.id} className="relative"><div className="flex items-center gap-4 mb-2"><div className="w-48 font-bold text-sm truncate" title={t.label}>{t.label}</div><div className="flex-1 bg-gray-100 h-8 rounded-full relative overflow-hidden"><div className="absolute top-0 left-0 h-full bg-[#00b894] opacity-80 flex items-center px-3 text-[10px] text-white font-bold" style={{ width: `${Math.min(100, Math.max(10, t.objectif_heures * 2))}%` }}>{t.objectif_heures}h</div></div></div>{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center gap-4 mb-1 pl-8 relative group"><CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/><div className="w-40 text-xs text-gray-500 truncate flex justify-between pr-4"><span>{st.label}</span><span className="font-black text-blue-500">{st.effectif}p</span></div><div className="flex-1 bg-gray-50 h-6 rounded-full relative"><div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>{st.heures}h | {st.effectif}p</div></div></div>))}</div>))}</div></div>
         )}
+
         {/* ============================================================================================ */}
-        {/* ONGLET 6 : HSE                                                                               */}
+        {/* ONGLET 6 : HSE                                                                               */}
         {/* ============================================================================================ */}
         {activeTab === 'hse' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#e17055] text-white rounded-[30px] p-6 shadow-xl relative overflow-hidden">
-                    <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2"><AlertTriangle/> Alertes Risques</h3>
-                    <div className="space-y-3 relative z-10">
-                        {RISK_OPTIONS.map(risk => (
-                            <label key={risk} className="flex items-center gap-3 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition-colors border border-white/5">
-                                <div onClick={() => toggleArrayItem('risques', risk)} className={`w-5 h-5 rounded flex items-center justify-center border-2 border-white ${chantier.risques?.includes(risk) ? 'bg-white' : 'bg-transparent'}`}>
-                                    {chantier.risques?.includes(risk) && <CheckSquare size={14} className="text-[#e17055]" />}
-                                </div>
-                                <span className="font-bold text-sm uppercase">{risk}</span>
-                            </label>
-                        ))}
-                    </div>
-                    <AlertTriangle size={150} className="absolute -right-5 -bottom-5 text-orange-900 opacity-10 rotate-12 pointer-events-none" />
-                </div>
-                <div className="bg-[#00b894] text-white rounded-[30px] p-6 shadow-xl relative overflow-hidden">
-                    <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2"><Shield/> EPI Obligatoires</h3>
-                    <div className="grid grid-cols-2 gap-3 relative z-10">
-                        {EPI_OPTIONS.map(epi => (
-                            <label key={epi} className="flex items-center gap-3 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition-colors border border-white/5">
-                                <div onClick={() => toggleArrayItem('epi', epi)} className={`w-5 h-5 rounded flex items-center justify-center border-2 border-white ${chantier.epi?.includes(epi) ? 'bg-white' : 'bg-transparent'}`}>
-                                    {chantier.epi?.includes(epi) && <CheckSquare size={14} className="text-[#00b894]" />}
-                                </div>
-                                <span className="font-bold text-[11px] uppercase leading-tight">{epi}</span>
-                            </label>
-                        ))}
-                    </div>
-                    <Shield size={150} className="absolute -right-5 -bottom-5 text-emerald-900 opacity-10 rotate-12 pointer-events-none" />
-                </div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4"><div className="bg-[#e17055] text-white rounded-[30px] p-6 shadow-xl relative overflow-hidden"><h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2"><AlertTriangle/> Alertes Risques</h3><div className="space-y-3 relative z-10">{RISK_OPTIONS.map(risk => (<label key={risk} className="flex items-center gap-3 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition-colors border border-white/5"><div onClick={() => toggleArrayItem('risques', risk)} className={`w-5 h-5 rounded flex items-center justify-center border-2 border-white ${chantier.risques?.includes(risk) ? 'bg-white' : 'bg-transparent'}`}>{chantier.risques?.includes(risk) && <CheckSquare size={14} className="text-[#e17055]" />}</div><span className="font-bold text-sm uppercase">{risk}</span></label>))}</div><AlertTriangle size={150} className="absolute -right-5 -bottom-5 text-orange-900 opacity-10 rotate-12 pointer-events-none" /></div><div className="bg-[#00b894] text-white rounded-[30px] p-6 shadow-xl relative overflow-hidden"><h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2"><Shield/> EPI Obligatoires</h3><div className="grid grid-cols-2 gap-3 relative z-10">{EPI_OPTIONS.map(epi => (<label key={epi} className="flex items-center gap-3 bg-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/20 transition-colors border border-white/5"><div onClick={() => toggleArrayItem('epi', epi)} className={`w-5 h-5 rounded flex items-center justify-center border-2 border-white ${chantier.epi?.includes(epi) ? 'bg-white' : 'bg-transparent'}`}>{chantier.epi?.includes(epi) && <CheckSquare size={14} className="text-[#00b894]" />}</div><span className="font-bold text-[11px] uppercase leading-tight">{epi}</span></label>))}</div><Shield size={150} className="absolute -right-5 -bottom-5 text-emerald-900 opacity-10 rotate-12 pointer-events-none" /></div></div>
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 7 : ACQPA                                                                             */}
+        {/* ONGLET 7 : ACQPA                                                                             */}
         {/* ============================================================================================ */}
         {activeTab === 'acqpa' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4">
-                {!chantier.mesures_obligatoires ? (
-                    <div className="bg-white rounded-[30px] p-10 text-center border border-gray-100 shadow-sm">
-                        <ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" />
-                        <h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3>
-                        <p className="text-gray-400 font-bold mb-4">Activez les mesures dans l'onglet Infos.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-6">
-                        <div className="bg-[#0984e3] text-white p-6 rounded-[30px] shadow-xl flex justify-between items-center relative overflow-hidden">
-                            <div className="relative z-10">
-                                <h3 className="font-black uppercase text-xl">Relevés Peinture (ACQPA)</h3>
-                                <p className="text-blue-200 font-bold text-sm">Suivi qualité application</p>
-                            </div>
-                            <button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">
-                                Ouvrir / Modifier
-                            </button>
-                            <ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" />
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p><p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p></div>
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400"><p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p><p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p></div>
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p><p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p></div>
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p><p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p></div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            <div className="animate-in fade-in slide-in-from-bottom-4">{!chantier.mesures_obligatoires ? (<div className="bg-white rounded-[30px] p-10 text-center border border-gray-100 shadow-sm"><ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" /><h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3><p className="text-gray-400 font-bold mb-4">Activez les mesures dans l'onglet Infos.</p></div>) : (<div className="space-y-6"><div className="bg-[#0984e3] text-white p-6 rounded-[30px] shadow-xl flex justify-between items-center relative overflow-hidden"><div className="relative z-10"><h3 className="font-black uppercase text-xl">Relevés Peinture (ACQPA)</h3><p className="text-blue-200 font-bold text-sm">Suivi qualité application</p></div><button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">Ouvrir / Modifier</button><ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" /></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p><p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400"><p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p><p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p><p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p><p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p></div></div></div>)}</div>
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 8 : DOCUMENTS                                                                         */}
+        {/* ONGLET 8 : DOCUMENTS                                                                         */}
         {/* ============================================================================================ */}
         {activeTab === 'docs' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-[#6c5ce7] p-8 rounded-[30px] text-white shadow-xl flex flex-col items-center justify-center text-center border-4 border-dashed border-white/20 relative overflow-hidden group mb-6 hover:bg-[#5f27cd] cursor-pointer transition-colors">
-                    <UploadCloud size={40} className="mb-2" />
-                    <p className="font-black uppercase text-xl">Ajouter Photos / Docs</p>
-                    <input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {documents.map(doc => (
-                        <div key={doc.id} className="bg-white p-3 rounded-[25px] shadow-sm h-[180px] flex flex-col relative group hover:shadow-lg transition-all border border-gray-100">
-                            <div className="flex-1 bg-gray-50 rounded-[15px] mb-2 flex items-center justify-center overflow-hidden">
-                                {doc.type === 'image' ? <img src={doc.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform"/> : <FileText size={40} className="text-gray-300"/>}
-                            </div>
-                            <div className="flex justify-between items-center px-2">
-                                <p className="text-xs font-bold text-gray-600 truncate w-20">{doc.nom}</p>
-                                <div className="flex gap-2">
-                                    <a href={doc.url} target="_blank" className="text-gray-400 hover:text-blue-500"><Eye size={16}/></a>
-                                    <button onClick={() => deleteDocument(doc.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            <div className="animate-in fade-in slide-in-from-bottom-4"><div className="bg-[#6c5ce7] p-8 rounded-[30px] text-white shadow-xl flex flex-col items-center justify-center text-center border-4 border-dashed border-white/20 relative overflow-hidden group mb-6 hover:bg-[#5f27cd] cursor-pointer transition-colors"><UploadCloud size={40} className="mb-2" /><p className="font-black uppercase text-xl">Ajouter Photos / Docs</p><input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4">{documents.map(doc => (<div key={doc.id} className="bg-white p-3 rounded-[25px] shadow-sm h-[180px] flex flex-col relative group hover:shadow-lg transition-all border border-gray-100"><div className="flex-1 bg-gray-50 rounded-[15px] mb-2 flex items-center justify-center overflow-hidden">{doc.type === 'image' ? <img src={doc.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform"/> : <FileText size={40} className="text-gray-300"/>}</div><div className="flex justify-between items-center px-2"><p className="text-xs font-bold text-gray-600 truncate w-20">{doc.nom}</p><div className="flex gap-2"><a href={doc.url} target="_blank" className="text-gray-400 hover:text-blue-500"><Eye size={16}/></a><button onClick={() => deleteDocument(doc.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button></div></div></div>))}</div></div>
         )}
 
       </div>
 
       {/* MODALES ACQPA */}
       {showACQPAModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto print:hidden">
             <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-                <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0">
-                    <div><h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2><p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture</p></div>
-                    <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors"><X size={24} /></button>
-                </div>
+                <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0"><div><h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2><p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture</p></div><button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors"><X size={24} /></button></div>
                 <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Thermometer className="text-[#0984e3]"/> Ambiance</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {[{l:'Temp. Air (°C)',k:'temp_air'},{l:'Temp. Support (°C)',k:'temp_support'},{l:'Hygrométrie (%)',k:'hygrometrie'},{l:'Point Rosée (°C)',k:'point_rosee'},{l:'Delta T',k:'delta_t'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="number" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}
-                        </div>
-                    </section>
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Layers className="text-[#0984e3]"/> Préparation Support</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {[{l:'Degré de Soin',k:'degre_soin'},{l:'Propreté',k:'proprete'},{l:'Rugosité (µm)',k:'rugosite'},{l:'Sels Solubles',k:'sels'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="text" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}
-                        </div>
-                    </section>
-                    <section>
-                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2"><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg"><Droplets className="text-[#0984e3]"/> Produits & Couches</h3><button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors"><Plus size={14}/> Ajouter</button></div>
-                        <div className="space-y-4">
-                            {acqpaData.couches && acqpaData.couches.map((c:any,i:number)=>(<div key={i} className="bg-gray-50 p-4 rounded-xl relative group"><div className="absolute -top-3 left-3 bg-[#0984e3] text-white text-[10px] font-bold px-2 py-0.5 rounded">Couche {i+1}</div><button onClick={()=>removeCouche(i)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button><div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2"><div><label className="text-[9px] font-bold text-gray-400 uppercase">Type</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.type} onChange={e=>updateCouche(i,'type',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Lot</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.lot} onChange={e=>updateCouche(i,'lot',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Méthode</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.methode} onChange={e=>updateCouche(i,'methode',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Dilution</label><input type="number" className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.dilution} onChange={e=>updateCouche(i,'dilution',e.target.value)}/></div></div></div>))}
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                            <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Date Appli</label><input type="date" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_date || ''} onChange={e => setAcqpaData({...acqpaData, app_date: e.target.value})} /></div>
-                             <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Applicateur</label><input className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_nom || ''} onChange={e => setAcqpaData({...acqpaData, app_nom: e.target.value})} /></div>
-                             <div><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label><input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} /></div>
-                        </div>
-                    </section>
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Ruler className="text-[#0984e3]"/> Contrôles Finaux</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                            {[{l:'Ep. Humide',k:'ep_humide'},{l:'Ep. Sèche',k:'dft_mesure'},{l:'Adhérence',k:'adherence'},{l:'Défauts',k:'defauts',t:'text'},{l:'Retouches',k:'retouches',t:'text'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type={f.t||'number'} className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}
-                        </div>
-                    </section>
+                    <section><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Thermometer className="text-[#0984e3]"/> Ambiance</h3><div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">{[{l:'Temp. Air (°C)',k:'temp_air'},{l:'Temp. Support (°C)',k:'temp_support'},{l:'Hygrométrie (%)',k:'hygrometrie'},{l:'Point Rosée (°C)',k:'point_rosee'},{l:'Delta T',k:'delta_t'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="number" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}</div></section>
+                    <section><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Layers className="text-[#0984e3]"/> Préparation Support</h3><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{[{l:'Degré de Soin',k:'degre_soin'},{l:'Propreté',k:'proprete'},{l:'Rugosité (µm)',k:'rugosite'},{l:'Sels Solubles',k:'sels'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="text" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}</div></section>
+                    <section><div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2"><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg"><Droplets className="text-[#0984e3]"/> Produits & Couches</h3><button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors"><Plus size={14}/> Ajouter</button></div><div className="space-y-4">{acqpaData.couches && acqpaData.couches.map((c:any,i:number)=>(<div key={i} className="bg-gray-50 p-4 rounded-xl relative group"><div className="absolute -top-3 left-3 bg-[#0984e3] text-white text-[10px] font-bold px-2 py-0.5 rounded">Couche {i+1}</div><button onClick={()=>removeCouche(i)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button><div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2"><div><label className="text-[9px] font-bold text-gray-400 uppercase">Type</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.type} onChange={e=>updateCouche(i,'type',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Lot</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.lot} onChange={e=>updateCouche(i,'lot',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Méthode</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.methode} onChange={e=>updateCouche(i,'methode',e.target.value)}/></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Dilution</label><input type="number" className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.dilution} onChange={e=>updateCouche(i,'dilution',e.target.value)}/></div></div></div>))}</div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6"><div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Date Appli</label><input type="date" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_date || ''} onChange={e => setAcqpaData({...acqpaData, app_date: e.target.value})} /></div><div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Applicateur</label><input className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_nom || ''} onChange={e => setAcqpaData({...acqpaData, app_nom: e.target.value})} /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label><input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} /></div></div></section>
+                    <section><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Ruler className="text-[#0984e3]"/> Contrôles Finaux</h3><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">{[{l:'Ep. Humide',k:'ep_humide'},{l:'Ep. Sèche',k:'dft_mesure'},{l:'Adhérence',k:'adherence'},{l:'Défauts',k:'defauts',t:'text'},{l:'Retouches',k:'retouches',t:'text'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type={f.t||'number'} className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}</div></section>
                 </div>
                 <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-4"><button onClick={()=>{setShowACQPAModal(false);handleSave()}} className="bg-[#0984e3] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform">Enregistrer & Fermer</button></div>
             </div>
