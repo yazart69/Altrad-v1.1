@@ -41,11 +41,12 @@ export default function FicheEmploye() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // CORRECTION ERREUR 400 : On retire l'id de l'objet avant l'envoi
-    // Supabase refuse la mise à jour si la clé primaire est dans le body ET dans l'URL
-    const { id: _, ...empDataWithoutId } = emp;
+    // CORRECTION ERREUR 400 (Renforcée) :
+    // On retire l'id ET created_at (souvent rejeté par Supabase lors d'un update)
+    // On s'assure d'envoyer un payload propre.
+    const { id: _id, created_at: _created, ...payload } = emp;
     
-    const { error } = await supabase.from('employes').update(empDataWithoutId).eq('id', id);
+    const { error } = await supabase.from('employes').update(payload).eq('id', id);
     
     setIsSaving(false);
     if (!error) alert("✅ Dossier mis à jour avec succès !");
