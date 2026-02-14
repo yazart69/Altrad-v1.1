@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, 
-  X, Loader2, Eraser, CalendarDays, Save, Check 
+  X, Loader2, Eraser, CalendarDays, Save, Check,
+  Crown, UserCog, UserCheck, UserX, Users
 } from 'lucide-react';
 
 // --- HELPERS ---
@@ -23,6 +24,85 @@ const getWeekNumber = (d: Date) => {
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+};
+
+// CONFIGURATION DES RÔLES (Style unifié avec page Équipe)
+const getRoleConfig = (role: string) => {
+    switch(role) {
+        // CHEFS DE CHANTIER
+        case 'chef_chantier_interne': 
+          return { 
+              label: 'Chef Chantier (Int)', 
+              // Style Carte Planning
+              cardClass: 'bg-purple-100 border-purple-200 text-purple-900', 
+              // Style Badge Modal
+              badgeClass: 'bg-purple-100 text-purple-700',
+              icon: <Crown size={12} className="text-purple-600"/> 
+          };
+        case 'chef_chantier_altrad': 
+          return { 
+              label: 'Chef Chantier (Alt)', 
+              cardClass: 'bg-fuchsia-100 border-fuchsia-200 text-fuchsia-900', 
+              badgeClass: 'bg-fuchsia-100 text-fuchsia-700',
+              icon: <Crown size={12} className="text-fuchsia-600"/> 
+          };
+
+        // CHEFS D'ÉQUIPE
+        case 'chef_equipe_interne': 
+          return { 
+              label: "Chef Équipe (Int)", 
+              cardClass: 'bg-indigo-100 border-indigo-200 text-indigo-900', 
+              badgeClass: 'bg-indigo-100 text-indigo-700',
+              icon: <UserCog size={12} className="text-indigo-600"/> 
+          };
+        case 'chef_equipe_altrad': 
+          return { 
+              label: "Chef Équipe (Alt)", 
+              cardClass: 'bg-violet-100 border-violet-200 text-violet-900', 
+              badgeClass: 'bg-violet-100 text-violet-700',
+              icon: <UserCog size={12} className="text-violet-600"/> 
+          };
+
+        // OPÉRATEURS
+        case 'operateur_interne': 
+          return { 
+              label: 'Opérateur (Int)', 
+              cardClass: 'bg-blue-100 border-blue-200 text-blue-900', 
+              badgeClass: 'bg-blue-100 text-blue-700',
+              icon: <HardHat size={12} className="text-blue-500"/> 
+          };
+        case 'operateur_altrad': 
+          return { 
+              label: 'Opérateur (Alt)', 
+              cardClass: 'bg-cyan-100 border-cyan-200 text-cyan-900', 
+              badgeClass: 'bg-cyan-100 text-cyan-700',
+              icon: <HardHat size={12} className="text-cyan-500"/> 
+          };
+
+        // EXTERNES
+        case 'interimaire': 
+          return { 
+              label: 'Intérimaire', 
+              cardClass: 'bg-orange-100 border-orange-200 text-orange-900', 
+              badgeClass: 'bg-orange-100 text-orange-700',
+              icon: <UserCheck size={12} className="text-orange-500"/> 
+          };
+        case 'sous_traitant': 
+          return { 
+              label: 'Sous-Traitant', 
+              cardClass: 'bg-gray-100 border-gray-200 text-gray-700', 
+              badgeClass: 'bg-gray-100 text-gray-600',
+              icon: <UserX size={12} className="text-gray-500"/> 
+          };
+
+        default: 
+          return { 
+              label: 'Autre', 
+              cardClass: 'bg-gray-50 border-gray-200 text-gray-500',
+              badgeClass: 'bg-gray-50 text-gray-500', 
+              icon: <Users size={12} /> 
+          };
+    }
 };
 
 export default function PlanningPage() {
@@ -60,7 +140,7 @@ export default function PlanningPage() {
     const { data: chan } = await supabase.from('chantiers').select('id, nom, adresse').neq('statut', 'termine').order('nom');
     if (chan) setChantiers(chan);
     
-    // Planning (Sur une plage large pour éviter les rechargements constants)
+    // Planning
     const { data: plan } = await supabase
         .from('planning')
         .select(`
@@ -280,7 +360,6 @@ export default function PlanningPage() {
           <tbody className="divide-y divide-gray-100 print:divide-black">
             {/* LIGNES CHANTIERS */}
             {chantiers.map((chantier) => {
-              // Calcul : Vérifier si ce chantier a des affectations CETTE SEMAINE
               const hasAssignments = assignments.some(a => 
                   a.chantier_id === chantier.id && 
                   weekDays.some(day => toLocalISOString(day) === a.date_debut)
@@ -305,37 +384,42 @@ export default function PlanningPage() {
                   return (
                     <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border print:border-black print:h-auto print:p-1">
                       <div className="flex flex-col gap-1.5 h-full">
-                          {dailyMissions.map((mission) => (
-                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative ${modePointage ? 'bg-orange-50 border border-orange-100' : 'bg-[#0984e3] text-white'} print:shadow-none print:p-1`}>
+                          {dailyMissions.map((mission) => {
+                              // RÉCUPÉRATION DU STYLE SELON LE RÔLE
+                              const roleConfig = getRoleConfig(mission.users?.role);
+                              // Application du style : si mode pointage (orange), sinon couleur du rôle
+                              const cardStyle = modePointage ? 'bg-orange-50 border-orange-100 text-gray-800' : roleConfig.cardClass;
+
+                              return (
+                              <div key={mission.id} className={`p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative border ${cardStyle} print:shadow-none print:p-1`}>
                                   <div className="flex items-center gap-2 w-full">
                                       {!modePointage && (
-                                          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[9px] font-bold shrink-0 print:text-white print:w-4 print:h-4 print:text-[8px]">
-                                              {mission.users?.prenom?.charAt(0) || '?'}{mission.users?.nom?.charAt(0) || '?'}
+                                          <div className="shrink-0 print:text-black">
+                                              {/* Affichage Icône du Rôle au lieu des initiales */}
+                                              {roleConfig.icon}
                                           </div>
                                       )}
                                       <div className="flex-1 min-w-0">
-                                          {/* MODIFICATION TAILLE POLICE ICI : text-[11px] print:text-[11px] */}
-                                          <span className={`text-[11px] font-bold uppercase truncate block ${modePointage ? 'text-gray-800' : 'text-white'} print:text-[11px] print:whitespace-normal`}>
+                                          <span className={`text-[11px] font-bold uppercase truncate block print:text-[11px] print:whitespace-normal`}>
                                               {mission.users?.nom || 'Inconnu'} {mission.users?.prenom?.charAt(0) || ''}.
                                           </span>
                                           
-                                          {/* Mode impression : Afficher heures si renseignées */}
                                           <div className="hidden print:block text-[8px] font-bold mt-0.5">
                                              {mission.heures > 0 ? `${mission.heures}h` : ''}
                                           </div>
                                       </div>
                                   </div>
 
-                                  {/* Actions Rapides (Suppression) */}
                                   {!modePointage && (
                                       <div className="hidden group-hover/card:flex gap-1 print:hidden">
-                                          <button onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}} className="p-1 rounded bg-red-500/80 hover:bg-red-500 text-white">
+                                          <button onClick={(e) => {e.stopPropagation(); deleteAssignment(mission.id)}} className="p-1 rounded bg-white/50 hover:bg-white text-red-500">
                                               <Trash2 size={10} />
                                           </button>
                                       </div>
                                   )}
                               </div>
-                          ))}
+                              )
+                          })}
 
                           {/* Bouton Ajouter */}
                           {!modePointage && (
@@ -393,7 +477,7 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      {/* MODAL D'AFFECTATION */}
+      {/* MODAL D'AFFECTATION (MODIFIÉE AVEC STYLES) */}
       {isModalOpen && selection && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden animate-in fade-in">
           <div className="bg-white rounded-[30px] p-6 w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -423,12 +507,11 @@ export default function PlanningPage() {
                 {/* 2. SÉLECTION MULTIPLE EMPLOYÉS */}
                 <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Sélectionner Collaborateurs ({selectedEmployes.length})</label>
-                    <div className="max-h-[200px] overflow-y-auto border border-gray-100 rounded-xl">
+                    <div className="max-h-[300px] overflow-y-auto border border-gray-100 rounded-xl">
                         {employes.map(e => {
                             const isSelected = selectedEmployes.includes(e.id);
-                            // Calcul heures déjà planifiées
-                            const currentHours = weeklyHours[e.id] || 0;
-                            const isOverload = currentHours > 39;
+                            // Récupération style du rôle
+                            const roleConfig = getRoleConfig(e.role);
 
                             return (
                                 <div 
@@ -445,7 +528,12 @@ export default function PlanningPage() {
                                         </div>
                                         <div>
                                             <p className={`font-bold text-sm ${isSelected ? 'text-blue-800' : 'text-gray-700'}`}>{e.nom} {e.prenom}</p>
-                                            <p className="text-[10px] text-gray-400 font-bold uppercase">{e.role}</p>
+                                            
+                                            {/* BADGE RÔLE */}
+                                            <div className={`flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold w-fit ${roleConfig.badgeClass}`}>
+                                                {roleConfig.icon}
+                                                <span>{roleConfig.label}</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
