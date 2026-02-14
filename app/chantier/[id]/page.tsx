@@ -9,14 +9,13 @@ import {
   CheckCircle2, Circle, Clock, Plus, Minus, Users, Percent, Truck, Package, Wrench, Mail, 
   Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
   Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
-  Euro, HardHat, Briefcase, Zap, MapPin
+  Euro, HardHat, Briefcase, Zap, MapPin, Calculator, Wallet
 } from 'lucide-react';
 import Link from 'next/link';
 
 // --- CONSTANTES ---
 const RISK_OPTIONS = ['Amiante', 'Plomb', 'Silice', 'ATEX', 'Hauteur', 'Levage', 'Confiné', 'Électrique', 'Chimique', 'Coactivité'];
 const EPI_OPTIONS = ['Casque', 'Harnais', 'Chaussures de sécurité', 'Combinaison', 'Protections respiratoires', 'Gants', 'Protections auditives', 'Lunettes', 'Masque ventilé', 'Gilet haute visibilité'];
-const TYPE_CHANTIER_OPTIONS = ['Industriel', 'Parking', 'Ouvrage d\'art', 'Nucléaire', 'Naval', 'Bâtiment', 'Autre'];
 
 export default function ChantierDetail() {
   const params = useParams();
@@ -24,7 +23,7 @@ export default function ChantierDetail() {
   
   // --- ÉTATS ---
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('suivi'); // Démarrage sur le Dashboard
+  const [activeTab, setActiveTab] = useState('suivi'); 
   const [showACQPAModal, setShowACQPAModal] = useState(false);
   const [showAddMaterielModal, setShowAddMaterielModal] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -34,8 +33,10 @@ export default function ChantierDetail() {
     nom: '', client: '', adresse: '', responsable: '', client_email: '', client_telephone: '',
     date_debut: '', date_fin: '', type: 'Industriel', type_precision: '', statut: 'en_cours',
     heures_budget: 0, heures_consommees: 0, effectif_prevu: 0, taux_reussite: 100, 
+    budget_euro: 0, taux_horaire_moyen: 45, // Nouveaux champs financiers
     risques: [], epi: [], mesures_obligatoires: false
   });
+  
   const [acqpaData, setAcqpaData] = useState<any>({ couches: [{ type: '', lot: '', methode: '', dilution: '' }] });
   const [tasks, setTasks] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
@@ -86,6 +87,7 @@ export default function ChantierDetail() {
                 ...c,
                 date_debut: c.date_debut || '', date_fin: c.date_fin || '',
                 effectif_prevu: c.effectif_prevu || 0, taux_reussite: c.taux_reussite ?? 100,
+                budget_euro: c.budget_euro || 0, taux_horaire_moyen: c.taux_horaire_moyen || 45,
                 statut: c.statut || 'en_cours', risques: c.risques || [], epi: c.epi || [],
                 mesures_acqpa: c.mesures_acqpa || {}, type_precision: c.type_precision || '',
                 client_email: c.client_email || '', client_telephone: c.client_telephone || ''
@@ -111,46 +113,13 @@ export default function ChantierDetail() {
   };
 
   useEffect(() => { fetchChantierData(); }, [id]);
+  // --- ACTIONS & CALCULS ---
 
-  // --- LOGIQUE MÉTIER & CALCULS KPI ---
-  
-  // 1. Calculs MO & Budget
-  const finishedTasks = tasks.filter(t => t.done);
-  const totalPlannedHours = finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0);
-  const totalRealHours = finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0);
-  const globalDelta = totalPlannedHours - totalRealHours;
-  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
+  // Calcul du coût réel MO basé sur les heures et le taux
+  const calculateCoutReelMO = (heures: number) => {
+      return heures * (chantier.taux_horaire_moyen || 45);
+  };
 
-  // 2. Calculs Logistique (Matériel)
-  const totalMateriel = materielPrevu.length;
-  const activeMateriel = materielPrevu.filter(m => {
-      const today = new Date().toISOString().split('T')[0];
-      return (!m.date_fin || m.date_fin >= today);
-  }).length;
-
-  // 3. Calculs Fournitures (Consommation)
-  const totalFournituresPlanned = fournituresPrevu.reduce((acc, f) => acc + (f.qte_prevue || 0), 0);
-  const totalFournituresConsumed = fournituresPrevu.reduce((acc, f) => acc + (f.qte_consommee || 0), 0);
-  const percentFournitures = totalFournituresPlanned > 0 ? Math.round((totalFournituresConsumed / totalFournituresPlanned) * 100) : 0;
-
-  // 4. Calculs Performance Employé
-  const employeeStats = tasks.reduce((acc: any, task: any) => {
-      const respId = task.responsable_id || 'unassigned';
-      if (!acc[respId]) {
-          acc[respId] = {
-              name: task.responsable ? `${task.responsable.prenom} ${task.responsable.nom}` : 'Non assigné',
-              planned: 0, real: 0, tasks: 0
-          };
-      }
-      if (task.done) {
-          acc[respId].planned += task.objectif_heures || 0;
-          acc[respId].real += parseFloat(task.heures_reelles) || 0;
-          acc[respId].tasks += 1;
-      }
-      return acc;
-  }, {});
-
-  // --- ACTIONS ---
   const updateChantierTotalHours = async (currentTasks: any[]) => {
     const totalRealConsumed = currentTasks.filter(t => t.done).reduce((sum, t) => sum + (parseFloat(t.heures_reelles) || t.objectif_heures || 0), 0);
     await supabase.from('chantiers').update({ heures_consommees: totalRealConsumed }).eq('id', id);
@@ -158,12 +127,60 @@ export default function ChantierDetail() {
   };
 
   const handleSave = async () => {
-    const toSave = { ...chantier, mesures_acqpa: acqpaData, responsable: chantier.responsable || null };
+    const toSave = { 
+        ...chantier, 
+        mesures_acqpa: acqpaData, 
+        responsable: chantier.responsable || null,
+        // On s'assure que les champs financiers sont sauvegardés
+        budget_euro: chantier.budget_euro,
+        taux_horaire_moyen: chantier.taux_horaire_moyen
+    };
     const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
     if (error) alert("Erreur : " + error.message);
     else { alert('✅ Sauvegardé !'); fetchChantierData(); }
   };
 
+  // --- CORRECTION ERREUR 400 : On n'envoie QUE les champs valides ---
+  const addFourniture = async () => {
+      if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit");
+      
+      // On prépare uniquement les données attendues par la table de liaison
+      const payload = {
+          chantier_id: id,
+          fourniture_ref_id: newFourniture.fourniture_ref_id,
+          qte_prevue: newFourniture.qte_prevue || 0,
+          qte_consommee: 0
+          // On NE MET PAS 'nom', 'unite' ici car ils sont dans la table stock jointe
+      };
+
+      const { error } = await supabase.from('chantier_fournitures').insert([payload]);
+
+      if(error) {
+          console.error("Erreur ajout fourniture:", error);
+          alert("Erreur technique: " + error.message);
+      } else {
+          setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
+          setSupplySearch("");
+          fetchChantierData(); // On recharge pour avoir la jointure avec le nom
+      }
+  };
+
+  const updateConsommation = async (fId: string, val: number) => { 
+      const safeVal = Math.max(0, val);
+      // Mise à jour optimiste
+      setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: safeVal } : f)); 
+      // Envoi BDD
+      await supabase.from('chantier_fournitures').update({ qte_consommee: safeVal }).eq('id', fId); 
+  };
+
+  const deleteFourniture = async (fId: string) => { 
+      if(confirm("Supprimer ?")) { 
+          await supabase.from('chantier_fournitures').delete().eq('id', fId); 
+          fetchChantierData(); 
+      } 
+  };
+
+  // --- Gestion Tâches ---
   const updateTaskField = async (taskId: string, field: string, value: any) => {
     const { error } = await supabase.from('chantier_tasks').update({ [field]: value }).eq('id', taskId);
     if (!error) {
@@ -197,9 +214,8 @@ export default function ChantierDetail() {
   };
   const addTask = async () => { if (!newTaskLabel) return; const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (data) setTasks([data[0], ...tasks]); setNewTaskLabel(""); };
   const deleteTask = async (taskId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter(t => t.id !== taskId); setTasks(updatedList); updateChantierTotalHours(updatedList); } };
-  const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id); const { error } = await supabase.from('chantier_fournitures').insert([{ chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom, unite: selectedItem?.unite, qte_prevue: newFourniture.qte_prevue || 0, qte_restante: newFourniture.qte_prevue || 0, qte_consommee: 0 }]); if(!error) { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); } };
-  const updateConsommation = async (fId: string, val: number) => { setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: Math.max(0, val) } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: Math.max(0, val) }).eq('id', fId); };
-  const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
+  
+  // --- Autres ---
   const handleAddMateriel = async () => { if (!newMat.materiel_id) return alert("Sélectionnez un matériel"); const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]); if (!error) { setShowAddMaterielModal(false); fetchChantierData(); }};
   const deleteMateriel = async (matId: string) => { if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); fetchChantierData(); } };
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
@@ -214,6 +230,23 @@ export default function ChantierDetail() {
   const filteredStock = stockFournitures.filter(s => s.nom.toLowerCase().includes(supplySearch.toLowerCase()) || (s.ral && s.ral.includes(supplySearch)));
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
+  // --- CALCULS KPI DASHBOARD ---
+  const finishedTasks = tasks.filter(t => t.done);
+  const totalPlannedHours = finishedTasks.reduce((acc, t) => acc + (t.objectif_heures || 0), 0);
+  const totalRealHours = finishedTasks.reduce((acc, t) => acc + (parseFloat(t.heures_reelles) || 0), 0);
+  const globalDeltaHours = totalPlannedHours - totalRealHours;
+  
+  // KPI Financiers
+  const budgetMO = chantier.budget_euro || 0;
+  const coutReelMO = chantier.heures_consommees * chantier.taux_horaire_moyen;
+  const margeMO = budgetMO - coutReelMO;
+  const percentBudgetMO = budgetMO > 0 ? Math.round((coutReelMO / budgetMO) * 100) : 0;
+
+  // KPI Logistique
+  const matEnCours = materielPrevu.filter(m => m.statut === 'en_cours' || m.statut === 'prevu').length;
+  const fournituresConsoTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_consommee || 0), 0);
+  const fournituresPrevuTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_prevue || 0), 0);
+  const percentFournitures = fournituresPrevuTotal > 0 ? Math.round((fournituresConsoTotal/fournituresPrevuTotal)*100) : 0;
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:p-0 print:m-0 print:w-full">
@@ -234,7 +267,7 @@ export default function ChantierDetail() {
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
                     <div className="flex items-center gap-3">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Pointage : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Budget M.O : {coutReelMO}€ / {budgetMO}€</p>
                     </div>
                 </div>
             </div>
@@ -260,59 +293,54 @@ export default function ChantierDetail() {
             ))}
         </div>
 
-        {/* --- NOUVEL ONGLET 2 : SUIVI AVANCEMENT (DASHBOARD) --- */}
+        {/* --- ONGLET SUIVI AVANCEMENT (DASHBOARD) --- */}
         {activeTab === 'suivi' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6 print:space-y-4">
                 
-                {/* Header Impression */}
                 <div className="flex justify-between items-end border-b border-gray-200 pb-4 mb-6">
                     <div>
-                        <h2 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Rapport Direction</h2>
+                        <h2 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Rapport de Direction</h2>
                         <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{chantier.nom} — {chantier.type} — {new Date().toLocaleDateString()}</p>
                     </div>
-                    <button onClick={handlePrint} className="bg-[#2d3436] text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold uppercase text-xs shadow-lg print:hidden hover:scale-105 transition-transform"><Printer size={18}/> Imprimer Rapport</button>
+                    <button onClick={handlePrint} className="bg-[#2d3436] text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold uppercase text-xs shadow-lg print:hidden hover:scale-105 transition-transform"><Printer size={18}/> Imprimer</button>
                 </div>
 
-                {/* 1. LIGNE DES KPI MAJEURS (CARDS) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4">
-                    {/* KPI 1: MO (Main d'Oeuvre) */}
+                {/* KPI CARDS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 print:grid-cols-3">
+                    
+                    {/* KPI 1: Budget MO Financier */}
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
-                        <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><HardHat size={50}/></div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">M.O. / Budget</p>
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><Euro size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget M.O. (€)</p>
                         <div className="mt-2 flex items-baseline gap-2">
-                            <span className="text-3xl font-black text-[#2d3436]">{chantier.heures_consommees}h</span>
-                            <span className="text-xs font-bold text-gray-400">/ {chantier.heures_budget}h</span>
+                            <span className="text-2xl font-black text-[#2d3436]">{coutReelMO.toLocaleString()}€</span>
+                            <span className="text-xs font-bold text-gray-400">/ {budgetMO.toLocaleString()}€</span>
                         </div>
                         <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-                            <div className={`h-full ${percentHeures > 100 ? 'bg-red-500' : 'bg-[#0984e3]'}`} style={{width: `${Math.min(100, percentHeures)}%`}}></div>
+                            <div className={`h-full ${percentBudgetMO > 100 ? 'bg-red-500' : 'bg-[#0984e3]'}`} style={{width: `${Math.min(100, percentBudgetMO)}%`}}></div>
                         </div>
-                        <p className={`text-[10px] font-black mt-2 uppercase ${percentHeures > 100 ? 'text-red-500' : 'text-[#0984e3]'}`}>{percentHeures}% Consommé</p>
+                        <p className={`text-[10px] font-black mt-2 uppercase ${percentBudgetMO > 100 ? 'text-red-500' : 'text-[#0984e3]'}`}>{percentBudgetMO}% Consommé</p>
                     </div>
 
-                    {/* KPI 2: Rentabilité (Ecart) */}
+                    {/* KPI 2: Rentabilité Nette */}
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
-                        <div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Euro size={50}/></div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Rentabilité Tâches</p>
-                        <div className={`text-3xl font-black mt-2 ${globalDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {globalDelta > 0 ? '+' : ''}{globalDelta.toFixed(1)}h
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Wallet size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Marge M.O. Estimée</p>
+                        <div className={`text-2xl font-black mt-2 ${margeMO >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {margeMO > 0 ? '+' : ''}{margeMO.toLocaleString()} €
                         </div>
                         <div className="flex items-center gap-1 mt-3">
-                            {globalDelta >= 0 ? <TrendingUp size={14} className="text-emerald-500"/> : <TrendingDown size={14} className="text-red-500"/>}
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Gain/Perte vs Prévu</span>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Taux moyen: {chantier.taux_horaire_moyen}€/h</span>
                         </div>
                     </div>
 
-                    {/* KPI 3: Logistique (Fournitures & Mat) */}
+                    {/* KPI 3: Fournitures */}
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
                         <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><Package size={50}/></div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Logistique & Conso</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Conso Fournitures</p>
                         <div className="mt-3 space-y-2">
                             <div className="flex justify-between items-center text-xs font-bold text-gray-700">
-                                <span>Matériel Actif</span>
-                                <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{activeMateriel} / {totalMateriel}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs font-bold text-gray-700">
-                                <span>Conso. Fournitures</span>
+                                <span>Global</span>
                                 <span className="text-orange-500">{percentFournitures}%</span>
                             </div>
                         </div>
@@ -321,101 +349,63 @@ export default function ChantierDetail() {
                         </div>
                     </div>
 
-                    {/* KPI 4: Sous-traitance (Placeholder si pas de données) */}
+                    {/* KPI 4: Locations */}
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-purple-500"><Truck size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parc Matériel</p>
+                        <div className="flex flex-col items-center justify-center h-16">
+                            <span className="text-3xl font-black text-purple-600">{matEnCours}</span>
+                            <span className="text-[9px] font-bold text-gray-400 uppercase">Équipements actifs</span>
+                        </div>
+                    </div>
+
+                    {/* KPI 5: Sous-traitance */}
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
                         <div className="absolute top-0 right-0 p-4 opacity-10 text-gray-600"><Briefcase size={50}/></div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sous-Traitance</p>
-                        <div className="flex flex-col items-center justify-center h-20">
+                        <div className="flex flex-col items-center justify-center h-16">
                             <span className="text-3xl font-black text-gray-300">0</span>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase">Prestataires Actifs</span>
+                            <span className="text-[9px] font-bold text-gray-400 uppercase">Prestataires</span>
                         </div>
                     </div>
                 </div>
 
-                {/* 2. GRAPHIQUES ET DÉTAILS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
-                    
-                    {/* Performance Équipes */}
-                    <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
-                        <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><UserCheck className="text-[#6c5ce7]"/> Performance Équipes</h3>
-                        <div className="space-y-5">
-                            {Object.entries(employeeStats).map(([id, stats]: any) => {
-                                if(stats.planned === 0 && stats.real === 0) return null;
+                {/* TABLEAU RENTABILITÉ TÂCHES */}
+                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
+                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Target className="text-[#ff9f43]"/> Détail Rentabilité Opérationnelle (Top 10)</h3>
+                    <table className="w-full text-left text-xs">
+                        <thead className="bg-gray-50 uppercase text-gray-400 font-black">
+                            <tr>
+                                <th className="p-3 rounded-l-lg">Tâche</th>
+                                <th className="p-3">Responsable</th>
+                                <th className="p-3 text-center">H. Prévues</th>
+                                <th className="p-3 text-center">H. Réelles</th>
+                                <th className="p-3 text-right">Ecart Heures</th>
+                                <th className="p-3 text-right rounded-r-lg">Impact Financier</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
+                            {finishedTasks.slice(0, 10).map(t => {
+                                const delta = (t.objectif_heures || 0) - (parseFloat(t.heures_reelles) || 0);
+                                const impact = delta * chantier.taux_horaire_moyen;
                                 return (
-                                    <div key={id}>
-                                        <div className="flex justify-between text-xs font-bold uppercase mb-1">
-                                            <span className="text-gray-600 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-gray-300"></div>{stats.name}</span>
-                                            <span className={stats.real > stats.planned ? 'text-red-500' : 'text-emerald-600'}>
-                                                {stats.real}h / {stats.planned}h
-                                            </span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden flex relative">
-                                            {/* Marqueur du prévu (50% de la barre) */}
-                                            <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-black/20 z-10"></div>
-                                            <div className="h-full bg-blue-200" style={{width: '50%'}}></div>
-                                            <div className={`h-full ${stats.real > stats.planned ? 'bg-red-400' : 'bg-emerald-400'}`} style={{width: `${Math.min(50, (stats.real / stats.planned) * 50)}%`}}></div>
-                                        </div>
-                                    </div>
+                                    <tr key={t.id}>
+                                        <td className="p-3 truncate max-w-[200px]">{t.label}</td>
+                                        <td className="p-3 text-gray-500">{t.responsable ? t.responsable.nom : '-'}</td>
+                                        <td className="p-3 text-center">{t.objectif_heures}h</td>
+                                        <td className="p-3 text-center">{t.heures_reelles}h</td>
+                                        <td className={`p-3 text-right ${delta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{delta > 0 ? '+' : ''}{delta.toFixed(1)}h</td>
+                                        <td className={`p-3 text-right ${impact >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{impact > 0 ? '+' : ''}{impact.toLocaleString()}€</td>
+                                    </tr>
                                 );
                             })}
-                            {Object.keys(employeeStats).length === 0 && <p className="text-center text-gray-400 italic text-sm">Aucune donnée.</p>}
-                        </div>
-                    </div>
-
-                    {/* Détail Rentabilité Tâches */}
-                    <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
-                        <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Target className="text-[#ff9f43]"/> Rentabilité par Tâche</h3>
-                        <table className="w-full text-left text-xs">
-                            <thead className="bg-gray-50 uppercase text-gray-400 font-black">
-                                <tr>
-                                    <th className="p-3 rounded-l-lg">Tâche</th>
-                                    <th className="p-3 text-center">Prévu</th>
-                                    <th className="p-3 text-center">Réel</th>
-                                    <th className="p-3 text-right rounded-r-lg">Ecart</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
-                                {finishedTasks.slice(0, 8).map(t => {
-                                    const delta = (t.objectif_heures || 0) - (parseFloat(t.heures_reelles) || 0);
-                                    return (
-                                        <tr key={t.id}>
-                                            <td className="p-3 truncate max-w-[150px]">{t.label}</td>
-                                            <td className="p-3 text-center text-gray-400">{t.objectif_heures}h</td>
-                                            <td className="p-3 text-center">{t.heures_reelles}h</td>
-                                            <td className={`p-3 text-right ${delta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{delta > 0 ? '+' : ''}{delta.toFixed(1)}h</td>
-                                        </tr>
-                                    );
-                                })}
-                                {finishedTasks.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-400 italic">Aucune tâche terminée.</td></tr>}
-                            </tbody>
-                        </table>
-                    </div>
+                            {finishedTasks.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-gray-400 italic">Aucune tâche terminée pour le moment.</td></tr>}
+                        </tbody>
+                    </table>
                 </div>
-
-                {/* 3. CONSOMMATION MATÉRIAUX (TABLEAU VISUEL) */}
-                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
-                    <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Package className="text-[#fdcb6e]"/> Top Consommables</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        {fournituresPrevu.slice(0, 5).map(f => (
-                            <div key={f.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 print:border-gray-200">
-                                <p className="font-bold text-gray-800 text-xs truncate mb-2">{f.nom}</p>
-                                <div className="flex justify-between items-end">
-                                    <span className="text-[10px] font-bold text-gray-400">Utilisé</span>
-                                    <span className="text-sm font-black text-gray-700">{f.qte_consommee}/{f.qte_prevue}</span>
-                                </div>
-                                <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 overflow-hidden">
-                                    <div className={`h-full ${f.qte_consommee > f.qte_prevue ? 'bg-red-400' : 'bg-green-400'}`} style={{width: `${Math.min(100, (f.qte_consommee/f.qte_prevue)*100)}%`}}></div>
-                                </div>
-                            </div>
-                        ))}
-                        {fournituresPrevu.length === 0 && <p className="col-span-5 text-center text-gray-400 italic text-sm">Aucune fourniture suivie.</p>}
-                    </div>
-                </div>
-
             </div>
         )}
-
-        {/* --- ONGLET 1 : INFOS (SIMPLE) --- */}
+        {/* --- ONGLET 1 : INFOS (AVEC SAISIE FINANCIÈRE) --- */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="space-y-6">
@@ -431,15 +421,44 @@ export default function ChantierDetail() {
                             <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label><input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" /></div>
                         </div>
                     </div>
-                  <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
+                    
+                    {/* BLOC FINANCIER AJOUTÉ */}
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
+                        <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Euro size={20}/> Données Financières</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget M.O. (€)</label>
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
+                                    <Euro size={16} className="text-gray-400 mr-2"/>
+                                    <input type="number" value={chantier.budget_euro || 0} onChange={e => setChantier({...chantier, budget_euro: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none text-blue-600" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Taux Horaire Moyen</label>
+                                <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
+                                    <Calculator size={16} className="text-gray-400 mr-2"/>
+                                    <input type="number" value={chantier.taux_horaire_moyen || 45} onChange={e => setChantier({...chantier, taux_horaire_moyen: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700 font-bold border border-blue-100">
+                            Coût réel estimé à ce jour : {(chantier.heures_consommees * (chantier.taux_horaire_moyen || 45)).toLocaleString()} €
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Calendar size={20}/> Planning & Ressources</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Début</label><input type="date" value={chantier.date_debut || ''} onChange={e => setChantier({...chantier, date_debut: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" /></div>
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date Fin</label><input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" /></div>
                             <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable Chantier</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1 border border-transparent focus-within:border-blue-300 transition-colors"><Users size={16} className="text-gray-400 mr-2"/><select className="w-full bg-transparent p-3 font-bold outline-none cursor-pointer" value={chantier.responsable || ''} onChange={(e) => setChantier({...chantier, responsable: e.target.value})}>{employes.map(emp => (<option key={emp.id} value={emp.id}>{emp.nom} {emp.prenom}</option>))}</select></div></div>
                             <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Statut & Pondération</label><div className="flex gap-2 mt-1"><select value={chantier.statut || 'en_cours'} onChange={e => setChantier({...chantier, statut: e.target.value})} className={`flex-1 bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer ${chantier.statut === 'potentiel' ? 'text-blue-600 bg-blue-50' : ''}`}><option value="planifie">Planifié</option><option value="en_cours">En Cours</option><option value="potentiel">Probable (Offre)</option><option value="termine">Terminé</option></select>{chantier.statut === 'potentiel' && (<div className="w-24 bg-blue-50 border border-blue-200 rounded-xl flex items-center px-2 animate-in slide-in-from-left-2"><Percent size={14} className="text-blue-400 mr-1"/><input type="number" min="0" max="100" value={chantier.taux_reussite || 0} onChange={e => setChantier({...chantier, taux_reussite: parseInt(e.target.value) || 0})} className="w-full bg-transparent text-center font-black text-blue-700 outline-none" /></div>)}</div></div>
-                            <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1"><Clock size={16} className="text-gray-400 mr-2"/><input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none" /></div></div>
+                            <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Budget Heures (Est.)</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1"><Clock size={16} className="text-gray-400 mr-2"/><input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none" /></div></div>
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Total Prévu</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1"><Users size={16} className="text-gray-400 mr-2"/><input type="number" value={chantier.effectif_prevu || 0} onChange={e => setChantier({...chantier, effectif_prevu: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-3 font-bold outline-none text-blue-600" /></div></div>
+                        </div>
+                        <div className="mt-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center justify-between">
+                            <div><h4 className="font-black text-[#0984e3] uppercase">Mesures ACQPA</h4><p className="text-xs text-blue-400 font-bold">Activer le module qualité</p></div>
+                            <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={chantier.mesures_obligatoires || false} onChange={e => setChantier({...chantier, mesures_obligatoires: e.target.checked})} className="sr-only peer" /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0984e3]"></div></label>
                         </div>
                     </div>
                 </div>
@@ -478,7 +497,6 @@ export default function ChantierDetail() {
                 </div>
             </div>
         )}
-
         {/* ============================================================================================ */}
         {/* ONGLET 3 : LOGISTIQUE                                                                        */}
         {/* ============================================================================================ */}
@@ -508,7 +526,6 @@ export default function ChantierDetail() {
         {activeTab === 'planning' && (
             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-center mb-6"><h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3><div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl"><Users size={18} className="text-blue-600"/><span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span></div></div><div className="space-y-6">{tasks.map((t, idx) => (<div key={t.id} className="relative"><div className="flex items-center gap-4 mb-2"><div className="w-48 font-bold text-sm truncate" title={t.label}>{t.label}</div><div className="flex-1 bg-gray-100 h-8 rounded-full relative overflow-hidden"><div className="absolute top-0 left-0 h-full bg-[#00b894] opacity-80 flex items-center px-3 text-[10px] text-white font-bold" style={{ width: `${Math.min(100, Math.max(10, t.objectif_heures * 2))}%` }}>{t.objectif_heures}h</div></div></div>{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center gap-4 mb-1 pl-8 relative group"><CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/><div className="w-40 text-xs text-gray-500 truncate flex justify-between pr-4"><span>{st.label}</span><span className="font-black text-blue-500">{st.effectif}p</span></div><div className="flex-1 bg-gray-50 h-6 rounded-full relative"><div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>{st.heures}h | {st.effectif}p</div></div></div>))}</div>))}</div></div>
         )}
-
         {/* ============================================================================================ */}
         {/* ONGLET 6 : HSE                                                                               */}
         {/* ============================================================================================ */}
@@ -517,10 +534,37 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 7 : ACQPA                                                                             */}
+        {/* ONGLET 7 : ACQPA (CORRIGÉ)                                                                   */}
         {/* ============================================================================================ */}
         {activeTab === 'acqpa' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4">{!chantier.mesures_obligatoires ? (<div className="bg-white rounded-[30px] p-10 text-center border border-gray-100 shadow-sm"><ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" /><h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3><p className="text-gray-400 font-bold mb-4">Activez les mesures dans l'onglet Infos.</p></div>) : (<div className="space-y-6"><div className="bg-[#0984e3] text-white p-6 rounded-[30px] shadow-xl flex justify-between items-center relative overflow-hidden"><div className="relative z-10"><h3 className="font-black uppercase text-xl">Relevés Peinture (ACQPA)</h3><p className="text-blue-200 font-bold text-sm">Suivi qualité application</p></div><button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">Ouvrir / Modifier</button><ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" /></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p><p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400"><p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p><p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p><p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p></div><div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p><p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p></div></div></div>)}</div>
+            <div className="animate-in fade-in slide-in-from-bottom-4">
+                {!chantier.mesures_obligatoires ? (
+                    <div className="bg-white rounded-[30px] p-10 text-center border border-gray-100 shadow-sm">
+                        <ClipboardCheck size={50} className="text-gray-300 mx-auto mb-4" />
+                        <h3 className="font-black text-gray-400 uppercase text-xl">Module Désactivé</h3>
+                        <p className="text-gray-400 font-bold mb-4">Activez les mesures dans l'onglet Infos.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        <div className="bg-[#0984e3] text-white p-6 rounded-[30px] shadow-xl flex justify-between items-center relative overflow-hidden">
+                            <div className="relative z-10">
+                                <h3 className="font-black uppercase text-xl">Relevés Peinture (ACQPA)</h3>
+                                <p className="text-blue-200 font-bold text-sm">Suivi qualité application</p>
+                            </div>
+                            <button onClick={() => setShowACQPAModal(true)} className="bg-white text-[#0984e3] px-6 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform relative z-10">
+                                Ouvrir / Modifier
+                            </button>
+                            <ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p><p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400"><p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p><p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p><p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p><p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p></div>
+                        </div>
+                    </div>
+                )}
+            </div>
         )}
 
         {/* ============================================================================================ */}
