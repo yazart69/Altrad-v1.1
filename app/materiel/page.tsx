@@ -5,14 +5,14 @@ import { supabase } from '@/lib/supabase';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
-  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2
+  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2, Container
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function MaterielPage() {
   const [activeTab, setActiveTab] = useState<'inventaire' | 'suivi' | 'fournitures'>('inventaire');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('Tous'); // Tous, Interne, Externe
+  const [filterType, setFilterType] = useState('Tous'); // Tous, Interne, Externe, Base Logistique
   const [filterCat, setFilterCat] = useState('Toutes');
    
   // États de données
@@ -25,9 +25,10 @@ export default function MaterielPage() {
 
   // État Modale Ajout
   const [showAddModal, setShowAddModal] = useState(false);
-  const [modalTab, setModalTab] = useState<'interne' | 'externe'>('interne'); // Onglet interne à la modale
+  // Ajout du type 'base' pour Base Logistique
+  const [modalTab, setModalTab] = useState<'interne' | 'externe' | 'base'>('interne'); 
 
-  // State pour le formulaire (incluant maintenant dates et chantier)
+  // State pour le formulaire
   const [newItem, setNewItem] = useState({
       nom: '',
       categorie: 'Outillage',
@@ -37,7 +38,6 @@ export default function MaterielPage() {
       image: '',
       responsable: '',
       fournisseur: '',
-      // Nouveaux champs pour Location Externe
       chantier_id: '', 
       date_debut: '',
       date_fin: ''
@@ -57,7 +57,7 @@ export default function MaterielPage() {
     // 2. Récupérer les locations (actives et passées)
     const { data: locData } = await supabase
       .from('chantier_materiel')
-      .select('*, materiel(*), chantiers(nom)')
+      .select('*, materiel(*), chantiers(id, nom)') // On récupère l'ID et le NOM du chantier
       .order('date_debut', { ascending: false });
 
     // 3. Récupérer les fournitures
@@ -95,15 +95,19 @@ export default function MaterielPage() {
     setLoading(false);
   };
 
-  // --- AJOUT MATERIEL (LOGIQUE DOUBLE INSERTION) ---
+  // --- AJOUT MATERIEL ---
   const handleAddItem = async () => {
       if (!newItem.nom) return alert("Le nom est obligatoire");
       
-      // Préparation de l'objet Matériel
+      // Définition du type de stock selon l'onglet
+      let stockType = 'Interne';
+      if (modalTab === 'externe') stockType = 'Externe';
+      if (modalTab === 'base') stockType = 'Base Logistique';
+
       const itemToSave = {
           nom: newItem.nom,
           categorie: newItem.categorie,
-          type_stock: modalTab === 'interne' ? 'Interne' : 'Externe',
+          type_stock: stockType,
           qte_totale: newItem.qte_totale,
           prix_location: newItem.prix_location,
           image: newItem.image,
@@ -111,7 +115,7 @@ export default function MaterielPage() {
           fournisseur: newItem.fournisseur
       };
 
-      // 1. Insertion dans le catalogue MATERIEL
+      // 1. Insertion MATERIEL
       const { data: createdMat, error: matError } = await supabase
         .from('materiel')
         .insert([itemToSave])
@@ -122,15 +126,15 @@ export default function MaterielPage() {
           return alert("Erreur création matériel : " + matError.message);
       }
 
-      // 2. Si Location Externe AVEC Chantier -> Insertion dans CHANTIER_MATERIEL (Allocation)
+      // 2. Si Location Externe AVEC Chantier -> Insertion CHANTIER_MATERIEL
       if (modalTab === 'externe' && newItem.chantier_id && createdMat) {
           const { error: locError } = await supabase.from('chantier_materiel').insert([{
               chantier_id: newItem.chantier_id,
               materiel_id: createdMat.id,
               date_debut: newItem.date_debut || null,
               date_fin: newItem.date_fin || null,
-              qte_prise: newItem.qte_totale, // On suppose qu'on loue tout ce qu'on crée
-              statut: 'en_cours' // Location active par défaut
+              qte_prise: newItem.qte_totale,
+              statut: 'en_cours'
           }]);
 
           if (locError) console.error("Erreur affectation chantier:", locError);
@@ -138,7 +142,6 @@ export default function MaterielPage() {
 
       alert("✅ Enregistré avec succès !");
       setShowAddModal(false);
-      // Reset du formulaire
       setNewItem({ 
           nom: '', categorie: 'Outillage', type_stock: 'Interne', qte_totale: 1, 
           prix_location: 0, image: '', responsable: '', fournisseur: '',
@@ -151,21 +154,23 @@ export default function MaterielPage() {
   const handleDeleteItem = async (id: string, nom: string) => {
       if(confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nom}" ?\nCette action est irréversible et supprimera l'historique associé.`)) {
           const { error } = await supabase.from('materiel').delete().eq('id', id);
-          
           if(error) {
-              alert("Erreur lors de la suppression : " + error.message);
+              alert("Erreur : " + error.message);
           } else {
-              // Mise à jour optimiste ou rechargement
               setInventory(prev => prev.filter(item => item.id !== id));
-              alert("Matériel supprimé avec succès.");
+              alert("Matériel supprimé.");
           }
       }
   };
 
-  // --- LOGIQUES DE FILTRAGE ---
+  // --- FILTRES ---
   const filteredInventory = inventory.filter(item => {
     const matchSearch = item.nom.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchType = filterType === 'Tous' || item.type_stock === (filterType === 'Interne' ? 'Interne' : 'Externe');
+    // Modification filtre type pour inclure Base Logistique
+    let matchType = true;
+    if (filterType !== 'Tous') {
+        matchType = item.type_stock === filterType;
+    }
     const matchCat = filterCat === 'Toutes' || item.categorie === filterCat;
     return matchSearch && matchType && matchCat;
   });
@@ -186,7 +191,6 @@ export default function MaterielPage() {
       case 'en_cours': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'prevu': return 'bg-purple-100 text-purple-700 border-purple-200';
       case 'maintenance': return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'rendu': return 'bg-gray-100 text-gray-500 border-gray-200';
       default: return 'bg-gray-100 text-gray-600';
     }
   };
@@ -213,7 +217,7 @@ export default function MaterielPage() {
           
           <div className="flex gap-2">
              <button onClick={() => setShowAddModal(true)} className="bg-[#0984e3] hover:bg-[#0074d9] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2 text-xs">
-                <Plus size={16} /> Ajouter Matériel / Location
+                <Plus size={16} /> Ajouter Matériel
             </button>
           </div>
         </div>
@@ -221,7 +225,7 @@ export default function MaterielPage() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
 
-        {/* --- STATS RAPIDES (CONNECTÉES) --- */}
+        {/* --- STATS --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
@@ -253,30 +257,14 @@ export default function MaterielPage() {
             </div>
         </div>
 
-        {/* --- NAVIGATION ONGLETS --- */}
+        {/* --- ONGLETS --- */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
             <div className="flex gap-2 bg-white p-1.5 rounded-2xl w-fit shadow-sm border border-gray-100">
-                <button 
-                    onClick={() => setActiveTab('inventaire')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'inventaire' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
-                    <LayoutGrid size={16}/> Inventaire
-                </button>
-                <button 
-                    onClick={() => setActiveTab('suivi')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'suivi' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
-                    <List size={16}/> Suivi Locations
-                </button>
-                <button 
-                    onClick={() => setActiveTab('fournitures')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'fournitures' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
-                    <Package size={16}/> Fournitures
-                </button>
+                <button onClick={() => setActiveTab('inventaire')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'inventaire' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><LayoutGrid size={16}/> Inventaire</button>
+                <button onClick={() => setActiveTab('suivi')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'suivi' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><List size={16}/> Suivi Locations</button>
+                <button onClick={() => setActiveTab('fournitures')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'fournitures' ? 'bg-[#2d3436] text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}><Package size={16}/> Fournitures</button>
             </div>
 
-            {/* FILTRE CHANTIER (Visible pour Suivi & Fournitures) */}
             {(activeTab === 'suivi' || activeTab === 'fournitures') && (
                 <div className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase text-gray-400 ml-2">Filtrer par Chantier :</span>
@@ -286,9 +274,7 @@ export default function MaterielPage() {
                         onChange={(e) => setSelectedChantierId(e.target.value)}
                     >
                         <option value="all">Tous les chantiers</option>
-                        {chantiers.map(c => (
-                            <option key={c.id} value={c.id}>{c.nom}</option>
-                        ))}
+                        {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                     </select>
                 </div>
             )}
@@ -298,21 +284,15 @@ export default function MaterielPage() {
         {activeTab === 'inventaire' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6">
                 
-                {/* BARRE DE FILTRES */}
+                {/* FILTRES INVENTAIRE */}
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
                     <div className="flex items-center gap-2 w-full md:w-auto bg-gray-50 p-2 rounded-xl border border-gray-100">
                         <Search size={18} className="text-gray-400 ml-2" />
-                        <input 
-                            type="text" 
-                            placeholder="Rechercher un matériel..." 
-                            className="bg-transparent outline-none text-sm font-bold w-full md:w-64"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                        <input type="text" placeholder="Rechercher..." className="bg-transparent outline-none text-sm font-bold w-full md:w-64" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
                     
                     <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 no-scrollbar">
-                        {['Tous', 'Interne', 'Externe'].map(type => (
+                        {['Tous', 'Interne', 'Externe', 'Base Logistique'].map(type => (
                             <button 
                                 key={type}
                                 onClick={() => setFilterType(type)}
@@ -322,11 +302,7 @@ export default function MaterielPage() {
                             </button>
                         ))}
                         <div className="w-px h-8 bg-gray-200 mx-2"></div>
-                        <select 
-                            className="bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-xl px-4 py-2 outline-none cursor-pointer hover:border-gray-400"
-                            value={filterCat}
-                            onChange={(e) => setFilterCat(e.target.value)}
-                        >
+                        <select className="bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-xl px-4 py-2 outline-none cursor-pointer hover:border-gray-400" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
                             <option value="Toutes">Toutes Catégories</option>
                             <option value="Engin">Engins</option>
                             <option value="Outillage">Outillage</option>
@@ -337,16 +313,21 @@ export default function MaterielPage() {
                     </div>
                 </div>
 
-                {loading ? (
-                    <div className="text-center py-20 text-gray-400 font-bold animate-pulse">Chargement de l'inventaire...</div>
-                ) : (
-                    /* GRILLE MATÉRIEL */
+                {loading ? <div className="text-center py-20 text-gray-400 font-bold animate-pulse">Chargement...</div> : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredInventory.map(item => (
+                        {filteredInventory.map(item => {
+                            // LOGIQUE POUR TROUVER LE CHANTIER ACTIF
+                            const activeLocation = locations.find(l => l.materiel_id === item.id && l.statut === 'en_cours');
+                            
+                            return (
                             <div key={item.id} className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all group relative overflow-hidden">
                                 
-                                {/* Badge Interne/Externe */}
-                                <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-[20px] text-[10px] font-black uppercase tracking-widest ${item.type_stock === 'Interne' ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-600'}`}>
+                                {/* Badge Type */}
+                                <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-[20px] text-[10px] font-black uppercase tracking-widest ${
+                                    item.type_stock === 'Interne' ? 'bg-gray-100 text-gray-600' : 
+                                    item.type_stock === 'Base Logistique' ? 'bg-blue-100 text-blue-600' :
+                                    'bg-purple-100 text-purple-600'
+                                }`}>
                                     {item.type_stock}
                                 </div>
 
@@ -393,7 +374,7 @@ export default function MaterielPage() {
                                         {item.statut}
                                     </span>
                                     <div className="flex gap-2">
-                                        {/* BOUTON SUPPRIMER AJOUTÉ */}
+                                        {/* BOUTON SUPPRIMER */}
                                         <button 
                                             onClick={() => handleDeleteItem(item.id, item.nom)}
                                             className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
@@ -401,19 +382,36 @@ export default function MaterielPage() {
                                         >
                                             <Trash2 size={16} />
                                         </button>
-                                        <button className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-[#00b894] transition-colors shadow-lg group-hover:scale-110">
-                                            <ArrowRight size={18} />
-                                        </button>
+
+                                        {/* BOUTON FLÈCHE VERS CHANTIER */}
+                                        {activeLocation ? (
+                                            <Link 
+                                                href={`/chantiers/${activeLocation.chantier_id}`}
+                                                className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors shadow-lg group-hover:scale-110"
+                                                title={`Aller au chantier : ${activeLocation.chantiers?.nom}`}
+                                            >
+                                                <ArrowRight size={18} />
+                                            </Link>
+                                        ) : (
+                                            <button 
+                                                disabled 
+                                                className="w-10 h-10 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center cursor-not-allowed"
+                                                title="En stock (non assigné)"
+                                            >
+                                                <ArrowRight size={18} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
         )}
 
-        {/* ================= CONTENU : SUIVI LOCATIONS ================= */}
+        {/* SUIVI LOCATIONS */}
         {activeTab === 'suivi' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-white rounded-[30px] border border-gray-100 shadow-sm overflow-hidden">
@@ -449,9 +447,6 @@ export default function MaterielPage() {
                                     </td>
                                     <td className="p-5 text-right">
                                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase border ${getStatusColor(loc.statut)}`}>
-                                            {loc.statut === 'en_cours' && <CheckCircle2 size={12}/>}
-                                            {loc.statut === 'rendu' && <CheckCircle2 size={12}/>}
-                                            {loc.statut === 'prevu' && <Calendar size={12}/>}
                                             {loc.statut}
                                         </span>
                                     </td>
@@ -459,17 +454,11 @@ export default function MaterielPage() {
                             ))}
                         </tbody>
                     </table>
-                    
-                    {filteredLocations.length === 0 && (
-                        <div className="p-10 text-center text-gray-400 font-bold">
-                            Aucune location trouvée pour ce critère.
-                        </div>
-                    )}
                 </div>
             </div>
         )}
 
-        {/* ================= CONTENU : FOURNITURES ================= */}
+        {/* FOURNITURES */}
         {activeTab === 'fournitures' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="bg-white rounded-[30px] border border-gray-100 shadow-sm overflow-hidden">
@@ -485,36 +474,21 @@ export default function MaterielPage() {
                         <tbody className="divide-y divide-gray-50">
                             {filteredFournitures.map((item) => (
                                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="p-5 font-bold text-sm text-gray-800">
-                                        {item.nom}
-                                    </td>
-                                    <td className="p-5">
-                                        <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded text-[10px] font-bold uppercase">
-                                            {item.categorie}
-                                        </span>
-                                    </td>
-                                    <td className="p-5 text-sm font-bold text-gray-600">
-                                        {item.chantiers?.nom}
-                                    </td>
-                                    <td className="p-5 text-right font-black text-sm text-gray-800">
-                                        {item.qte_prevue} {item.unite}
-                                    </td>
+                                    <td className="p-5 font-bold text-sm text-gray-800">{item.nom}</td>
+                                    <td className="p-5"><span className="bg-orange-50 text-orange-600 px-2 py-1 rounded text-[10px] font-bold uppercase">{item.categorie}</span></td>
+                                    <td className="p-5 text-sm font-bold text-gray-600">{item.chantiers?.nom}</td>
+                                    <td className="p-5 text-right font-black text-sm text-gray-800">{item.qte_prevue} {item.unite}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                    {filteredFournitures.length === 0 && (
-                        <div className="p-10 text-center text-gray-400 font-bold">
-                            Aucune fourniture trouvée.
-                        </div>
-                    )}
                 </div>
             </div>
         )}
 
       </div>
 
-      {/* ================= MODALE AJOUT (DOUBLE ONGLET + DATE + CHANTIER) ================= */}
+      {/* ================= MODALE AJOUT ================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-lg shadow-2xl p-6 animate-in zoom-in-95">
@@ -529,16 +503,13 @@ export default function MaterielPage() {
 
                 {/* SÉLECTEUR DE TYPE */}
                 <div className="flex gap-2 bg-gray-100 p-1 rounded-xl mb-6">
-                    <button 
-                        onClick={() => { setModalTab('interne'); setNewItem({...newItem, type_stock: 'Interne'}); }}
-                        className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'interne' ? 'bg-white shadow text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}
-                    >
+                    <button onClick={() => { setModalTab('interne'); setNewItem({...newItem, type_stock: 'Interne'}); }} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'interne' ? 'bg-white shadow text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>
                         <Warehouse size={16}/> Stock Agence
                     </button>
-                    <button 
-                        onClick={() => { setModalTab('externe'); setNewItem({...newItem, type_stock: 'Externe'}); }}
-                        className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'externe' ? 'bg-purple-100 text-purple-600 shadow' : 'text-gray-400 hover:text-gray-600'}`}
-                    >
+                    <button onClick={() => { setModalTab('base'); setNewItem({...newItem, type_stock: 'Base Logistique'}); }} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'base' ? 'bg-white shadow text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>
+                        <Container size={16}/> Base Logistique
+                    </button>
+                    <button onClick={() => { setModalTab('externe'); setNewItem({...newItem, type_stock: 'Externe'}); }} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${modalTab === 'externe' ? 'bg-purple-100 text-purple-600 shadow' : 'text-gray-400 hover:text-gray-600'}`}>
                         <Building2 size={16}/> Location Externe
                     </button>
                 </div>
@@ -546,24 +517,15 @@ export default function MaterielPage() {
                 <div className="space-y-4">
                     <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                            {modalTab === 'interne' ? 'Nom du Matériel' : 'Matériel Loué'}
+                            {modalTab === 'externe' ? 'Matériel Loué' : 'Nom du Matériel'}
                         </label>
-                        <input 
-                            className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#0984e3]"
-                            placeholder={modalTab === 'interne' ? "Ex: Hilti TE-30" : "Ex: Nacelle 12m"}
-                            value={newItem.nom}
-                            onChange={e => setNewItem({...newItem, nom: e.target.value})}
-                        />
+                        <input className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#0984e3]" placeholder="Ex: Hilti TE-30" value={newItem.nom} onChange={e => setNewItem({...newItem, nom: e.target.value})}/>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Catégorie</label>
-                            <select 
-                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer"
-                                value={newItem.categorie}
-                                onChange={e => setNewItem({...newItem, categorie: e.target.value})}
-                            >
+                            <select className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer" value={newItem.categorie} onChange={e => setNewItem({...newItem, categorie: e.target.value})}>
                                 <option value="Outillage">Outillage</option>
                                 <option value="Engin">Engin</option>
                                 <option value="EPI">EPI</option>
@@ -573,99 +535,39 @@ export default function MaterielPage() {
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quantité</label>
-                            <input 
-                                type="number" min="1"
-                                className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
-                                value={newItem.qte_totale}
-                                onChange={e => setNewItem({...newItem, qte_totale: parseInt(e.target.value)})}
-                            />
+                            <input type="number" min="1" className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" value={newItem.qte_totale} onChange={e => setNewItem({...newItem, qte_totale: parseInt(e.target.value)})}/>
                         </div>
                     </div>
 
-                    {/* CHAMPS SPÉCIFIQUES EXTERNE + LOCATION IMMÉDIATE */}
                     {modalTab === 'externe' && (
                         <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Fournisseur</label>
-                                    <input 
-                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                        placeholder="Ex: Kiloutou"
-                                        value={newItem.fournisseur}
-                                        onChange={e => setNewItem({...newItem, fournisseur: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Prix / Jour (€)</label>
-                                    <input 
-                                        type="number" min="0"
-                                        className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                        value={newItem.prix_location}
-                                        onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}
-                                    />
-                                </div>
+                                <div><label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Fournisseur</label><input className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm" placeholder="Ex: Kiloutou" value={newItem.fournisseur} onChange={e => setNewItem({...newItem, fournisseur: e.target.value})}/></div>
+                                <div><label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Prix / Jour (€)</label><input type="number" min="0" className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm" value={newItem.prix_location} onChange={e => setNewItem({...newItem, prix_location: parseFloat(e.target.value)})}/></div>
                             </div>
-
                             <hr className="border-purple-200/50"/>
-
-                            {/* Affectation Immédiate */}
                             <div>
                                 <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Chantier de Destination</label>
-                                <select 
-                                    className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm cursor-pointer"
-                                    value={newItem.chantier_id}
-                                    onChange={e => setNewItem({...newItem, chantier_id: e.target.value})}
-                                >
+                                <select className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm cursor-pointer" value={newItem.chantier_id} onChange={e => setNewItem({...newItem, chantier_id: e.target.value})}>
                                     <option value="">-- Sélectionner un chantier --</option>
-                                    {chantiers.map(c => (
-                                        <option key={c.id} value={c.id}>{c.nom}</option>
-                                    ))}
+                                    {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                                 </select>
                             </div>
-
                             {newItem.chantier_id && (
                                 <div className="grid grid-cols-2 gap-4 animate-in fade-in">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Début</label>
-                                        <input 
-                                            type="date" 
-                                            className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                            value={newItem.date_debut}
-                                            onChange={e => setNewItem({...newItem, date_debut: e.target.value})}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Fin</label>
-                                        <input 
-                                            type="date" 
-                                            className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm"
-                                            value={newItem.date_fin}
-                                            onChange={e => setNewItem({...newItem, date_fin: e.target.value})}
-                                        />
-                                    </div>
+                                    <div><label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Début</label><input type="date" className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm" value={newItem.date_debut} onChange={e => setNewItem({...newItem, date_debut: e.target.value})}/></div>
+                                    <div><label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Date Fin</label><input type="date" className="w-full bg-white p-2 rounded-lg font-bold outline-none text-sm" value={newItem.date_fin} onChange={e => setNewItem({...newItem, date_fin: e.target.value})}/></div>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* CHAMP RESPONSABLE (Commun) */}
-                    <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable (Réception/Suivi)</label>
-                        <input 
-                            className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none"
-                            placeholder="Nom du responsable..."
-                            value={newItem.responsable}
-                            onChange={e => setNewItem({...newItem, responsable: e.target.value})}
-                        />
-                    </div>
+                    <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable</label><input className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" placeholder="Nom du responsable..." value={newItem.responsable} onChange={e => setNewItem({...newItem, responsable: e.target.value})}/></div>
                 </div>
 
                 <div className="mt-8 flex justify-end">
-                    <button 
-                        onClick={handleAddItem}
-                        className={`px-8 py-3 rounded-xl font-black uppercase shadow-lg transition-transform hover:scale-105 text-white ${modalTab === 'interne' ? 'bg-[#0984e3] hover:bg-[#0074d9] shadow-blue-200' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'}`}
-                    >
-                        {modalTab === 'interne' ? 'Ajouter au Stock' : 'Créer Location'}
+                    <button onClick={handleAddItem} className={`px-8 py-3 rounded-xl font-black uppercase shadow-lg transition-transform hover:scale-105 text-white ${modalTab === 'externe' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : 'bg-[#0984e3] hover:bg-[#0074d9] shadow-blue-200'}`}>
+                        {modalTab === 'externe' ? 'Créer Location' : 'Ajouter au Stock'}
                     </button>
                 </div>
             </div>
