@@ -160,102 +160,119 @@ export default function ChantierDetail() {
 
 
   // =================================================================================================
-  //                             INITIALISATION & FETCH (CORRIGÉ)
+  //                             INITIALISATION & FETCH (CORRIGÉ BOUCLE INFINIE)
   // =================================================================================================
 
   useEffect(() => { 
-      // On ne lance le chargement QUE si l'ID est disponible
-      if (id) {
-          fetchChantierData(); 
-      }
+      let isMounted = true;
+
+      const fetchData = async () => {
+        if (!id) return;
+        setLoading(true);
+
+        try {
+            // 1. Employés
+            const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
+            if (errEmp) throw errEmp;
+            if (isMounted && emp) setEmployes(emp);
+
+            // 2. Chantier
+            const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
+            if (errC) throw errC;
+            
+            if (isMounted && c) {
+                setChantier({
+                    ...c,
+                    date_debut: c.date_debut || '',
+                    date_fin: c.date_fin || '',
+                    effectif_prevu: c.effectif_prevu || 0,
+                    taux_reussite: c.taux_reussite ?? 100,
+                    statut: c.statut || 'en_cours',
+                    risques: c.risques || [],
+                    epi: c.epi || [],
+                    mesures_acqpa: c.mesures_acqpa || {},
+                    type_precision: c.type_precision || '',
+                    client_email: c.client_email || '',
+                    client_telephone: c.client_telephone || ''
+                });
+                
+                const currentAcqpa = c.mesures_acqpa || {};
+                if (!currentAcqpa.couches) {
+                    currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
+                }
+                setAcqpaData(currentAcqpa);
+                setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
+            }
+
+            // 3. Tâches
+            const { data: t, error: errT } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+            if (errT) throw errT;
+            if (isMounted && t) {
+                const formattedTasks = t.map(task => ({
+                    ...task,
+                    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
+                }));
+                setTasks(formattedTasks);
+            }
+
+            // 4. Documents
+            const { data: d, error: errD } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
+            if (errD) throw errD;
+            if (isMounted && d) setDocuments(d);
+
+            // 5. Matériel
+            const { data: m, error: errM } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
+            if (errM) throw errM;
+            if (isMounted && m) setMaterielPrevu(m);
+
+            // 6. Fournitures (AVEC JOINTURE STOCK)
+            const { data: f, error: errF } = await supabase
+                .from('chantier_fournitures')
+                .select(`
+                    *,
+                    fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
+                `)
+                .eq('chantier_id', id);
+            
+            // Si la table n'existe pas encore, errF sera levé mais on ne bloque pas tout
+            if (errF) {
+                console.warn("Table fournitures non trouvée ou erreur jointure:", errF.message);
+            } else if (isMounted && f) {
+                setFournituresPrevu(f);
+            }
+
+            // 7. Catalogues
+            const { data: catMat } = await supabase.from('materiel').select('*').order('nom');
+            if (isMounted && catMat) setCatalogueMateriel(catMat);
+
+            // Catalogue Stock Fournitures
+            const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
+            if (isMounted && stock) setStockFournitures(stock);
+
+        } catch (error: any) {
+            console.error("Erreur chargement global:", error);
+        } finally {
+            if (isMounted) setLoading(false);
+        }
+      };
+
+      fetchData();
+
+      return () => { isMounted = false; };
   }, [id]);
 
-  async function fetchChantierData() {
-    console.log("Démarrage chargement pour ID:", id); // DEBUG
-    setLoading(true);
+  // Fonction pour recharger les données après une action (sans re-déclencher le useEffect)
+  const refreshData = async () => {
+      // On réutilise la logique simplifiée pour rafraîchir
+      // ... (Copie simplifiée des appels fetch)
+      // Note: Pour garder le code simple et éviter la duplication massive dans ce contexte React,
+      // on peut soit extraire fetchData hors du composant (complexe avec les states),
+      // soit forcer un re-render. Ici je vais juste mettre à jour les parties nécessaires dans les handlers.
+      
+      // Pour faire simple et robuste dans cette réponse : on rappelle les fetches spécifiques dans les handlers.
+  };
 
-    try {
-        // 1. Employés
-        const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
-        if (errEmp) console.error("Erreur Employés:", errEmp);
-        if (emp) setEmployes(emp);
 
-        // 2. Chantier
-        const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
-        if (errC) throw new Error("Erreur Chantier: " + errC.message);
-        
-        if (c) {
-            setChantier({
-                ...c,
-                date_debut: c.date_debut || '',
-                date_fin: c.date_fin || '',
-                effectif_prevu: c.effectif_prevu || 0,
-                taux_reussite: c.taux_reussite ?? 100,
-                statut: c.statut || 'en_cours',
-                risques: c.risques || [],
-                epi: c.epi || [],
-                mesures_acqpa: c.mesures_acqpa || {},
-                type_precision: c.type_precision || '',
-                client_email: c.client_email || '',
-                client_telephone: c.client_telephone || ''
-            });
-            
-            const currentAcqpa = c.mesures_acqpa || {};
-            if (!currentAcqpa.couches) {
-                currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
-            }
-            setAcqpaData(currentAcqpa);
-            setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
-        }
-
-        // 3. Tâches
-        const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (t) {
-            const formattedTasks = t.map(task => ({
-                ...task,
-                subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
-            }));
-            setTasks(formattedTasks);
-        }
-
-        // 4. Documents
-        const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-        if (d) setDocuments(d);
-
-        // 5. Matériel
-        const { data: m } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
-        if (m) setMaterielPrevu(m);
-
-        // 6. Fournitures (AVEC JOINTURE STOCK)
-        // ATTENTION : Si la table fournitures_stock n'existe pas, ça plantera ici.
-        const { data: f, error: errF } = await supabase
-            .from('chantier_fournitures')
-            .select(`
-                *,
-                fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
-            `)
-            .eq('chantier_id', id);
-        
-        if (errF) console.error("Erreur Fournitures (Table manquante ?):", errF);
-        if (f) setFournituresPrevu(f);
-
-        // 7. Catalogues
-        const { data: catMat } = await supabase.from('materiel').select('*').order('nom');
-        if (catMat) setCatalogueMateriel(catMat);
-
-        // Catalogue Stock Fournitures
-        const { data: stock, error: errStock } = await supabase.from('fournitures_stock').select('*').order('nom');
-        if (errStock) console.error("Erreur Stock:", errStock);
-        if (stock) setStockFournitures(stock);
-
-    } catch (error: any) {
-        console.error("ERREUR CRITIQUE CHARGEMENT:", error);
-        alert("Erreur de chargement: " + (error.message || "Inconnue"));
-    } finally {
-        console.log("Fin du chargement."); // DEBUG
-        setLoading(false);
-    }
-  }
   // =================================================================================================
   //                             LOGIQUE MÉTIER
   // =================================================================================================
@@ -298,7 +315,7 @@ export default function ChantierDetail() {
     if (error) alert("Erreur : " + error.message);
     else {
         alert('✅ Chantier sauvegardé !');
-        fetchChantierData();
+        // On ne recharge pas toute la page pour une sauvegarde locale
     }
   };
 
@@ -311,29 +328,29 @@ export default function ChantierDetail() {
       const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
       const uniteProduit = selectedItem ? selectedItem.unite : 'U';
 
-      const { error } = await supabase.from('chantier_fournitures').insert([{
+      const { data, error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
           fourniture_ref_id: newFourniture.fourniture_ref_id,
-          nom: nomProduit, // ICI : On ajoute le nom pour satisfaire la contrainte NOT NULL
-          unite: uniteProduit, // Optionnel mais conseillé si ta table l'attend
+          nom: nomProduit, 
+          unite: uniteProduit, 
           qte_prevue: newFourniture.qte_prevue || 0,
           qte_restante: newFourniture.qte_prevue || 0,
           seuil_alerte: 0 
-      }]);
+      }]).select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`);
 
       if(error) {
           alert("Erreur ajout fourniture: " + error.message);
-      } else {
+      } else if (data) {
+          setFournituresPrevu([data[0], ...fournituresPrevu]); // Mise à jour locale
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
           setSupplySearch(""); 
-          fetchChantierData();
       }
   };
 
   const deleteFourniture = async (fId: string) => {
       if(confirm("Retirer cette fourniture ?")) {
           await supabase.from('chantier_fournitures').delete().eq('id', fId);
-          fetchChantierData();
+          setFournituresPrevu(prev => prev.filter(f => f.id !== fId));
       }
   };
 
@@ -352,26 +369,27 @@ export default function ChantierDetail() {
   // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
-      const { error } = await supabase.from('chantier_materiel').insert([{
+      const { data, error } = await supabase.from('chantier_materiel').insert([{
           chantier_id: id,
           materiel_id: newMat.materiel_id,
           date_debut: newMat.date_debut || null,
           date_fin: newMat.date_fin || null,
           qte_prise: newMat.qte || 1,
           statut: 'prevu'
-      }]);
-      if (!error) { 
+      }]).select('*, materiel(*)');
+
+      if (!error && data) { 
+          setMaterielPrevu([data[0], ...materielPrevu]);
           setShowAddMaterielModal(false); 
-          fetchChantierData(); 
       } else {
-          alert("Erreur ajout matériel : " + error.message);
+          alert("Erreur ajout matériel : " + error?.message);
       }
   };
 
   const deleteMateriel = async (matId: string) => {
       if (confirm('Retirer ce matériel du chantier ?')) {
           await supabase.from('chantier_materiel').delete().eq('id', matId);
-          fetchChantierData();
+          setMaterielPrevu(prev => prev.filter(m => m.id !== matId));
       }
   };
 
@@ -448,13 +466,13 @@ export default function ChantierDetail() {
     const { error } = await supabase.storage.from('documents').upload(filePath, file);
     if(!error) {
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
-        await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]);
-        fetchChantierData(); 
+        const { data } = await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]).select();
+        if(data) setDocuments([data[0], ...documents]);
     }
     setUploading(false);
   };
   
-  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
+  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); setDocuments(prev => prev.filter(d => d.id !== docId)); } };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   const percent = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
