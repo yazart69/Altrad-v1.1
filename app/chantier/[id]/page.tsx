@@ -37,7 +37,10 @@ import {
   BarChart2, 
   CornerDownRight,
   AlertCircle,
-  UserPlus
+  UserPlus,
+  Palette,      // NOUVEAU
+  Box,          // NOUVEAU
+  AlertOctagon  // NOUVEAU
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -93,7 +96,7 @@ export default function ChantierDetail() {
     nom: '', 
     client: '', 
     adresse: '', 
-    responsable: '', // ID de l'employé
+    responsable: '', 
     client_email: '', 
     client_telephone: '',
     date_debut: '', 
@@ -103,8 +106,8 @@ export default function ChantierDetail() {
     statut: 'en_cours',
     heures_budget: 0, 
     heures_consommees: 0, 
-    effectif_prevu: 0, // Nombre de personnes total prévu
-    taux_reussite: 100, // Pondération par défaut
+    effectif_prevu: 0, 
+    taux_reussite: 100, 
     risques: [], 
     epi: [],
     mesures_obligatoires: false
@@ -124,6 +127,9 @@ export default function ChantierDetail() {
   const [fournituresPrevu, setFournituresPrevu] = useState<any[]>([]);
   const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
   
+  // NOUVEAU : LISTE GLOBALE DU STOCK POUR LE SELECT
+  const [stockFournitures, setStockFournitures] = useState<any[]>([]); 
+  
   // --- ÉTATS FORMULAIRES VOLATILES ---
   
   // Tâches
@@ -134,12 +140,12 @@ export default function ChantierDetail() {
   // Matériel
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   
-  // Fournitures
-  const [newFourniture, setNewFourniture] = useState({ nom: '', qte_prevue: 0, unite: 'U', seuil: 5 });
+  // Fournitures (MODIFIÉ : UTILISE UNE RÉFÉRENCE ID AU LIEU D'UN NOM)
+  const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
 
 
   // =================================================================================================
-  //                                       INITIALISATION & FETCH
+  //                             INITIALISATION & FETCH
   // =================================================================================================
 
   useEffect(() => { 
@@ -151,16 +157,14 @@ export default function ChantierDetail() {
     setLoading(true);
 
     try {
-        // 1. Récupération des Employés (Pour le select responsable)
-        const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
+        // 1. Employés
+        const { data: emp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
         if (emp) setEmployes(emp);
-        if (errEmp) console.error("Erreur fetch employés:", errEmp);
 
-        // 2. Récupération des Données Chantier Principales
-        const { data: c, error: errChantier } = await supabase.from('chantiers').select('*').eq('id', id).single();
+        // 2. Chantier
+        const { data: c } = await supabase.from('chantiers').select('*').eq('id', id).single();
         
         if (c) {
-            // Mapping sécurisé des données pour éviter les crashs sur null
             setChantier({
                 ...c,
                 date_debut: c.date_debut || '',
@@ -176,26 +180,17 @@ export default function ChantierDetail() {
                 client_telephone: c.client_telephone || ''
             });
             
-            // Gestion de la rétro-compatibilité ACQPA
             const currentAcqpa = c.mesures_acqpa || {};
             if (!currentAcqpa.couches) {
-                currentAcqpa.couches = [{ 
-                    type: currentAcqpa.produit_type || '', 
-                    lot: currentAcqpa.produit_lot || '',
-                    methode: currentAcqpa.app_methode || '',
-                    dilution: currentAcqpa.dilution || ''
-                }];
+                currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
             }
             setAcqpaData(currentAcqpa);
-
-            // Pré-remplissage dates modal matériel
             setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
         }
 
-        // 3. Récupération des Tâches (et sous-tâches JSON)
+        // 3. Tâches
         const { data: t } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
         if (t) {
-            // Normalisation : on s'assure que subtasks est bien un tableau
             const formattedTasks = t.map(task => ({
                 ...task,
                 subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
@@ -203,74 +198,68 @@ export default function ChantierDetail() {
             setTasks(formattedTasks);
         }
 
-        // 4. Récupération des Documents
+        // 4. Documents
         const { data: d } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
         if (d) setDocuments(d);
 
-        // 5. Récupération Logistique (Matériel Prévu)
+        // 5. Matériel
         const { data: m } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
         if (m) setMaterielPrevu(m);
 
-        // 6. Récupération Fournitures (Stocks)
-        const { data: f } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', id);
+        // 6. Fournitures (MODIFIÉ : JOINTURE AVEC STOCK)
+        const { data: f } = await supabase
+            .from('chantier_fournitures')
+            .select(`
+                *,
+                fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
+            `)
+            .eq('chantier_id', id);
         if (f) setFournituresPrevu(f);
 
-        // 7. Récupération Catalogue Matériel (Pour le select)
+        // 7. Catalogues
         const { data: cat } = await supabase.from('materiel').select('*').order('nom');
         if (cat) setCatalogueMateriel(cat);
 
+        // NOUVEAU : Catalogue Stock Fournitures
+        const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
+        if (stock) setStockFournitures(stock);
+
     } catch (error) {
         console.error("Erreur chargement global:", error);
-        alert("Erreur lors du chargement des données.");
     } finally {
         setLoading(false);
     }
   }
 
   // =================================================================================================
-  //                                       LOGIQUE MÉTIER
+  //                             LOGIQUE MÉTIER
   // =================================================================================================
 
-  // --- CALCUL AVANCEMENT (Tâches + Sous-Tâches) ---
   const updateProgress = async (currentTasks: any[]) => {
     let totalConsumed = 0;
-    
     currentTasks.forEach(t => {
         if (t.subtasks && t.subtasks.length > 0) {
-            // Si sous-tâches, on somme celles qui sont faites
-            t.subtasks.forEach((st: any) => {
-                if (st.done) totalConsumed += (parseFloat(st.heures) || 0);
-            });
+            t.subtasks.forEach((st: any) => { if (st.done) totalConsumed += (parseFloat(st.heures) || 0); });
         } else {
-            // Sinon tâche simple
             if (t.done) totalConsumed += (t.objectif_heures || 0);
         }
     });
-
-    // Mise à jour DB
     await supabase.from('chantiers').update({ heures_consommees: totalConsumed }).eq('id', id);
-    
-    // Mise à jour locale
     setChantier((prev: any) => ({ ...prev, heures_consommees: totalConsumed }));
   };
 
-  // --- SAUVEGARDE GLOBALE ---
   const handleSave = async () => {
-    const dateDebutSafe = chantier.date_debut === "" ? null : chantier.date_debut;
-    const dateFinSafe = chantier.date_fin === "" ? null : chantier.date_fin;
-
-    // Payload complet aligné avec la BDD
     const toSave = {
         nom: chantier.nom,
         client: chantier.client,
         adresse: chantier.adresse,
-        responsable: chantier.responsable || null, // UUID ou null
+        responsable: chantier.responsable || null,
         client_email: chantier.client_email,
         client_telephone: chantier.client_telephone,
         type: chantier.type,
         type_precision: chantier.type === 'Autre' ? chantier.type_precision : null,
-        date_debut: dateDebutSafe,
-        date_fin: dateFinSafe,
+        date_debut: chantier.date_debut || null,
+        date_fin: chantier.date_fin || null,
         statut: chantier.statut,
         heures_budget: chantier.heures_budget || 0,
         effectif_prevu: chantier.effectif_prevu || 0,
@@ -280,53 +269,43 @@ export default function ChantierDetail() {
         mesures_obligatoires: chantier.mesures_obligatoires,
         mesures_acqpa: acqpaData 
     };
-    
     const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
-    
-    if (error) {
-        console.error(error);
-        alert("Erreur lors de la sauvegarde : " + error.message);
-    } else {
-        alert('✅ Chantier sauvegardé avec succès !');
+    if (error) alert("Erreur : " + error.message);
+    else {
+        alert('✅ Chantier sauvegardé !');
         fetchChantierData();
     }
   };
 
-  // --- GESTION FOURNITURES ---
+  // --- GESTION FOURNITURES (INTELLIGENTE) ---
   const addFourniture = async () => {
-      if(!newFourniture.nom) return;
+      if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit");
       
       const { error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
-          nom: newFourniture.nom,
+          fourniture_ref_id: newFourniture.fourniture_ref_id, // Clé étrangère
           qte_prevue: newFourniture.qte_prevue || 0,
-          qte_restante: newFourniture.qte_prevue || 0, // Initial = Prévu
-          unite: newFourniture.unite,
-          seuil_alerte: newFourniture.seuil || 0
+          qte_restante: newFourniture.qte_prevue || 0
       }]);
 
       if(error) {
           alert("Erreur ajout fourniture: " + error.message);
       } else {
-          setNewFourniture({ nom: '', qte_prevue: 0, unite: 'U', seuil: 5 });
+          setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
           fetchChantierData();
       }
   };
 
-  const updateStock = async (fournitureId: string, delta: number, current: number) => {
-      const newVal = Math.max(0, current + delta);
-      
-      // Optimistic UI update
-      setFournituresPrevu(prev => prev.map(f => f.id === fournitureId ? { ...f, qte_restante: newVal } : f));
-      
-      // DB Update
-      await supabase.from('chantier_fournitures').update({ qte_restante: newVal }).eq('id', fournitureId);
+  const deleteFourniture = async (fId: string) => {
+      if(confirm("Retirer cette fourniture ?")) {
+          await supabase.from('chantier_fournitures').delete().eq('id', fId);
+          fetchChantierData();
+      }
   };
 
   // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
-      
       const { error } = await supabase.from('chantier_materiel').insert([{
           chantier_id: id,
           materiel_id: newMat.materiel_id,
@@ -335,7 +314,6 @@ export default function ChantierDetail() {
           qte_prise: newMat.qte || 1,
           statut: 'prevu'
       }]);
-      
       if (!error) { 
           setShowAddMaterielModal(false); 
           fetchChantierData(); 
@@ -351,27 +329,17 @@ export default function ChantierDetail() {
       }
   };
 
-  // --- GESTION TÂCHES & SOUS-TÂCHES ---
+  // --- GESTION TÂCHES ---
   const addTask = async () => {
     if (!newTaskLabel) return;
-    const { data, error } = await supabase.from('chantier_tasks').insert([{ 
-        chantier_id: id, 
-        label: newTaskLabel, 
-        objectif_heures: 0, 
-        done: false, 
-        subtasks: [] 
-    }]).select();
-
-    if (data) {
-        setTasks([data[0], ...tasks]);
-    }
+    const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, done: false, subtasks: [] }]).select();
+    if (data) setTasks([data[0], ...tasks]);
     setNewTaskLabel("");
   };
 
   const toggleTask = async (task: any) => {
     const updatedList = tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t);
     setTasks(updatedList);
-    
     await supabase.from('chantier_tasks').update({ done: !task.done }).eq('id', task.id);
     updateProgress(updatedList);
   };
@@ -382,28 +350,17 @@ export default function ChantierDetail() {
       if(!parentTask) return;
 
       const updatedSubtasks = [...(parentTask.subtasks || []), {
-          id: Date.now(), // ID temporaire unique
-          label: newSubTask.label,
+          id: Date.now(), label: newSubTask.label,
           heures: parseFloat(newSubTask.heures.toString()) || 0,
-          effectif: parseInt(newSubTask.effectif.toString()) || 1, // Ajout effectif par sous-tâche
-          date: newSubTask.date,
-          done: false
+          effectif: parseInt(newSubTask.effectif.toString()) || 1,
+          date: newSubTask.date, done: false
       }];
 
-      // Recalcul du total d'heures pour la tâche parente
       const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0);
-
-      // Sauvegarde
-      await supabase.from('chantier_tasks').update({ 
-          subtasks: updatedSubtasks,
-          objectif_heures: newTotalHours
-      }).eq('id', parentId);
-
+      await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId);
       const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
       setTasks(newTasks);
       updateProgress(newTasks);
-      
-      // Reset form
       setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 });
       setActiveParentTask(null);
   };
@@ -411,20 +368,15 @@ export default function ChantierDetail() {
   const toggleSubTask = async (parentId: string, subtaskId: number) => {
       const parentTask = tasks.find(t => t.id === parentId);
       if(!parentTask) return;
-
-      const updatedSubtasks = parentTask.subtasks.map((st: any) => 
-          st.id === subtaskId ? { ...st, done: !st.done } : st
-      );
-
+      const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st);
       await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks }).eq('id', parentId);
-      
       const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks } : t);
       setTasks(newTasks);
       updateProgress(newTasks);
   };
 
   const deleteTask = async (taskId: string) => {
-    if(confirm('Supprimer cette tâche et ses sous-tâches ?')) {
+    if(confirm('Supprimer cette tâche ?')) {
         await supabase.from('chantier_tasks').delete().eq('id', taskId);
         const updatedList = tasks.filter(t => t.id !== taskId);
         setTasks(updatedList);
@@ -432,49 +384,33 @@ export default function ChantierDetail() {
     }
   };
 
-  // --- GESTION ACQPA ---
+  // --- AUTRES ---
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
   const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); };
   const updateCouche = (index: number, field: string, value: string) => { const n = [...acqpaData.couches]; n[index][field] = value; setAcqpaData({ ...acqpaData, couches: n }); };
   
-  // --- GESTION CHECKBOXES ARRAY ---
   const toggleArrayItem = (field: 'risques' | 'epi', value: string) => {
     const current = chantier[field] || [];
     setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] });
   };
   
-  // --- GESTION DOCUMENTS ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     setUploading(true);
     const file = e.target.files[0];
     const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`;
-    
-    const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
-    if(uploadError) { alert("Erreur upload"); setUploading(false); return; }
-
-    const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
-    
-    await supabase.from('chantier_documents').insert([{ 
-        chantier_id: id, 
-        nom: file.name, 
-        url: publicUrl, 
-        type: file.type.startsWith('image/') ? 'image' : 'pdf' 
-    }]);
-    
+    const { error } = await supabase.storage.from('documents').upload(filePath, file);
+    if(!error) {
+        const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
+        await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]);
+        fetchChantierData(); 
+    }
     setUploading(false);
-    fetchChantierData(); 
   };
   
-  const deleteDocument = async (docId: string) => { 
-      if(confirm('Supprimer ce document ?')) { 
-          await supabase.from('chantier_documents').delete().eq('id', docId); 
-          fetchChantierData(); 
-      } 
-  };
+  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement du chantier...</div>;
-  
+  if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   const percent = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
 
   return (
@@ -502,7 +438,7 @@ export default function ChantierDetail() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
         
-        {/* BARRE DE NAVIGATION (TABS) */}
+        {/* BARRE DE NAVIGATION */}
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {[
                 { id: 'infos', label: 'Infos & Tâches', icon: FileText, color: 'bg-[#34495e]' },
@@ -520,14 +456,11 @@ export default function ChantierDetail() {
         </div>
 
         {/* ============================================================================================ */}
-        {/* ONGLET 1 : INFOS & TÂCHES                                      */}
+        {/* ONGLET 1 : INFOS & TÂCHES (INCHANGÉ)                                                         */}
         {/* ============================================================================================ */}
         {activeTab === 'infos' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
-                
-                {/* COLONNE GAUCHE : IDENTIFICATION */}
                 <div className="space-y-6">
-                    {/* Carte 1 : Identification */}
                     <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><FileText size={20}/> Identification Complète</h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -536,7 +469,6 @@ export default function ChantierDetail() {
                                 <input value={chantier.nom || ''} onChange={e => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894] transition-colors" />
                             </div>
                             
-                            {/* Bloc Client Enrichi */}
                             <div className="col-span-2 grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                                 <div className="col-span-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom Client</label>
@@ -557,7 +489,6 @@ export default function ChantierDetail() {
                                 <input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
 
-                            {/* Type + Précision Conditionnelle */}
                             <div className={chantier.type === 'Autre' ? 'col-span-1' : 'col-span-2'}>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</label>
                                 <select value={chantier.type || 'Industriel'} onChange={e => setChantier({...chantier, type: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer">
@@ -573,7 +504,6 @@ export default function ChantierDetail() {
                         </div>
                     </div>
 
-                    {/* Carte 2 : Planning & Options */}
                     <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Calendar size={20}/> Planning & Ressources</h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -586,16 +516,11 @@ export default function ChantierDetail() {
                                 <input type="date" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" />
                             </div>
                             
-                            {/* Responsable Chantier Dynamique */}
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable Chantier</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1 border border-transparent focus-within:border-blue-300 transition-colors">
                                     <Users size={16} className="text-gray-400 mr-2"/>
-                                    <select 
-                                        className="w-full bg-transparent p-3 font-bold outline-none cursor-pointer"
-                                        value={chantier.responsable || ''}
-                                        onChange={(e) => setChantier({...chantier, responsable: e.target.value})}
-                                    >
+                                    <select className="w-full bg-transparent p-3 font-bold outline-none cursor-pointer" value={chantier.responsable || ''} onChange={(e) => setChantier({...chantier, responsable: e.target.value})}>
                                         <option value="">Sélectionner un responsable...</option>
                                         {employes.map(emp => (
                                             <option key={emp.id} value={emp.id}>{emp.nom} {emp.prenom}</option>
@@ -604,32 +529,19 @@ export default function ChantierDetail() {
                                 </div>
                             </div>
 
-                            {/* Statut avec Pondération */}
                             <div className="col-span-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Statut & Pondération</label>
                                 <div className="flex gap-2 mt-1">
-                                    <select 
-                                        value={chantier.statut || 'en_cours'} 
-                                        onChange={e => setChantier({...chantier, statut: e.target.value})} 
-                                        className={`flex-1 bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer ${chantier.statut === 'potentiel' ? 'text-blue-600 bg-blue-50' : ''}`}
-                                    >
+                                    <select value={chantier.statut || 'en_cours'} onChange={e => setChantier({...chantier, statut: e.target.value})} className={`flex-1 bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer ${chantier.statut === 'potentiel' ? 'text-blue-600 bg-blue-50' : ''}`}>
                                         <option value="planifie">Planifié</option>
                                         <option value="en_cours">En Cours</option>
                                         <option value="potentiel">Probable (Offre)</option>
                                         <option value="termine">Terminé</option>
                                     </select>
-                                    
-                                    {/* Champ % qui apparaît seulement si Potentiel */}
                                     {chantier.statut === 'potentiel' && (
                                         <div className="w-24 bg-blue-50 border border-blue-200 rounded-xl flex items-center px-2 animate-in slide-in-from-left-2">
                                             <Percent size={14} className="text-blue-400 mr-1"/>
-                                            <input 
-                                                type="number" 
-                                                min="0" max="100" 
-                                                value={chantier.taux_reussite || 0} 
-                                                onChange={e => setChantier({...chantier, taux_reussite: parseInt(e.target.value) || 0})}
-                                                className="w-full bg-transparent text-center font-black text-blue-700 outline-none"
-                                            />
+                                            <input type="number" min="0" max="100" value={chantier.taux_reussite || 0} onChange={e => setChantier({...chantier, taux_reussite: parseInt(e.target.value) || 0})} className="w-full bg-transparent text-center font-black text-blue-700 outline-none" />
                                         </div>
                                     )}
                                 </div>
@@ -643,7 +555,6 @@ export default function ChantierDetail() {
                                 </div>
                             </div>
 
-                            {/* NOUVEAU : EFFECTIF PRÉVU GLOBAL */}
                             <div>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Effectif Total Prévu</label>
                                 <div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1">
@@ -653,7 +564,6 @@ export default function ChantierDetail() {
                             </div>
                         </div>
 
-                        {/* Toggle ACQPA */}
                         <div className="mt-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center justify-between">
                             <div><h4 className="font-black text-[#0984e3] uppercase">Mesures ACQPA</h4><p className="text-xs text-blue-400 font-bold">Activer le module qualité</p></div>
                             <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={chantier.mesures_obligatoires || false} onChange={e => setChantier({...chantier, mesures_obligatoires: e.target.checked})} className="sr-only peer" /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0984e3]"></div></label>
@@ -661,27 +571,19 @@ export default function ChantierDetail() {
                     </div>
                 </div>
 
-                {/* COLONNE DROITE : TÂCHES & SOUS-TÂCHES */}
+                {/* COLONNE DROITE : TÂCHES */}
                 <div className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col h-full min-h-[600px]">
                     <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none"><CheckCircle2 size={200} /></div>
                     <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2 relative z-10"><CheckCircle2 size={20}/> Tâches & Planning</h3>
                     
-                    {/* Ajout Tâche Principale */}
                     <div className="flex gap-2 mb-4 relative z-10">
-                        <input 
-                            placeholder="Nouvelle tâche principale..." 
-                            value={newTaskLabel} 
-                            onChange={(e) => setNewTaskLabel(e.target.value)} 
-                            onKeyDown={(e) => e.key === 'Enter' && addTask()} 
-                            className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" 
-                        />
+                        <input placeholder="Nouvelle tâche principale..." value={newTaskLabel} onChange={(e) => setNewTaskLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" />
                         <button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] shadow-lg transition-transform active:scale-95"><Plus size={20}/></button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 relative z-10">
                         {tasks.map((t) => (
                             <div key={t.id} className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                                {/* Header Tâche */}
                                 <div className="flex justify-between items-center mb-2">
                                     <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => toggleTask(t)}>
                                         {t.done ? <CheckCircle2 size={20} className="text-[#00b894] shrink-0" /> : <Circle size={20} className="text-[#ff9f43] shrink-0" />}
@@ -694,7 +596,6 @@ export default function ChantierDetail() {
                                     </div>
                                 </div>
 
-                                {/* Liste Sous-Tâches */}
                                 <div className="space-y-1 pl-4 border-l-2 border-white/10">
                                     {t.subtasks && t.subtasks.map((st: any) => (
                                         <div key={st.id} className="flex items-center justify-between text-xs py-1 group/sub">
@@ -714,54 +615,40 @@ export default function ChantierDetail() {
                                     ))}
                                 </div>
 
-                                {/* Formulaire Ajout Sous-Tâche */}
                                 {activeParentTask === t.id && (
                                     <div className="mt-3 bg-black/20 p-3 rounded-lg flex flex-col gap-2 animate-in fade-in">
                                         <input type="text" placeholder="Nom de la sous-tâche..." className="bg-transparent text-xs text-white placeholder-white/30 outline-none border-b border-white/10 p-1" value={newSubTask.label} onChange={e => setNewSubTask({...newSubTask, label: e.target.value})} />
                                         <div className="flex gap-2 items-center">
                                             <input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} />
-                                            
                                             <div className="flex items-center gap-1 bg-white/5 rounded px-2">
                                                 <Users size={12} className="text-blue-400"/>
-                                                <input type="number" placeholder="Pers." title="Nombre de personnes" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} />
+                                                <input type="number" placeholder="Pers." className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} />
                                             </div>
-
                                             <div className="flex items-center gap-1 bg-white/5 rounded px-2">
                                                 <Clock size={12} className="text-orange-400"/>
-                                                <input type="number" placeholder="H" title="Heures" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} />
+                                                <input type="number" placeholder="H" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} />
                                             </div>
-
                                             <button onClick={() => addSubTask(t.id)} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase ml-auto hover:bg-green-600 transition-colors">Ajouter</button>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         ))}
-                        {tasks.length === 0 && (
-                            <div className="text-center py-10 opacity-30">
-                                <CheckCircle2 size={40} className="mx-auto mb-2"/>
-                                <p className="text-sm font-bold">Aucune tâche planifiée</p>
-                            </div>
-                        )}
+                        {tasks.length === 0 && <div className="text-center py-10 opacity-30"><CheckCircle2 size={40} className="mx-auto mb-2"/><p className="text-sm font-bold">Aucune tâche planifiée</p></div>}
                     </div>
                 </div>
             </div>
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 2 : LOGISTIQUE & MATÉRIEL                               */}
+        {/* ONGLET 2 : LOGISTIQUE & MATÉRIEL (INCHANGÉ)                                                  */}
         {/* ============================================================================================ */}
         {activeTab === 'logistique' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2">
-                        <Truck className="text-[#6c5ce7]"/> Matériel & Locations
-                    </h3>
-                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2">
-                        <Plus size={16}/> Ajouter / Réserver
-                    </button>
+                    <h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2"><Truck className="text-[#6c5ce7]"/> Matériel & Locations</h3>
+                    <button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2"><Plus size={16}/> Ajouter / Réserver</button>
                 </div>
-
                 <div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden">
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-100">
@@ -797,84 +684,119 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 3 : FOURNITURES                                         */}
+        {/* ONGLET 3 : FOURNITURES (INTELLIGENT)                                                         */}
         {/* ============================================================================================ */}
         {activeTab === 'fournitures' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
                 
-                {/* Formulaire Ajout Fourniture */}
+                {/* Formulaire Ajout Fourniture (Connecté au Stock) */}
                 <div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit">
-                    <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Package className="text-yellow-500"/> Ajouter Fourniture</h3>
+                    <h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2">
+                        <Package className="text-yellow-500"/> Ajouter Besoin
+                    </h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom Produit</label>
-                            <input value={newFourniture.nom} onChange={e => setNewFourniture({...newFourniture, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:bg-white border border-transparent focus:border-yellow-400 transition-colors" placeholder="Ex: Diluant, Scotch..." />
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Stock)</label>
+                            <select 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none cursor-pointer"
+                                value={newFourniture.fourniture_ref_id}
+                                onChange={e => setNewFourniture({...newFourniture, fourniture_ref_id: e.target.value})}
+                            >
+                                <option value="">-- Sélectionner --</option>
+                                {stockFournitures.map(s => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.nom} {s.ral ? `(RAL ${s.ral})` : ''} - {s.qte_stock} {s.unite} dispo
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité</label>
-                                <input type="number" value={newFourniture.qte_prevue || ''} onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none" />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Unité</label>
-                                <select value={newFourniture.unite} onChange={e => setNewFourniture({...newFourniture, unite: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none cursor-pointer">
-                                    <option value="U">Unité</option>
-                                    <option value="L">Litres</option>
-                                    <option value="Kg">Kilos</option>
-                                    <option value="M2">m²</option>
-                                    <option value="Rlx">Rouleaux</option>
-                                </select>
-                            </div>
-                        </div>
+                        
                         <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Seuil Alerte</label>
-                            <input type="number" value={newFourniture.seuil || ''} onChange={e => setNewFourniture({...newFourniture, seuil: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none text-orange-500" />
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Nécessaire</label>
+                            <input 
+                                type="number" 
+                                value={newFourniture.qte_prevue || ''} 
+                                onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
+                                className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none" 
+                            />
                         </div>
-                        <button onClick={addFourniture} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95">Ajouter au stock</button>
+                        
+                        <button onClick={addFourniture} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg transition-all active:scale-95">
+                            Valider le besoin
+                        </button>
                     </div>
                 </div>
 
-                {/* Liste & Gestion Stock */}
+                {/* Tableau Calcul Automatique */}
                 <div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100">
-                    <h3 className="font-black uppercase text-gray-700 mb-4">Suivi des Stocks</h3>
+                    <h3 className="font-black uppercase text-gray-700 mb-4">Calcul des Besoins & Commandes</h3>
                     <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 text-[10px] uppercase text-gray-400">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
                                 <tr>
-                                    <th className="p-3 text-left rounded-l-xl">Produit</th>
-                                    <th className="p-3 text-center">Initial</th>
-                                    <th className="p-3 text-center">Restant</th>
-                                    <th className="p-3 text-center">Conso.</th>
-                                    <th className="p-3 text-center rounded-r-xl">Action</th>
+                                    <th className="p-3 rounded-l-xl">Produit</th>
+                                    <th className="p-3">Détails</th>
+                                    <th className="p-3 text-center">Besoin</th>
+                                    <th className="p-3 text-center bg-blue-50/50 text-blue-600">En Stock</th>
+                                    <th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th>
+                                    <th className="p-3 text-right rounded-r-xl">Statut</th>
                                 </tr>
                             </thead>
-                            <tbody className="text-sm font-bold text-gray-700">
+                            <tbody className="divide-y divide-gray-50">
                                 {fournituresPrevu.length === 0 && (
-                                    <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">Aucune fourniture listée.</td></tr>
+                                    <tr><td colSpan={6} className="p-8 text-center text-gray-400 italic">Aucune fourniture prévue.</td></tr>
                                 )}
-                                {fournituresPrevu.map(f => (
-                                    <tr key={f.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                                        <td className="p-3">
-                                            {f.nom}
-                                            {f.qte_restante <= f.seuil_alerte && (
-                                                <div className="text-[9px] text-red-500 font-bold flex items-center gap-1 mt-1"><AlertCircle size={10}/> Stock bas !</div>
-                                            )}
-                                        </td>
-                                        <td className="p-3 text-center text-gray-400">{f.qte_prevue} {f.unite}</td>
-                                        <td className="p-3 text-center">
-                                            <span className={`px-2 py-1 rounded-lg ${f.qte_restante <= f.seuil_alerte ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-green-100 text-green-600'}`}>
-                                                {f.qte_restante} {f.unite}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-center text-blue-500">
-                                            {(f.qte_prevue - f.qte_restante).toFixed(1)}
-                                        </td>
-                                        <td className="p-3 flex justify-center gap-2">
-                                            <button onClick={() => updateStock(f.id, -1, f.qte_restante)} className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center font-black transition-colors" title="Consommer 1">-</button>
-                                            <button onClick={() => updateStock(f.id, 1, f.qte_restante)} className="w-8 h-8 rounded-full bg-green-50 text-green-500 hover:bg-green-100 flex items-center justify-center font-black transition-colors" title="Ajouter 1">+</button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {fournituresPrevu.map(f => {
+                                    // Données provenant de la jointure
+                                    const stockInfo = f.fournitures_stock || {};
+                                    const stockDispo = stockInfo.qte_stock || 0;
+                                    const besoin = f.qte_prevue || 0;
+                                    const aCommander = Math.max(0, besoin - stockDispo);
+                                    const isStockOK = stockDispo >= besoin;
+
+                                    return (
+                                        <tr key={f.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="p-3 font-bold text-sm text-gray-800">
+                                                {stockInfo.nom || 'Produit Inconnu'}
+                                                <button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button>
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="flex flex-col gap-1">
+                                                    {stockInfo.ral && (
+                                                        <span className="text-[9px] font-bold bg-gray-100 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
+                                                            <Palette size={10}/> RAL {stockInfo.ral}
+                                                        </span>
+                                                    )}
+                                                    {stockInfo.conditionnement && (
+                                                        <span className="text-[9px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded flex items-center gap-1 w-fit">
+                                                            <Box size={10}/> {stockInfo.conditionnement}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-center font-black text-gray-800">
+                                                {besoin} {stockInfo.unite}
+                                            </td>
+                                            <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">
+                                                {stockDispo}
+                                            </td>
+                                            <td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>
+                                                {aCommander > 0 ? aCommander : '-'}
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                {isStockOK ? (
+                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                                                        <CheckCircle2 size={10}/> Stock OK
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100 animate-pulse">
+                                                        <AlertOctagon size={10}/> Commander
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -883,7 +805,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 4 : PLANNING GANTT                                      */}
+        {/* ONGLET 4 : PLANNING (INCHANGÉ)                                                               */}
         {/* ============================================================================================ */}
         {activeTab === 'planning' && (
             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
@@ -894,11 +816,9 @@ export default function ChantierDetail() {
                         <span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span>
                     </div>
                 </div>
-
                 <div className="space-y-6">
                     {tasks.map((t, idx) => (
                         <div key={t.id} className="relative">
-                            {/* Tâche Principale */}
                             <div className="flex items-center gap-4 mb-2">
                                 <div className="w-48 font-bold text-sm truncate" title={t.label}>{t.label}</div>
                                 <div className="flex-1 bg-gray-100 h-8 rounded-full relative overflow-hidden">
@@ -907,8 +827,6 @@ export default function ChantierDetail() {
                                     </div>
                                 </div>
                             </div>
-                            
-                            {/* Sous-tâches décalées */}
                             {t.subtasks && t.subtasks.map((st: any) => (
                                 <div key={st.id} className="flex items-center gap-4 mb-1 pl-8 relative group">
                                     <CornerDownRight size={14} className="text-gray-300 absolute left-2 top-2"/>
@@ -918,10 +836,7 @@ export default function ChantierDetail() {
                                     </div>
                                     <div className="flex-1 bg-gray-50 h-6 rounded-full relative">
                                         <div className={`absolute top-0 h-full rounded-full flex items-center justify-center px-2 text-[9px] text-white font-bold ${st.done ? 'bg-blue-400' : 'bg-orange-300'}`} 
-                                             style={{ 
-                                                 left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, 
-                                                 width: `${Math.max(8, st.heures * 2)}%` 
-                                             }}>
+                                            style={{ left: `${(new Date(st.date || new Date()).getDate() % 30) * 3}%`, width: `${Math.max(8, st.heures * 2)}%` }}>
                                             {st.heures}h | {st.effectif || 1}p
                                         </div>
                                     </div>
@@ -935,7 +850,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 5 : HSE / SÉCURITÉ                                      */}
+        {/* ONGLET 5 : HSE / SÉCURITÉ (INCHANGÉ)                                                         */}
         {/* ============================================================================================ */}
         {activeTab === 'hse' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
@@ -971,7 +886,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 6 : ACQPA                                               */}
+        {/* ONGLET 6 : ACQPA (INCHANGÉ)                                                                  */}
         {/* ============================================================================================ */}
         {activeTab === 'acqpa' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
@@ -993,24 +908,11 @@ export default function ChantierDetail() {
                             </button>
                             <ClipboardCheck size={100} className="absolute -right-0 -bottom-5 text-blue-900 opacity-10 rotate-12 pointer-events-none" />
                         </div>
-                        
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p>
-                                <p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p>
-                            </div>
-                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p>
-                                <p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p>
-                            </div>
-                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p>
-                                <p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p>
-                            </div>
-                             <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p>
-                                <p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p>
-                            </div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-blue-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Hygrométrie</p><p className="text-xl font-black text-gray-800">{acqpaData.hygrometrie || '--'} %</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-green-400"><p className="text-[10px] font-bold text-gray-400 uppercase">DFT Moy.</p><p className="text-xl font-black text-gray-800">{acqpaData.dft_mesure || '--'} µm</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-purple-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Inspecteur</p><p className="text-xl font-black text-gray-800 truncate">{acqpaData.inspecteur_nom || '--'}</p></div>
+                            <div className="bg-white p-4 rounded-[20px] shadow-sm border-l-4 border-orange-400"><p className="text-[10px] font-bold text-gray-400 uppercase">Couches</p><p className="text-xl font-black text-gray-800">{acqpaData.couches?.length || 0}</p></div>
                         </div>
                     </div>
                 )}
@@ -1018,7 +920,7 @@ export default function ChantierDetail() {
         )}
 
         {/* ============================================================================================ */}
-        {/* ONGLET 7 : DOCUMENTS                                           */}
+        {/* ONGLET 7 : DOCUMENTS (INCHANGÉ)                                                              */}
         {/* ============================================================================================ */}
         {activeTab === 'docs' && (
             <div className="animate-in fade-in slide-in-from-bottom-4">
@@ -1027,7 +929,7 @@ export default function ChantierDetail() {
                     <p className="font-black uppercase text-xl">Ajouter Photos / Docs</p>
                     <input type="file" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 </div>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {documents.map(doc => (
                         <div key={doc.id} className="bg-white p-3 rounded-[25px] shadow-sm h-[180px] flex flex-col relative group hover:shadow-lg transition-all border border-gray-100">
                             <div className="flex-1 bg-gray-50 rounded-[15px] mb-2 flex items-center justify-center overflow-hidden">
@@ -1049,7 +951,7 @@ export default function ChantierDetail() {
       </div>
 
       {/* ============================================================================================ */}
-      {/* MODALE ACQPA (COMPLÈTE)                                        */}
+      {/* MODALE ACQPA (INCHANGÉE)                                                                     */}
       {/* ============================================================================================ */}
       {showACQPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -1059,21 +961,18 @@ export default function ChantierDetail() {
                     <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors"><X size={24} /></button>
                 </div>
                 <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                    {/* SECTION 1 : Ambiance */}
                     <section>
                         <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Thermometer className="text-[#0984e3]"/> Ambiance</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                             {[{l:'Temp. Air (°C)',k:'temp_air'},{l:'Temp. Support (°C)',k:'temp_support'},{l:'Hygrométrie (%)',k:'hygrometrie'},{l:'Point Rosée (°C)',k:'point_rosee'},{l:'Delta T',k:'delta_t'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="number" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}
                         </div>
                     </section>
-                    {/* SECTION 2 : Support */}
                     <section>
                         <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Layers className="text-[#0984e3]"/> Préparation Support</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {[{l:'Degré de Soin',k:'degre_soin'},{l:'Propreté',k:'proprete'},{l:'Rugosité (µm)',k:'rugosite'},{l:'Sels Solubles',k:'sels'}].map(f=><div key={f.k}><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label><input type="text" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/></div>)}
                         </div>
                     </section>
-                    {/* SECTION 3 : Couches */}
                     <section>
                         <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2"><h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg"><Droplets className="text-[#0984e3]"/> Produits & Couches</h3><button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors"><Plus size={14}/> Ajouter</button></div>
                         <div className="space-y-4">
@@ -1085,7 +984,6 @@ export default function ChantierDetail() {
                              <div><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label><input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} /></div>
                         </div>
                     </section>
-                    {/* SECTION 4 : Contrôles */}
                     <section>
                         <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2"><Ruler className="text-[#0984e3]"/> Contrôles Finaux</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1099,7 +997,7 @@ export default function ChantierDetail() {
       )}
 
       {/* ============================================================================================ */}
-      {/* MODALE AJOUT MATÉRIEL                                          */}
+      {/* MODALE AJOUT MATÉRIEL (INCHANGÉE)                                                            */}
       {/* ============================================================================================ */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
