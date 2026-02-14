@@ -16,7 +16,7 @@ export default function FicheEmploye() {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  
+   
   // États d'ajout rapide
   const [newHabil, setNewHabil] = useState("");
   const [newForma, setNewForma] = useState("");
@@ -41,12 +41,14 @@ export default function FicheEmploye() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // CORRECTION ERREUR 400 (Renforcée) :
-    // On retire l'id ET created_at (souvent rejeté par Supabase lors d'un update)
-    // On s'assure d'envoyer un payload propre.
-    const { id: _id, created_at: _created, ...payload } = emp;
     
-    const { error } = await supabase.from('employes').update(payload).eq('id', id);
+    // CORRECTION : Nettoyage de l'objet avant envoi pour éviter l'erreur 400
+    // On retire id et created_at qui sont gérés par Supabase et ne doivent pas être dans le payload d'update
+    const empDataToUpdate = { ...emp };
+    delete empDataToUpdate.id;
+    delete empDataToUpdate.created_at;
+
+    const { error } = await supabase.from('employes').update(empDataToUpdate).eq('id', id);
     
     setIsSaving(false);
     if (!error) alert("✅ Dossier mis à jour avec succès !");
@@ -93,7 +95,7 @@ export default function FicheEmploye() {
 
   return (
     <div className="p-4 md:p-10 font-['Fredoka'] max-w-6xl mx-auto pb-32">
-      
+       
       {/* HEADER ACTIONS */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-400 font-bold hover:text-black transition-all">
