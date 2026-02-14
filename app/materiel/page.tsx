@@ -148,16 +148,15 @@ export default function ChantierDetail() {
   const searchWrapperRef = useRef<HTMLDivElement>(null); 
 
   // Fermer la liste si on clique ailleurs
-  useEffect(() => {
-    function handleClickOutside(event: any) {
-      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
-        setShowSupplyList(false);
-      }
+useEffect(() => {
+  function handleClickOutside(event: any) {
+    if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
+      setShowSupplyList(false);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [searchWrapperRef]);
-
+  }
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, []); // ✅ VIDE ! Pas [searchWrapperRef]
 
   // =================================================================================================
   //                             INITIALISATION & FETCH (CORRIGÉ BOUCLE INFINIE)
