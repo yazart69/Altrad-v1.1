@@ -29,7 +29,7 @@ export default function PointagePage() {
   const [loading, setLoading] = useState(true);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [employes, setEmployes] = useState<any[]>([]);
-  
+   
   // Date et Navigation
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date(); // Lundi courant
@@ -68,11 +68,9 @@ export default function PointagePage() {
 
     if (plan) {
         // --- PRÉ-REMPLISSAGE LOGIQUE ---
-        // On enrichit les données reçues avec la valeur par défaut si 'heures' est null/0
         const enrichedPlan = plan.map(task => {
-            if (task.heures > 0) return task; // Déjà saisi, on touche pas
+            if (task.heures > 0) return task; 
             
-            // Si c'est une absence, on laisse 0
             if (['maladie', 'conge', 'formation', 'absence'].includes(task.type)) return task;
 
             // Sinon, calcul auto selon le jour
@@ -80,9 +78,6 @@ export default function PointagePage() {
             const dayNum = date.getDay(); // 0=Dim, 1=Lun, 5=Ven
             const defaultHours = dayNum === 5 ? 4 : 8.5; // Vendredi 4h, sinon 8.5h
             
-            // On retourne la tâche avec la valeur par défaut (pour affichage)
-            // Note: On ne sauvegarde pas en BDD tout de suite pour ne pas spammer, 
-            // mais l'affichage sera correct et le total aussi.
             return { ...task, heures: defaultHours, isAuto: true }; 
         });
         setAssignments(enrichedPlan);
@@ -93,22 +88,30 @@ export default function PointagePage() {
   useEffect(() => { fetchData(); }, [currentDate]);
 
   // --- 2. CALCULS TEMPS ---
-  const weekDays = Array.from({ length: 5 }, (_, i) => {
+  const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + i);
     return d;
-  });
+  }), [currentDate]);
 
-  // Totaux par employé
+  // Totaux par employé (CORRIGÉ : Somme uniquement les jours affichés Lundi-Vendredi pour cohérence visuelle)
   const employeeTotals = useMemo(() => {
       const stats: Record<string, number> = {}; 
+      
+      // Liste des dates affichées (strings ISO)
+      const visibleDates = weekDays.map(d => toLocalISOString(d));
+
       assignments.forEach(a => {
-          // On ignore les heures des absents pour le total (sécurité)
+          // Filtre 1 : Ignorer les absents
           if (['maladie', 'conge', 'formation'].includes(a.type)) return;
+          
+          // Filtre 2 : Ignorer les jours hors-vue (Samedi/Dimanche) pour que le total corresponde aux colonnes
+          if (!visibleDates.includes(a.date_debut)) return;
+
           stats[a.employe_id] = (stats[a.employe_id] || 0) + (parseFloat(a.heures) || 0);
       });
       return stats;
-  }, [assignments]);
+  }, [assignments, weekDays]);
 
   // Données Graphique
   const chartData = useMemo(() => {
@@ -125,7 +128,6 @@ export default function PointagePage() {
   const updateHours = async (id: string, value: string) => {
       if (isWeekLocked) return;
       const numValue = parseFloat(value) || 0;
-      // Optimistic UI : On enlève le flag isAuto si on modifie manuellement
       setAssignments(prev => prev.map(a => a.id === id ? { ...a, heures: numValue, isAuto: false } : a));
       await supabase.from('planning').update({ heures: numValue }).eq('id', id);
   };
@@ -141,7 +143,13 @@ export default function PointagePage() {
 
   const copyPreviousWeek = async () => {
       if (isWeekLocked) return;
-      if (!confirm("Copier S-1 ?")) return;
+      
+      // SÉCURITÉ : Empêcher la copie si des données existent déjà pour éviter les DOUBLONS
+      if (assignments.length > 0) {
+        if(!confirm("⚠️ Attention : Des données existent déjà cette semaine.\nLa copie va AJOUTER les données de S-1 et créer des doublons.\nVoulez-vous vraiment continuer ?")) return;
+      } else {
+        if (!confirm("Copier les affectations de la semaine précédente (S-1) ?")) return;
+      }
       
       const prevStart = new Date(currentDate); prevStart.setDate(prevStart.getDate() - 7);
       const prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + 6);
@@ -151,7 +159,7 @@ export default function PointagePage() {
           .gte('date_debut', toLocalISOString(prevStart))
           .lte('date_debut', toLocalISOString(prevEnd));
 
-      if (!prevData?.length) { alert("Aucune donnée S-1"); return; }
+      if (!prevData?.length) { alert("Aucune donnée trouvée en S-1"); return; }
 
       const newEntries = prevData.map(item => {
           const d = new Date(item.date_debut); d.setDate(d.getDate() + 7);
@@ -169,7 +177,7 @@ export default function PointagePage() {
 
   const resetWeek = async () => {
       if (isWeekLocked) return;
-      if (!confirm("Remettre à zéro ?")) return;
+      if (!confirm("Remettre à zéro toutes les heures saisies ?")) return;
       const ids = assignments.map(a => a.id);
       await supabase.from('planning').update({ heures: 0 }).in('id', ids);
       fetchData();
@@ -237,7 +245,8 @@ export default function PointagePage() {
                                       const dayTasks = empTasks.filter(a => a.date_debut === dateStr);
                                       
                                       return (
-                                          <td key={i} className="p-2 border-l border-gray-100 align-top h-20">
+                                          // CORRECTION : Utilisation de min-h pour permettre l'expansion si doublons
+                                          <td key={i} className="p-2 border-l border-gray-100 align-top min-h-[5rem]">
                                               <div className="flex flex-col gap-1">
                                                   {dayTasks.map(task => {
                                                       const isAbsence = ['maladie', 'conge', 'formation', 'absence'].includes(task.type);
@@ -256,9 +265,9 @@ export default function PointagePage() {
                                                       }
 
                                                       // Cas normal (Chantier)
-                                                      const isAuto = task.isAuto; // Flag calculé plus haut
+                                                      const isAuto = task.isAuto; 
                                                       return (
-                                                          <div key={task.id} className="flex flex-col">
+                                                          <div key={task.id} className="flex flex-col mb-1">
                                                               <div className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded-t border border-blue-100">
                                                                   <span className="text-[9px] font-bold uppercase truncate max-w-[80px] text-blue-800">
                                                                       {task.chantiers?.nom || 'Chantier'}
@@ -274,7 +283,6 @@ export default function PointagePage() {
                                                                   }`}
                                                                   value={task.heures}
                                                                   onChange={(e) => {
-                                                                      // Mise à jour locale pour fluidité
                                                                       const val = e.target.value;
                                                                       setAssignments(prev => prev.map(a => a.id === task.id ? { ...a, heures: val } : a));
                                                                   }}
@@ -344,9 +352,3 @@ export default function PointagePage() {
     </div>
   );
 }
-
-
-
-
-
-
