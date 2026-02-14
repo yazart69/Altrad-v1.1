@@ -83,7 +83,9 @@ const TYPE_CHANTIER_OPTIONS = [
 ];
 
 export default function ChantierDetail() {
-  const { id } = useParams();
+  const params = useParams();
+  // Sécurisation de l'ID pour éviter les objets undefined
+  const id = params?.id as string;
   
   // --- ÉTATS D'INTERFACE ---
   const [loading, setLoading] = useState(true);
@@ -147,39 +149,55 @@ export default function ChantierDetail() {
   const [showSupplyList, setShowSupplyList] = useState(false); 
   const searchWrapperRef = useRef<HTMLDivElement>(null); 
 
-  // Fermer la liste si on clique ailleurs
-useEffect(() => {
-  function handleClickOutside(event: any) {
-    if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
-      setShowSupplyList(false);
+  // --- CORRECTION BOUCLE INFINIE N°1 : Click Outside ---
+  // On retire searchWrapperRef des dépendances car c'est une ref mutable
+  useEffect(() => {
+    function handleClickOutside(event: any) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
+        setShowSupplyList(false);
+      }
     }
-  }
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => document.removeEventListener("mousedown", handleClickOutside);
-}, []); // ✅ VIDE ! Pas [searchWrapperRef]
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []); // Dépendances vides pour ne s'exécuter qu'au montage
 
   // =================================================================================================
-  //                             INITIALISATION & FETCH (CORRIGÉ BOUCLE INFINIE)
+  //                             INITIALISATION & FETCH (CORRIGÉ & ROBUSTE)
   // =================================================================================================
 
   useEffect(() => { 
       let isMounted = true;
 
       const fetchData = async () => {
+        // Bloquer si pas d'ID pour éviter les requêtes inutiles
         if (!id) return;
+        
         setLoading(true);
 
         try {
+            // Utilisation de Promise.allSettled pour éviter qu'une seule erreur bloque tout le chargement
+            const results = await Promise.allSettled([
+                supabase.from('employes').select('id, nom, prenom').order('nom'),
+                supabase.from('chantiers').select('*').eq('id', id).single(),
+                supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+                supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+                supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id),
+                supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
+                supabase.from('materiel').select('*').order('nom'),
+                supabase.from('fournitures_stock').select('*').order('nom')
+            ]);
+
+            // Si le composant est démonté entre temps, on arrête tout
+            if (!isMounted) return;
+
             // 1. Employés
-            const { data: emp, error: errEmp } = await supabase.from('employes').select('id, nom, prenom').order('nom');
-            if (errEmp) throw errEmp;
-            if (isMounted && emp) setEmployes(emp);
+            if (results[0].status === 'fulfilled' && results[0].value.data) {
+                setEmployes(results[0].value.data);
+            }
 
             // 2. Chantier
-            const { data: c, error: errC } = await supabase.from('chantiers').select('*').eq('id', id).single();
-            if (errC) throw errC;
-            
-            if (isMounted && c) {
+            if (results[1].status === 'fulfilled' && results[1].value.data) {
+                const c = results[1].value.data;
                 setChantier({
                     ...c,
                     date_debut: c.date_debut || '',
@@ -204,10 +222,9 @@ useEffect(() => {
             }
 
             // 3. Tâches
-            const { data: t, error: errT } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-            if (errT) throw errT;
-            if (isMounted && t) {
-                const formattedTasks = t.map(task => ({
+            if (results[2].status === 'fulfilled' && results[2].value.data) {
+                const t = results[2].value.data;
+                const formattedTasks = t.map((task: any) => ({
                     ...task,
                     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
                 }));
@@ -215,42 +232,34 @@ useEffect(() => {
             }
 
             // 4. Documents
-            const { data: d, error: errD } = await supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false });
-            if (errD) throw errD;
-            if (isMounted && d) setDocuments(d);
-
-            // 5. Matériel
-            const { data: m, error: errM } = await supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id);
-            if (errM) throw errM;
-            if (isMounted && m) setMaterielPrevu(m);
-
-            // 6. Fournitures (AVEC JOINTURE STOCK)
-            const { data: f, error: errF } = await supabase
-                .from('chantier_fournitures')
-                .select(`
-                    *,
-                    fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )
-                `)
-                .eq('chantier_id', id);
-            
-            // Si la table n'existe pas encore, errF sera levé mais on ne bloque pas tout
-            if (errF) {
-                console.warn("Table fournitures non trouvée ou erreur jointure:", errF.message);
-            } else if (isMounted && f) {
-                setFournituresPrevu(f);
+            if (results[3].status === 'fulfilled' && results[3].value.data) {
+                setDocuments(results[3].value.data);
             }
 
-            // 7. Catalogues
-            const { data: catMat } = await supabase.from('materiel').select('*').order('nom');
-            if (isMounted && catMat) setCatalogueMateriel(catMat);
+            // 5. Matériel
+            if (results[4].status === 'fulfilled' && results[4].value.data) {
+                setMaterielPrevu(results[4].value.data);
+            }
 
-            // Catalogue Stock Fournitures
-            const { data: stock } = await supabase.from('fournitures_stock').select('*').order('nom');
-            if (isMounted && stock) setStockFournitures(stock);
+            // 6. Fournitures (Avec Jointure)
+            if (results[5].status === 'fulfilled' && results[5].value.data) {
+                setFournituresPrevu(results[5].value.data);
+            }
+
+            // 7. Catalogues Materiel
+            if (results[6].status === 'fulfilled' && results[6].value.data) {
+                setCatalogueMateriel(results[6].value.data);
+            }
+
+            // 8. Catalogue Stock
+            if (results[7].status === 'fulfilled' && results[7].value.data) {
+                setStockFournitures(results[7].value.data);
+            }
 
         } catch (error: any) {
             console.error("Erreur chargement global:", error);
         } finally {
+            // CORRECTION BOUCLE INFINIE N°2 : Le finally garantit l'arrêt du loading
             if (isMounted) setLoading(false);
         }
       };
@@ -258,18 +267,7 @@ useEffect(() => {
       fetchData();
 
       return () => { isMounted = false; };
-  }, [id]);
-
-  // Fonction pour recharger les données après une action (sans re-déclencher le useEffect)
-  const refreshData = async () => {
-      // On réutilise la logique simplifiée pour rafraîchir
-      // ... (Copie simplifiée des appels fetch)
-      // Note: Pour garder le code simple et éviter la duplication massive dans ce contexte React,
-      // on peut soit extraire fetchData hors du composant (complexe avec les states),
-      // soit forcer un re-render. Ici je vais juste mettre à jour les parties nécessaires dans les handlers.
-      
-      // Pour faire simple et robuste dans cette réponse : on rappelle les fetches spécifiques dans les handlers.
-  };
+  }, [id]); // Seule dépendance : l'ID du chantier
 
 
   // =================================================================================================
@@ -314,23 +312,25 @@ useEffect(() => {
     if (error) alert("Erreur : " + error.message);
     else {
         alert('✅ Chantier sauvegardé !');
-        // On ne recharge pas toute la page pour une sauvegarde locale
+        // Pas besoin de re-fetch, les states sont à jour
     }
   };
 
-  // --- GESTION FOURNITURES (CORRIGÉE : AJOUT DU NOM) ---
+  // --- GESTION FOURNITURES (CORRECTION ERREUR SQL NULL VALUE) ---
   const addFourniture = async () => {
       if(!newFourniture.fourniture_ref_id) return alert("Veuillez sélectionner un produit dans la liste");
       
-      // 1. Récupérer les infos du stock pour remplir les champs obligatoires (nom, unité)
+      // 1. Récupération de l'objet complet dans le stock local pour avoir le nom
       const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
+      
+      // Sécurité : Si jamais l'item n'est pas trouvé (ne devrait pas arriver)
       const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
       const uniteProduit = selectedItem ? selectedItem.unite : 'U';
 
       const { data, error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
           fourniture_ref_id: newFourniture.fourniture_ref_id,
-          nom: nomProduit, 
+          nom: nomProduit, // ICI : On force l'envoi du nom pour éviter l'erreur NOT NULL
           unite: uniteProduit, 
           qte_prevue: newFourniture.qte_prevue || 0,
           qte_restante: newFourniture.qte_prevue || 0,
@@ -338,9 +338,11 @@ useEffect(() => {
       }]).select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`);
 
       if(error) {
+          console.error(error); // Log pour débug
           alert("Erreur ajout fourniture: " + error.message);
       } else if (data) {
-          setFournituresPrevu([data[0], ...fournituresPrevu]); // Mise à jour locale
+          // Mise à jour locale du tableau sans recharger toute la page (évite boucle)
+          setFournituresPrevu([data[0], ...fournituresPrevu]);
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
           setSupplySearch(""); 
       }
@@ -348,8 +350,12 @@ useEffect(() => {
 
   const deleteFourniture = async (fId: string) => {
       if(confirm("Retirer cette fourniture ?")) {
-          await supabase.from('chantier_fournitures').delete().eq('id', fId);
-          setFournituresPrevu(prev => prev.filter(f => f.id !== fId));
+          const { error } = await supabase.from('chantier_fournitures').delete().eq('id', fId);
+          if(!error) {
+             setFournituresPrevu(prev => prev.filter(f => f.id !== fId));
+          } else {
+              alert("Erreur suppression: " + error.message);
+          }
       }
   };
 
@@ -378,7 +384,7 @@ useEffect(() => {
       }]).select('*, materiel(*)');
 
       if (!error && data) { 
-          setMaterielPrevu([data[0], ...materielPrevu]);
+          setMaterielPrevu([data[0], ...materielPrevu]); // Mise à jour locale
           setShowAddMaterielModal(false); 
       } else {
           alert("Erreur ajout matériel : " + error?.message);
@@ -466,7 +472,7 @@ useEffect(() => {
     if(!error) {
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
         const { data } = await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]).select();
-        if(data) setDocuments([data[0], ...documents]);
+        if (data) setDocuments([data[0], ...documents]);
     }
     setUploading(false);
   };
