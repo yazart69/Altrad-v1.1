@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, 
-  X, Loader2, Eraser, CalendarDays, Save, Check // <-- Check réintégré ici
+  X, Loader2, Eraser, CalendarDays, Save, Check 
 } from 'lucide-react';
 
 // --- HELPER: Format Local Date to YYYY-MM-DD ---
@@ -269,8 +269,15 @@ export default function PlanningPage() {
           </thead>
           <tbody className="divide-y divide-gray-100 print:divide-black">
             {/* LIGNES CHANTIERS */}
-            {chantiers.map((chantier) => (
-              <tr key={chantier.id} className="group hover:bg-gray-50 transition-colors print:break-inside-avoid">
+            {chantiers.map((chantier) => {
+              // Calcul : Vérifier si ce chantier a des affectations CETTE SEMAINE
+              const hasAssignments = assignments.some(a => 
+                  a.chantier_id === chantier.id && 
+                  weekDays.some(day => toLocalISOString(day) === a.date_debut)
+              );
+
+              return (
+              <tr key={chantier.id} className={`group hover:bg-gray-50 transition-colors print:break-inside-avoid ${hasAssignments ? '' : 'print:hidden'}`}>
                 <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2">
                   <div className="flex items-start gap-3">
                       <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1"><HardHat size={18} /></div>
@@ -333,7 +340,8 @@ export default function PlanningPage() {
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
 
             {/* SECTION HORS CHANTIER */}
             <tr className="bg-gray-50 border-t-4 border-white print:border-black print:border-t-2 print:bg-white print:break-inside-avoid">
