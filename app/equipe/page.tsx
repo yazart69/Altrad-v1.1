@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Users, UserPlus, Search, ArrowRight, ShieldCheck, X, Loader2, Trash2, Pencil, Briefcase, Crown, HardHat, UserCog, UserCheck, UserX } from 'lucide-react';
+import { Users, UserPlus, Search, ArrowRight, ShieldCheck, X, Loader2, Trash2, Pencil, Briefcase, Crown, HardHat, UserCog, UserCheck, UserX, Building2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EquipePage() {
@@ -13,8 +13,8 @@ export default function EquipePage() {
   const [isEditing, setIsEditing] = useState(false);
 
   // Nouvel employé ou Employé en cours d'édition
-  // Valeur par défaut 'operateur' (anciennement 'interne')
-  const [currentEmp, setCurrentEmp] = useState({ id: '', nom: '', prenom: '', role: 'operateur' });
+  // Valeur par défaut 'operateur_interne'
+  const [currentEmp, setCurrentEmp] = useState({ id: '', nom: '', prenom: '', role: 'operateur_interne' });
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -29,23 +29,91 @@ export default function EquipePage() {
   
   const getRoleConfig = (role: string) => {
       switch(role) {
-          case 'chef_chantier': return { label: 'Chef de Chantier', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <Crown size={14} /> };
-          case 'chef_equipe': return { label: "Chef d'Équipe", color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <UserCog size={14} /> };
-          case 'operateur': return { label: 'Opérateur', color: 'bg-blue-50 text-blue-600 border-blue-100', icon: <HardHat size={14} /> };
-          case 'interimaire': return { label: 'Intérimaire', color: 'bg-orange-50 text-orange-600 border-orange-100', icon: <UserCheck size={14} /> };
-          case 'sous_traitant': return { label: 'Sous-Traitant', color: 'bg-gray-100 text-gray-600 border-gray-200', icon: <UserX size={14} /> };
-          default: return { label: role || 'Autre', color: 'bg-gray-50 text-gray-500 border-gray-100', icon: <Users size={14} /> };
+          // CHEFS DE CHANTIER
+          case 'chef_chantier_interne': 
+            return { 
+                label: 'Chef de Chantier (Interne)', 
+                badgeClass: 'bg-white text-purple-700 border-purple-200 shadow-sm', 
+                cardClass: 'bg-purple-50/50 border-purple-100 hover:border-purple-300',
+                icon: <Crown size={14} className="text-purple-600"/> 
+            };
+          case 'chef_chantier_altrad': 
+            return { 
+                label: 'Chef de Chantier (Altrad)', 
+                badgeClass: 'bg-white text-fuchsia-700 border-fuchsia-200 shadow-sm', 
+                cardClass: 'bg-fuchsia-50/50 border-fuchsia-100 hover:border-fuchsia-300',
+                icon: <Crown size={14} className="text-fuchsia-600"/> 
+            };
+
+          // CHEFS D'ÉQUIPE
+          case 'chef_equipe_interne': 
+            return { 
+                label: "Chef d'Équipe (Interne)", 
+                badgeClass: 'bg-white text-indigo-700 border-indigo-200 shadow-sm', 
+                cardClass: 'bg-indigo-50/50 border-indigo-100 hover:border-indigo-300',
+                icon: <UserCog size={14} className="text-indigo-600"/> 
+            };
+          case 'chef_equipe_altrad': 
+            return { 
+                label: "Chef d'Équipe (Altrad)", 
+                badgeClass: 'bg-white text-violet-700 border-violet-200 shadow-sm', 
+                cardClass: 'bg-violet-50/50 border-violet-100 hover:border-violet-300',
+                icon: <UserCog size={14} className="text-violet-600"/> 
+            };
+
+          // OPÉRATEURS
+          case 'operateur_interne': 
+            return { 
+                label: 'Opérateur (Interne)', 
+                badgeClass: 'bg-white text-blue-600 border-blue-200 shadow-sm', 
+                cardClass: 'bg-blue-50/50 border-blue-100 hover:border-blue-300',
+                icon: <HardHat size={14} className="text-blue-500"/> 
+            };
+          case 'operateur_altrad': 
+            return { 
+                label: 'Opérateur (Altrad)', 
+                badgeClass: 'bg-white text-cyan-600 border-cyan-200 shadow-sm', 
+                cardClass: 'bg-cyan-50/50 border-cyan-100 hover:border-cyan-300',
+                icon: <HardHat size={14} className="text-cyan-500"/> 
+            };
+
+          // EXTERNES
+          case 'interimaire': 
+            return { 
+                label: 'Intérimaire', 
+                badgeClass: 'bg-white text-orange-600 border-orange-200 shadow-sm', 
+                cardClass: 'bg-orange-50/50 border-orange-100 hover:border-orange-300',
+                icon: <UserCheck size={14} className="text-orange-500"/> 
+            };
+          case 'sous_traitant': 
+            return { 
+                label: 'Sous-Traitant', 
+                badgeClass: 'bg-white text-gray-600 border-gray-200 shadow-sm', 
+                cardClass: 'bg-gray-50/50 border-gray-200 hover:border-gray-400',
+                icon: <UserX size={14} className="text-gray-500"/> 
+            };
+
+          default: 
+            return { 
+                label: role || 'Autre', 
+                badgeClass: 'bg-gray-50 text-gray-500 border-gray-100', 
+                cardClass: 'bg-white border-gray-100',
+                icon: <Users size={14} /> 
+            };
       }
   };
 
   const getRolePriority = (role: string) => {
       switch(role) {
-          case 'chef_chantier': return 1;
-          case 'chef_equipe': return 2;
-          case 'operateur': return 3;
-          case 'interimaire': return 4;
-          case 'sous_traitant': return 5;
-          default: return 6;
+          case 'chef_chantier_interne': return 1;
+          case 'chef_chantier_altrad': return 2;
+          case 'chef_equipe_interne': return 3;
+          case 'chef_equipe_altrad': return 4;
+          case 'operateur_interne': return 5;
+          case 'operateur_altrad': return 6;
+          case 'interimaire': return 7;
+          case 'sous_traitant': return 8;
+          default: return 99;
       }
   };
 
@@ -66,13 +134,13 @@ export default function EquipePage() {
   const openEditModal = (emp: any, e: React.MouseEvent) => {
     e.preventDefault();
     setIsEditing(true);
-    setCurrentEmp({ id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role || 'operateur' });
+    setCurrentEmp({ id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role || 'operateur_interne' });
     setIsModalOpen(true);
   };
 
   const openAddModal = () => {
     setIsEditing(false);
-    setCurrentEmp({ id: '', nom: '', prenom: '', role: 'operateur' });
+    setCurrentEmp({ id: '', nom: '', prenom: '', role: 'operateur_interne' });
     setIsModalOpen(true);
   };
 
@@ -93,7 +161,6 @@ export default function EquipePage() {
         }
     } else {
         // INSERT
-        // On retire l'ID pour laisser Supabase le générer
         const { id, ...dataToInsert } = currentEmp;
         const { error } = await supabase.from('employes').insert([dataToInsert]);
         
@@ -154,10 +221,14 @@ export default function EquipePage() {
             const roleConfig = getRoleConfig(emp.role);
 
             return (
-              <Link key={emp.id} href={`/equipe/${emp.id}`} className="bg-white p-6 rounded-[35px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden flex flex-col justify-between min-h-[220px]">
+              <Link 
+                key={emp.id} 
+                href={`/equipe/${emp.id}`} 
+                className={`p-6 rounded-[35px] border shadow-sm transition-all group relative overflow-hidden flex flex-col justify-between min-h-[220px] hover:shadow-xl ${roleConfig.cardClass}`}
+              >
                 
                 <div className="flex justify-between items-start mb-4">
-                  <div className={`p-3 rounded-2xl ${emp.dossier_complet ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
+                  <div className={`p-3 rounded-2xl bg-white/60 backdrop-blur-sm ${emp.dossier_complet ? 'text-green-500' : 'text-red-500'}`}>
                     <ShieldCheck size={24} />
                   </div>
                   
@@ -165,13 +236,13 @@ export default function EquipePage() {
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-4 group-hover:translate-x-0 duration-300">
                     <button 
                         onClick={(e) => openEditModal(emp, e)} 
-                        className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-black hover:text-white transition-colors"
+                        className="p-2 bg-white/80 rounded-full text-gray-500 hover:bg-black hover:text-white transition-colors backdrop-blur-sm"
                     >
                         <Pencil size={14} />
                     </button>
                     <button 
                         onClick={(e) => handleDelete(emp.id, e)} 
-                        className="p-2 bg-red-50 rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                        className="p-2 bg-white/80 rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors backdrop-blur-sm"
                     >
                         <Trash2 size={14} />
                     </button>
@@ -182,17 +253,17 @@ export default function EquipePage() {
                     <h3 className="text-xl font-black uppercase text-gray-800 leading-tight">{emp.nom} {emp.prenom}</h3>
                     
                     {/* ROLE BADGE */}
-                    <div className={`flex items-center gap-2 mt-3 px-3 py-1.5 rounded-lg border w-fit ${roleConfig.color}`}>
+                    <div className={`flex items-center gap-2 mt-3 px-3 py-1.5 rounded-lg border w-fit ${roleConfig.badgeClass}`}>
                         {roleConfig.icon}
                         <p className="text-[10px] font-black uppercase tracking-wide">{roleConfig.label}</p>
                     </div>
                 </div>
 
                 <div className="mt-6 flex justify-between items-end">
-                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase ${emp.statut_actuel === 'disponible' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase bg-white/60 border border-white/20 backdrop-blur-md ${emp.statut_actuel === 'disponible' ? 'text-green-600' : 'text-orange-600'}`}>
                     {emp.statut_actuel || 'disponible'}
                   </span>
-                  <div className="bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-black group-hover:text-white transition-colors">
+                  <div className="bg-white p-2 rounded-full text-gray-300 group-hover:bg-black group-hover:text-white transition-colors shadow-sm">
                       <ArrowRight size={16} />
                   </div>
                 </div>
@@ -230,15 +301,24 @@ export default function EquipePage() {
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Rôle / Qualification</label>
                 <select 
-                  className="w-full p-4 bg-gray-50 rounded-2xl border-none font-black uppercase text-xs focus:ring-2 focus:ring-black/5 outline-none appearance-none"
+                  className="w-full p-4 bg-gray-50 rounded-2xl border-none font-black uppercase text-xs focus:ring-2 focus:ring-black/5 outline-none appearance-none cursor-pointer"
                   value={currentEmp.role}
                   onChange={(e)=>setCurrentEmp({...currentEmp, role: e.target.value})}
                 >
-                  <option value="chef_chantier">Chef de Chantier</option>
-                  <option value="chef_equipe">Chef d'Équipe</option>
-                  <option value="operateur">Opérateur (Interne)</option>
-                  <option value="interimaire">Intérimaire</option>
-                  <option value="sous_traitant">Sous-traitant</option>
+                  <optgroup label="Encadrement">
+                    <option value="chef_chantier_interne">Chef de Chantier (Interne)</option>
+                    <option value="chef_chantier_altrad">Chef de Chantier (Altrad)</option>
+                    <option value="chef_equipe_interne">Chef d'Équipe (Interne)</option>
+                    <option value="chef_equipe_altrad">Chef d'Équipe (Altrad)</option>
+                  </optgroup>
+                  <optgroup label="Exécution">
+                    <option value="operateur_interne">Opérateur (Interne)</option>
+                    <option value="operateur_altrad">Opérateur (Altrad)</option>
+                  </optgroup>
+                  <optgroup label="Externe">
+                    <option value="interimaire">Intérimaire</option>
+                    <option value="sous_traitant">Sous-traitant</option>
+                  </optgroup>
                 </select>
               </div>
               <button onClick={handleSave} className="w-full bg-black text-white py-5 rounded-3xl font-black uppercase tracking-widest text-xs mt-6 shadow-xl active:scale-95 transition-all hover:bg-gray-900">
