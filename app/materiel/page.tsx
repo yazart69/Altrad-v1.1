@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Search, Filter, Plus, Truck, Package, Wrench, 
   Calendar, MapPin, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, 
-  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2
+  ArrowUpRight, Users, LayoutGrid, List, ClipboardList, X, Warehouse, Building2, Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,7 +14,7 @@ export default function MaterielPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Tous'); // Tous, Interne, Externe
   const [filterCat, setFilterCat] = useState('Toutes');
-  
+   
   // États de données
   const [inventory, setInventory] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -145,6 +145,21 @@ export default function MaterielPage() {
           chantier_id: '', date_debut: '', date_fin: ''
       });
       fetchData();
+  };
+
+  // --- SUPPRESSION MATERIEL ---
+  const handleDeleteItem = async (id: string, nom: string) => {
+      if(confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nom}" ?\nCette action est irréversible et supprimera l'historique associé.`)) {
+          const { error } = await supabase.from('materiel').delete().eq('id', id);
+          
+          if(error) {
+              alert("Erreur lors de la suppression : " + error.message);
+          } else {
+              // Mise à jour optimiste ou rechargement
+              setInventory(prev => prev.filter(item => item.id !== id));
+              alert("Matériel supprimé avec succès.");
+          }
+      }
   };
 
   // --- LOGIQUES DE FILTRAGE ---
@@ -377,9 +392,19 @@ export default function MaterielPage() {
                                     <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase border ${getStatusColor(item.statut)}`}>
                                         {item.statut}
                                     </span>
-                                    <button className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-[#00b894] transition-colors shadow-lg group-hover:scale-110">
-                                        <ArrowRight size={18} />
-                                    </button>
+                                    <div className="flex gap-2">
+                                        {/* BOUTON SUPPRIMER AJOUTÉ */}
+                                        <button 
+                                            onClick={() => handleDeleteItem(item.id, item.nom)}
+                                            className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
+                                            title="Supprimer"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                        <button className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-[#00b894] transition-colors shadow-lg group-hover:scale-110">
+                                            <ArrowRight size={18} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
