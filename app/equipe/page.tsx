@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Users, UserPlus, Search, ArrowRight, ShieldCheck, X, Loader2, Trash2, Pencil, Briefcase } from 'lucide-react';
+import { Users, UserPlus, Search, ArrowRight, ShieldCheck, X, Loader2, Trash2, Pencil, Briefcase, Crown, HardHat, UserCog, UserCheck, UserX } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EquipePage() {
@@ -13,7 +13,8 @@ export default function EquipePage() {
   const [isEditing, setIsEditing] = useState(false);
 
   // Nouvel employé ou Employé en cours d'édition
-  const [currentEmp, setCurrentEmp] = useState({ id: '', nom: '', prenom: '', role: 'interne' });
+  // Valeur par défaut 'operateur' (anciennement 'interne')
+  const [currentEmp, setCurrentEmp] = useState({ id: '', nom: '', prenom: '', role: 'operateur' });
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -23,6 +24,30 @@ export default function EquipePage() {
   };
 
   useEffect(() => { fetchEmployees(); }, []);
+
+  // --- HELPERS : STYLES & TRI ---
+  
+  const getRoleConfig = (role: string) => {
+      switch(role) {
+          case 'chef_chantier': return { label: 'Chef de Chantier', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <Crown size={14} /> };
+          case 'chef_equipe': return { label: "Chef d'Équipe", color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <UserCog size={14} /> };
+          case 'operateur': return { label: 'Opérateur', color: 'bg-blue-50 text-blue-600 border-blue-100', icon: <HardHat size={14} /> };
+          case 'interimaire': return { label: 'Intérimaire', color: 'bg-orange-50 text-orange-600 border-orange-100', icon: <UserCheck size={14} /> };
+          case 'sous_traitant': return { label: 'Sous-Traitant', color: 'bg-gray-100 text-gray-600 border-gray-200', icon: <UserX size={14} /> };
+          default: return { label: role || 'Autre', color: 'bg-gray-50 text-gray-500 border-gray-100', icon: <Users size={14} /> };
+      }
+  };
+
+  const getRolePriority = (role: string) => {
+      switch(role) {
+          case 'chef_chantier': return 1;
+          case 'chef_equipe': return 2;
+          case 'operateur': return 3;
+          case 'interimaire': return 4;
+          case 'sous_traitant': return 5;
+          default: return 6;
+      }
+  };
 
   // --- ACTIONS ---
 
@@ -41,13 +66,13 @@ export default function EquipePage() {
   const openEditModal = (emp: any, e: React.MouseEvent) => {
     e.preventDefault();
     setIsEditing(true);
-    setCurrentEmp({ id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role || 'interne' });
+    setCurrentEmp({ id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role || 'operateur' });
     setIsModalOpen(true);
   };
 
   const openAddModal = () => {
     setIsEditing(false);
-    setCurrentEmp({ id: '', nom: '', prenom: '', role: 'interne' });
+    setCurrentEmp({ id: '', nom: '', prenom: '', role: 'operateur' });
     setIsModalOpen(true);
   };
 
@@ -79,9 +104,18 @@ export default function EquipePage() {
     }
   };
 
-  const filtered = employees.filter(e => 
-    `${e.nom} ${e.prenom}`.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filtrage ET Tri
+  const filteredAndSorted = employees
+    .filter(e => `${e.nom} ${e.prenom}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+        // Tri primaire : Rôle
+        const priorityA = getRolePriority(a.role);
+        const priorityB = getRolePriority(b.role);
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        
+        // Tri secondaire : Nom
+        return a.nom.localeCompare(b.nom);
+    });
 
   return (
     <div className="p-4 md:p-10 font-['Fredoka'] max-w-7xl mx-auto pb-20">
@@ -116,49 +150,55 @@ export default function EquipePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-full flex justify-center py-20"><Loader2 className="animate-spin text-gray-300" size={40} /></div>
-        ) : filtered.map((emp) => (
-          <Link key={emp.id} href={`/equipe/${emp.id}`} className="bg-white p-6 rounded-[35px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden flex flex-col justify-between min-h-[220px]">
-            
-            <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-2xl ${emp.dossier_complet ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
-                <ShieldCheck size={24} />
-              </div>
-              
-              {/* ACTIONS CRUD */}
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-4 group-hover:translate-x-0 duration-300">
-                <button 
-                    onClick={(e) => openEditModal(emp, e)} 
-                    className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-black hover:text-white transition-colors"
-                >
-                    <Pencil size={14} />
-                </button>
-                <button 
-                    onClick={(e) => handleDelete(emp.id, e)} 
-                    className="p-2 bg-red-50 rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors"
-                >
-                    <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
+        ) : filteredAndSorted.map((emp) => {
+            const roleConfig = getRoleConfig(emp.role);
 
-            <div>
-                <h3 className="text-xl font-black uppercase text-gray-800 leading-tight">{emp.nom} {emp.prenom}</h3>
-                <div className="flex items-center gap-2 mt-2">
-                    <Briefcase size={12} className="text-blue-400"/>
-                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.1em]">{emp.role}</p>
+            return (
+              <Link key={emp.id} href={`/equipe/${emp.id}`} className="bg-white p-6 rounded-[35px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden flex flex-col justify-between min-h-[220px]">
+                
+                <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-2xl ${emp.dossier_complet ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
+                    <ShieldCheck size={24} />
+                  </div>
+                  
+                  {/* ACTIONS CRUD */}
+                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-4 group-hover:translate-x-0 duration-300">
+                    <button 
+                        onClick={(e) => openEditModal(emp, e)} 
+                        className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-black hover:text-white transition-colors"
+                    >
+                        <Pencil size={14} />
+                    </button>
+                    <button 
+                        onClick={(e) => handleDelete(emp.id, e)} 
+                        className="p-2 bg-red-50 rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-            </div>
 
-            <div className="mt-6 flex justify-between items-end">
-              <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase ${emp.statut_actuel === 'disponible' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                {emp.statut_actuel || 'disponible'}
-              </span>
-              <div className="bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-black group-hover:text-white transition-colors">
-                  <ArrowRight size={16} />
-              </div>
-            </div>
-          </Link>
-        ))}
+                <div>
+                    <h3 className="text-xl font-black uppercase text-gray-800 leading-tight">{emp.nom} {emp.prenom}</h3>
+                    
+                    {/* ROLE BADGE */}
+                    <div className={`flex items-center gap-2 mt-3 px-3 py-1.5 rounded-lg border w-fit ${roleConfig.color}`}>
+                        {roleConfig.icon}
+                        <p className="text-[10px] font-black uppercase tracking-wide">{roleConfig.label}</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-between items-end">
+                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase ${emp.statut_actuel === 'disponible' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                    {emp.statut_actuel || 'disponible'}
+                  </span>
+                  <div className="bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-black group-hover:text-white transition-colors">
+                      <ArrowRight size={16} />
+                  </div>
+                </div>
+              </Link>
+            )
+        })}
       </div>
 
       {/* MODAL AJOUT / MODIF */}
@@ -188,16 +228,17 @@ export default function EquipePage() {
                 />
               </div>
               <div>
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Statut / Catégorie</label>
+                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Rôle / Qualification</label>
                 <select 
-                  className="w-full p-4 bg-gray-50 rounded-2xl border-none font-black uppercase text-xs focus:ring-2 focus:ring-black/5 outline-none"
+                  className="w-full p-4 bg-gray-50 rounded-2xl border-none font-black uppercase text-xs focus:ring-2 focus:ring-black/5 outline-none appearance-none"
                   value={currentEmp.role}
                   onChange={(e)=>setCurrentEmp({...currentEmp, role: e.target.value})}
                 >
-                  <option value="interne">Interne (Altrad)</option>
-                  <option value="interim">Intérimaire</option>
-                  <option value="sous-traitant">Sous-traitant</option>
-                  <option value="altrad_autres">Altrad autres</option>
+                  <option value="chef_chantier">Chef de Chantier</option>
+                  <option value="chef_equipe">Chef d'Équipe</option>
+                  <option value="operateur">Opérateur (Interne)</option>
+                  <option value="interimaire">Intérimaire</option>
+                  <option value="sous_traitant">Sous-traitant</option>
                 </select>
               </div>
               <button onClick={handleSave} className="w-full bg-black text-white py-5 rounded-3xl font-black uppercase tracking-widest text-xs mt-6 shadow-xl active:scale-95 transition-all hover:bg-gray-900">
