@@ -166,78 +166,97 @@ export default function ChantierDetail() {
   //                             INITIALISATION & FETCH
   // =================================================================================================
 
-  useEffect(() => { 
-      let isMounted = true;
+  const fetchChantierData = async () => {
+    if (!id) return;
+    setLoading(true);
 
-      const fetchData = async () => {
-        if (!id) return;
-        setLoading(true);
+    try {
+        const results = await Promise.allSettled([
+            supabase.from('employes').select('id, nom, prenom').order('nom'),
+            supabase.from('chantiers').select('*').eq('id', id).single(),
+            supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+            supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
+            supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id),
+            supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
+            supabase.from('materiel').select('*').order('nom'),
+            supabase.from('fournitures_stock').select('*').order('nom')
+        ]);
 
-        try {
-            const results = await Promise.allSettled([
-                supabase.from('employes').select('id, nom, prenom').order('nom'),
-                supabase.from('chantiers').select('*').eq('id', id).single(),
-                supabase.from('chantier_tasks').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
-                supabase.from('chantier_documents').select('*').eq('chantier_id', id).order('created_at', { ascending: false }),
-                supabase.from('chantier_materiel').select('*, materiel(*)').eq('chantier_id', id),
-                supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
-                supabase.from('materiel').select('*').order('nom'),
-                supabase.from('fournitures_stock').select('*').order('nom')
-            ]);
-
-            if (!isMounted) return;
-
-            if (results[0].status === 'fulfilled' && results[0].value.data) setEmployes(results[0].value.data);
-
-            if (results[1].status === 'fulfilled' && results[1].value.data) {
-                const c = results[1].value.data;
-                setChantier({
-                    ...c,
-                    date_debut: c.date_debut || '',
-                    date_fin: c.date_fin || '',
-                    effectif_prevu: c.effectif_prevu || 0,
-                    taux_reussite: c.taux_reussite ?? 100,
-                    statut: c.statut || 'en_cours',
-                    risques: c.risques || [],
-                    epi: c.epi || [],
-                    mesures_acqpa: c.mesures_acqpa || {},
-                    type_precision: c.type_precision || '',
-                    client_email: c.client_email || '',
-                    client_telephone: c.client_telephone || ''
-                });
-                
-                const currentAcqpa = c.mesures_acqpa || {};
-                if (!currentAcqpa.couches) {
-                    currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
-                }
-                setAcqpaData(currentAcqpa);
-                setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
-            }
-
-            if (results[2].status === 'fulfilled' && results[2].value.data) {
-                const t = results[2].value.data;
-                const formattedTasks = t.map((task: any) => ({
-                    ...task,
-                    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
-                }));
-                setTasks(formattedTasks);
-            }
-
-            if (results[3].status === 'fulfilled' && results[3].value.data) setDocuments(results[3].value.data);
-            if (results[4].status === 'fulfilled' && results[4].value.data) setMaterielPrevu(results[4].value.data);
-            if (results[5].status === 'fulfilled' && results[5].value.data) setFournituresPrevu(results[5].value.data);
-            if (results[6].status === 'fulfilled' && results[6].value.data) setCatalogueMateriel(results[6].value.data);
-            if (results[7].status === 'fulfilled' && results[7].value.data) setStockFournitures(results[7].value.data);
-
-        } catch (error: any) {
-            console.error("Erreur chargement global:", error);
-        } finally {
-            if (isMounted) setLoading(false);
+        // 1. Employés
+        if (results[0].status === 'fulfilled' && results[0].value.data) {
+            setEmployes(results[0].value.data);
         }
-      };
 
-      fetchData();
-      return () => { isMounted = false; };
+        // 2. Chantier
+        if (results[1].status === 'fulfilled' && results[1].value.data) {
+            const c = results[1].value.data;
+            setChantier({
+                ...c,
+                date_debut: c.date_debut || '',
+                date_fin: c.date_fin || '',
+                effectif_prevu: c.effectif_prevu || 0,
+                taux_reussite: c.taux_reussite ?? 100,
+                statut: c.statut || 'en_cours',
+                risques: c.risques || [],
+                epi: c.epi || [],
+                mesures_acqpa: c.mesures_acqpa || {},
+                type_precision: c.type_precision || '',
+                client_email: c.client_email || '',
+                client_telephone: c.client_telephone || ''
+            });
+            
+            const currentAcqpa = c.mesures_acqpa || {};
+            if (!currentAcqpa.couches) {
+                currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
+            }
+            setAcqpaData(currentAcqpa);
+            setNewMat(prev => ({...prev, date_debut: c.date_debut || '', date_fin: c.date_fin || ''}));
+        }
+
+        // 3. Tâches
+        if (results[2].status === 'fulfilled' && results[2].value.data) {
+            const t = results[2].value.data;
+            const formattedTasks = t.map((task: any) => ({
+                ...task,
+                subtasks: Array.isArray(task.subtasks) ? task.subtasks : [] 
+            }));
+            setTasks(formattedTasks);
+        }
+
+        // 4. Documents
+        if (results[3].status === 'fulfilled' && results[3].value.data) {
+            setDocuments(results[3].value.data);
+        }
+
+        // 5. Matériel
+        if (results[4].status === 'fulfilled' && results[4].value.data) {
+            setMaterielPrevu(results[4].value.data);
+        }
+
+        // 6. Fournitures (Avec Jointure)
+        if (results[5].status === 'fulfilled' && results[5].value.data) {
+            setFournituresPrevu(results[5].value.data);
+        }
+
+        // 7. Catalogues Materiel
+        if (results[6].status === 'fulfilled' && results[6].value.data) {
+            setCatalogueMateriel(results[6].value.data);
+        }
+
+        // 8. Catalogue Stock
+        if (results[7].status === 'fulfilled' && results[7].value.data) {
+            setStockFournitures(results[7].value.data);
+        }
+
+    } catch (error: any) {
+        console.error("Erreur chargement global:", error);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  useEffect(() => { 
+      fetchChantierData();
   }, [id]);
 
 
@@ -295,7 +314,7 @@ export default function ChantierDetail() {
       const nomProduit = selectedItem ? selectedItem.nom : 'Fourniture Inconnue';
       const uniteProduit = selectedItem ? selectedItem.unite : 'U';
 
-      const { data, error } = await supabase.from('chantier_fournitures').insert([{
+      const { error } = await supabase.from('chantier_fournitures').insert([{
           chantier_id: id,
           fourniture_ref_id: newFourniture.fourniture_ref_id,
           nom: nomProduit, 
@@ -304,20 +323,21 @@ export default function ChantierDetail() {
           qte_restante: newFourniture.qte_prevue || 0,
           qte_consommee: 0,
           seuil_alerte: 0 
-      }]).select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`);
+      }]);
 
       if(error) {
           alert("Erreur ajout fourniture: " + error.message);
-      } else if (data) {
-          setFournituresPrevu([data[0], ...fournituresPrevu]);
+      } else {
           setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 });
           setSupplySearch(""); 
+          fetchChantierData();
       }
   };
 
   const updateConsommation = async (fournitureId: string, newConso: number) => {
       const safeConso = Math.max(0, newConso);
       
+      // Mise à jour locale pour la réactivité
       setFournituresPrevu(prev => prev.map(f => {
           if (f.id === fournitureId) {
               return { ...f, qte_consommee: safeConso };
@@ -325,6 +345,7 @@ export default function ChantierDetail() {
           return f;
       }));
 
+      // Mise à jour BDD
       const { error } = await supabase
           .from('chantier_fournitures')
           .update({ qte_consommee: safeConso })
@@ -339,7 +360,7 @@ export default function ChantierDetail() {
       if(confirm("Retirer cette fourniture ?")) {
           const { error } = await supabase.from('chantier_fournitures').delete().eq('id', fId);
           if(!error) {
-             setFournituresPrevu(prev => prev.filter(f => f.id !== fId));
+             fetchChantierData();
           } else {
               alert("Erreur suppression: " + error.message);
           }
@@ -359,18 +380,18 @@ export default function ChantierDetail() {
   // --- GESTION MATÉRIEL ---
   const handleAddMateriel = async () => {
       if (!newMat.materiel_id) return alert("Sélectionnez un matériel");
-      const { data, error } = await supabase.from('chantier_materiel').insert([{
+      const { error } = await supabase.from('chantier_materiel').insert([{
           chantier_id: id,
           materiel_id: newMat.materiel_id,
           date_debut: newMat.date_debut || null,
           date_fin: newMat.date_fin || null,
           qte_prise: newMat.qte || 1,
           statut: 'prevu'
-      }]).select('*, materiel(*)');
+      }]);
 
-      if (!error && data) { 
-          setMaterielPrevu([data[0], ...materielPrevu]);
+      if (!error) { 
           setShowAddMaterielModal(false); 
+          fetchChantierData();
       } else {
           alert("Erreur ajout matériel : " + error?.message);
       }
@@ -378,8 +399,8 @@ export default function ChantierDetail() {
 
   const deleteMateriel = async (matId: string) => {
       if (confirm('Retirer ce matériel du chantier ?')) {
-          await supabase.from('chantier_materiel').delete().eq('id', matId);
-          setMaterielPrevu(prev => prev.filter(m => m.id !== matId));
+          const { error } = await supabase.from('chantier_materiel').delete().eq('id', matId);
+          if (!error) fetchChantierData();
       }
   };
 
@@ -456,13 +477,13 @@ export default function ChantierDetail() {
     const { error } = await supabase.storage.from('documents').upload(filePath, file);
     if(!error) {
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
-        const { data } = await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]).select();
-        if (data) setDocuments([data[0], ...documents]);
+        await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]);
+        fetchChantierData();
     }
     setUploading(false);
   };
   
-  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); setDocuments(prev => prev.filter(d => d.id !== docId)); } };
+  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ce document ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
@@ -480,7 +501,7 @@ export default function ChantierDetail() {
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                        Budget : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)
+                        Budget Heures : {chantier.heures_consommees}h / {chantier.heures_budget}h ({percentHeures}%)
                     </p>
                 </div>
             </div>
@@ -656,7 +677,7 @@ export default function ChantierDetail() {
                                                 <span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span>
                                             </div>
                                             <div className="flex gap-2 text-white/50 items-center">
-                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu">
+                                                <div className="flex items-center gap-1 bg-white/5 px-1.5 rounded" title="Effectif prévu pour cette étape">
                                                     <Users size={10} className="text-blue-300"/>
                                                     <span className="font-black text-blue-200">{st.effectif || 1}p</span>
                                                 </div>
@@ -733,7 +754,7 @@ export default function ChantierDetail() {
             </div>
         )}
 
-        {/* ONGLET 3 : FOURNITURES (SUIVI DÉTAILLÉ) */}
+        {/* ONGLET 3 : FOURNITURES (MISE À JOUR MAJEURE) */}
         {activeTab === 'fournitures' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
                 
@@ -748,16 +769,39 @@ export default function ChantierDetail() {
                             <div className="relative" ref={searchWrapperRef}>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Produit (Recherche)</label>
                                 <div className="relative">
-                                    <input type="text" className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" placeholder="Tapez pour chercher..." value={supplySearch} onChange={(e) => { setSupplySearch(e.target.value); setShowSupplyList(true); if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); }} onFocus={() => setShowSupplyList(true)} />
+                                    <input 
+                                        type="text" 
+                                        className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors"
+                                        placeholder="Tapez pour chercher..."
+                                        value={supplySearch}
+                                        onChange={(e) => {
+                                            setSupplySearch(e.target.value);
+                                            setShowSupplyList(true);
+                                            if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''});
+                                        }}
+                                        onFocus={() => setShowSupplyList(true)}
+                                    />
                                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                                 </div>
                                 {showSupplyList && supplySearch && (
                                     <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto custom-scrollbar z-50 animate-in fade-in slide-in-from-top-2">
                                         {filteredStock.length > 0 ? (
                                             filteredStock.map(s => (
-                                                <div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}>
+                                                <div 
+                                                    key={s.id} 
+                                                    className="p-3 hover:bg-yellow-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0"
+                                                    onClick={() => {
+                                                        setSupplySearch(s.nom);
+                                                        setNewFourniture({...newFourniture, fourniture_ref_id: s.id});
+                                                        setShowSupplyList(false);
+                                                    }}
+                                                >
                                                     <div className="font-bold text-sm text-gray-800">{s.nom}</div>
-                                                    <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">{s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}{s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}<span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span></div>
+                                                    <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">
+                                                        {s.ral && <span className="flex items-center gap-1"><Palette size={10}/> {s.ral}</span>}
+                                                        {s.conditionnement && <span className="flex items-center gap-1"><Box size={10}/> {s.conditionnement}</span>}
+                                                        <span className="text-blue-400 font-bold ml-auto">{s.qte_stock} {s.unite} dispo</span>
+                                                    </div>
                                                 </div>
                                             ))
                                         ) : (
@@ -769,7 +813,12 @@ export default function ChantierDetail() {
                             <div>
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Nécessaire {newFourniture.fourniture_ref_id && <span className="text-blue-500 normal-case">(en {getSelectedUnit()})</span>}</label>
                                 <div className="flex items-center gap-2">
-                                    <input type="number" value={newFourniture.qte_prevue || ''} onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" />
+                                    <input 
+                                        type="number" 
+                                        value={newFourniture.qte_prevue || ''} 
+                                        onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} 
+                                        className="flex-1 bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" 
+                                    />
                                     {newFourniture.fourniture_ref_id && (<span className="bg-gray-100 text-gray-500 font-bold text-xs px-3 py-3 rounded-xl">{getSelectedUnit()}</span>)}
                                 </div>
                             </div>
@@ -824,6 +873,9 @@ export default function ChantierDetail() {
                                             </tr>
                                         );
                                     })}
+                                    {fournituresPrevu.length === 0 && (
+                                        <tr><td colSpan={6} className="p-8 text-center text-gray-400 italic">Aucune fourniture prévue.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -1111,7 +1163,7 @@ export default function ChantierDetail() {
         </div>
       )}
 
-      {/* MODALE MATÉRIEL */}
+      {/* MODALE AJOUT MATÉRIEL */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
