@@ -27,7 +27,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
   const [loading, setLoading] = useState(true);
   const [activeCount, setActiveCount] = useState(0);
   
-  // Nouvel état : Date affichée (Aujourd'hui ou Prévision)
+  // Date affichée (Aujourd'hui ou Prévision)
   const [displayDate, setDisplayDate] = useState<string | null>(null);
   const [isForecast, setIsForecast] = useState(false);
 
@@ -36,12 +36,12 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
       const todayObj = new Date();
       const todayStr = toLocalISOString(todayObj);
       
-      // On regarde jusqu'à 4 jours devant (pour sauter le week-end)
+      // On regarde jusqu'à 4 jours devant
       const lookAheadObj = new Date(todayObj);
       lookAheadObj.setDate(todayObj.getDate() + 4);
       const lookAheadStr = toLocalISOString(lookAheadObj);
 
-      // 1. Récupération large (Aujourd'hui -> J+4)
+      // 1. Récupération large
       const { data: assignments } = await supabase
         .from('planning')
         .select(`
@@ -54,49 +54,57 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         .gte('date_debut', todayStr)
         .lte('date_debut', lookAheadStr)
         .eq('type', 'chantier')
-        .order('date_debut', { ascending: true }); // Important pour avoir les dates proches en premier
+        .order('date_debut', { ascending: true });
 
       if (assignments && assignments.length > 0) {
         
         // 2. Déterminer quelle date afficher
-        // On cherche s'il y a des tâches pour AUJOURD'HUI
         const todayTasks = assignments.filter((a: any) => a.date_debut === todayStr);
         
         let targetDate = todayStr;
         let targetTasks = todayTasks;
         let isFuture = false;
 
-        // Si rien aujourd'hui, on prend la première date disponible dans la liste
+        // Si rien aujourd'hui, on prend la première date disponible
         if (todayTasks.length === 0) {
             targetDate = assignments[0].date_debut;
             targetTasks = assignments.filter((a: any) => a.date_debut === targetDate);
             isFuture = true;
         }
 
-        // 3. Regroupement par chantier (comme avant)
+        // 3. Regroupement par chantier (AVEC DÉDOUBLONNAGE)
         const grouped: any = {};
-        let count = 0;
+        // Set global pour compter les personnes uniques au total sur la journée
+        const uniquePeopleIds = new Set();
 
         targetTasks.forEach((assign: any) => {
           if (assign.employes && assign.chantiers) {
             const chantierId = assign.chantiers.id;
+            
+            // Init du groupe chantier si inexistant
             if (!grouped[chantierId]) {
               grouped[chantierId] = {
                 nom: assign.chantiers.nom,
                 equipe: []
               };
             }
-            grouped[chantierId].equipe.push(assign.employes);
-            count++;
+
+            // CORRECTION DOUBLONS : Vérifier si l'employé est déjà dans la liste de ce chantier
+            const isAlreadyInTeam = grouped[chantierId].equipe.some((e: any) => e.id === assign.employes.id);
+
+            if (!isAlreadyInTeam) {
+                grouped[chantierId].equipe.push(assign.employes);
+                uniquePeopleIds.add(assign.employes.id);
+            }
           }
         });
 
         setStaffing(Object.values(grouped));
-        setActiveCount(count);
+        setActiveCount(uniquePeopleIds.size); // Compte réel de personnes uniques
         setDisplayDate(targetDate);
         setIsForecast(isFuture);
       } else {
-        // Vraiment rien sur 4 jours
+        // Vraiment rien
         setStaffing([]);
         setActiveCount(0);
         setDisplayDate(todayStr);
@@ -114,15 +122,14 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
   return (
     <div className={`h-full w-full rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 hover:scale-[1.01] transition-transform duration-300 ${isForecast ? 'bg-[#2d3436]' : 'bg-[#e17055]'}`}>
       
-      {/* HEADER HARMONISÉ */}
-      <div className="flex justify-between items-start mb-6 z-10">
+      {/* HEADER */}
+      <div className="flex justify-between items-start mb-4 z-10 shrink-0">
         <Link href="/planning" className="group/title">
             <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
             Staffing <span className={`opacity-40 ${isForecast ? 'text-gray-400' : 'text-orange-900'}`}>Terrain</span>
             </h2>
             
             <div className="flex items-center gap-2 mt-1">
-                {/* Point pulsant : Blanc si En direct, Orange si Prévision */}
                 <span className="relative flex h-2 w-2">
                   <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isForecast ? 'bg-orange-400' : 'bg-white'}`}></span>
                   <span className={`relative inline-flex rounded-full h-2 w-2 ${isForecast ? 'bg-orange-500' : 'bg-white'}`}></span>
@@ -145,8 +152,9 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
         </Link>
       </div>
 
-      {/* LISTE DES CHANTIERS ACTIFS */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 z-10">
+      {/* LISTE DES CHANTIERS (SCROLLABLE) */}
+      {/* flex-1 et min-h-0 sont cruciaux pour que le scroll fonctionne sans agrandir la div parente */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1 z-10">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
             <Loader2 className="animate-spin text-white" size={30} />
@@ -166,7 +174,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                 <div className={`p-1.5 bg-white/20 rounded-lg shadow-sm text-white group-hover/site:bg-white transition-colors ${isForecast ? 'group-hover/site:text-[#2d3436]' : 'group-hover/site:text-[#e17055]'}`}>
                   <MapPin size={14} />
                 </div>
-                <h3 className="font-black text-white text-[13px] truncate uppercase tracking-tighter">
+                <h3 className="font-black text-white text-[12px] truncate uppercase tracking-tighter w-full">
                   {site.nom}
                 </h3>
               </div>
@@ -175,11 +183,11 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
                 {site.equipe.map((emp: any) => (
                   <div 
                     key={emp.id} 
-                    className="bg-black/20 px-2.5 py-1 rounded-xl flex items-center gap-2 border border-white/5 shadow-sm hover:bg-black/30 transition-colors cursor-default"
+                    className="bg-black/20 px-2 py-1 rounded-xl flex items-center gap-2 border border-white/5 shadow-sm hover:bg-black/30 transition-colors cursor-default"
                     title={emp.role}
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shadow-lg ${isForecast ? 'bg-orange-400 shadow-orange-500/50' : 'bg-green-400 shadow-green-500/50'}`}></div>
-                    <span className="text-[10px] font-bold text-white uppercase tracking-tighter">
+                    <span className="text-[9px] font-bold text-white uppercase tracking-tighter">
                       {emp.nom} {emp.prenom?.substring(0,1)}.
                     </span>
                   </div>
@@ -192,7 +200,7 @@ export default function StaffingTile({ staffCount = 0 }: StaffingTileProps) {
 
       {/* FOOTER STATS */}
       {staffing.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center z-10">
+        <div className="mt-2 pt-3 border-t border-white/10 flex justify-between items-center z-10 shrink-0">
           <p className="text-[9px] font-black text-white/50 uppercase italic flex items-center gap-1">
              <Map size={12} /> {staffing.length} Site(s) {isForecast ? 'prévus' : 'actifs'}
           </p>
