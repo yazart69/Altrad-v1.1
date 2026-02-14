@@ -272,6 +272,7 @@ export default function ChantierDetail() {
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
+
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:pb-0">
       
@@ -431,7 +432,6 @@ export default function ChantierDetail() {
                                     </div>
                                     <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden flex">
                                         <div className="h-full bg-blue-300" style={{width: '50%'}}></div> {/* Point de repère visuel */}
-                                        {/* Cette barre est simplifiée pour l'exemple, l'idéal est un chart library, mais ici on fait du full CSS */}
                                         <div className={`h-full ${stats.real > stats.planned ? 'bg-red-400' : 'bg-emerald-400'}`} style={{width: `${Math.min(100, (stats.real / (stats.planned * 1.5)) * 100)}%`}}></div>
                                     </div>
                                 </div>
@@ -715,7 +715,6 @@ export default function ChantierDetail() {
                 </div>
             </div>
         )}
-
         {/* ============================================================================================ */}
         {/* ONGLET 6 : HSE                                                                               */}
         {/* ============================================================================================ */}
@@ -872,143 +871,6 @@ export default function ChantierDetail() {
                     <div><label className="text-[10px] font-bold text-gray-400 uppercase">Quantité</label><input type="number" min="1" className="w-full bg-gray-50 p-3 rounded-xl font-bold" value={newMat.qte} onChange={e => setNewMat({...newMat, qte: parseInt(e.target.value)})} /></div>
                 </div>
                 <div className="mt-6 flex justify-end gap-2"><button onClick={() => setShowAddMaterielModal(false)} className="px-4 py-2 text-gray-400 font-bold hover:bg-gray-50 rounded-xl">Annuler</button><button onClick={handleAddMateriel} className="bg-[#6c5ce7] text-white px-6 py-2 rounded-xl font-bold hover:bg-[#5b4bc4]">Confirmer</button></div>
-            </div>
-        </div>
-      )}
-
-    </div>
-  );
-}
-{/* ============================================================================================ */}
-      {/* MODALE ACQPA                                                                                 */}
-      {/* ============================================================================================ */}
-      {showACQPAModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto print:hidden">
-            <div className="bg-white rounded-[30px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-                <div className="bg-[#0984e3] p-6 text-white flex justify-between items-center shrink-0">
-                    <div>
-                        <h2 className="text-2xl font-black uppercase tracking-tight">Formulaire ACQPA</h2>
-                        <p className="text-blue-100 font-bold text-xs uppercase tracking-widest">Contrôle Qualité Peinture</p>
-                    </div>
-                    <button onClick={() => setShowACQPAModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors">
-                        <X size={24} />
-                    </button>
-                </div>
-                <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
-                            <Thermometer className="text-[#0984e3]"/> Ambiance
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {[{l:'Temp. Air (°C)',k:'temp_air'},{l:'Temp. Support (°C)',k:'temp_support'},{l:'Hygrométrie (%)',k:'hygrometrie'},{l:'Point Rosée (°C)',k:'point_rosee'},{l:'Delta T',k:'delta_t'}].map(f=>(
-                                <div key={f.k}>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label>
-                                    <input type="number" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
-                            <Layers className="text-[#0984e3]"/> Préparation Support
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {[{l:'Degré de Soin',k:'degre_soin'},{l:'Propreté',k:'proprete'},{l:'Rugosité (µm)',k:'rugosite'},{l:'Sels Solubles',k:'sels'}].map(f=>(
-                                <div key={f.k}>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label>
-                                    <input type="text" className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                    <section>
-                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
-                            <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg">
-                                <Droplets className="text-[#0984e3]"/> Produits & Couches
-                            </h3>
-                            <button onClick={addCouche} className="flex items-center gap-1 bg-blue-50 text-[#0984e3] px-3 py-1 rounded-lg text-xs font-black uppercase hover:bg-blue-100 transition-colors">
-                                <Plus size={14}/> Ajouter
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            {acqpaData.couches && acqpaData.couches.map((c:any,i:number)=>(
-                                <div key={i} className="bg-gray-50 p-4 rounded-xl relative group">
-                                    <div className="absolute -top-3 left-3 bg-[#0984e3] text-white text-[10px] font-bold px-2 py-0.5 rounded">Couche {i+1}</div>
-                                    <button onClick={()=>removeCouche(i)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
-                                        <div><label className="text-[9px] font-bold text-gray-400 uppercase">Type</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.type} onChange={e=>updateCouche(i,'type',e.target.value)}/></div>
-                                        <div><label className="text-[9px] font-bold text-gray-400 uppercase">Lot</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.lot} onChange={e=>updateCouche(i,'lot',e.target.value)}/></div>
-                                        <div><label className="text-[9px] font-bold text-gray-400 uppercase">Méthode</label><input className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.methode} onChange={e=>updateCouche(i,'methode',e.target.value)}/></div>
-                                        <div><label className="text-[9px] font-bold text-gray-400 uppercase">Dilution</label><input type="number" className="w-full bg-white border border-gray-200 p-2 rounded-lg font-bold" value={c.dilution} onChange={e=>updateCouche(i,'dilution',e.target.value)}/></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                            <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Date Appli</label><input type="date" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_date || ''} onChange={e => setAcqpaData({...acqpaData, app_date: e.target.value})} /></div>
-                            <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Applicateur</label><input className="w-full bg-gray-50 p-2 rounded-xl font-bold text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.app_nom || ''} onChange={e => setAcqpaData({...acqpaData, app_nom: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">DFT Théorique (µm)</label><input type="number" className="w-full bg-gray-50 p-2 rounded-xl font-bold text-center text-gray-800 outline-none border border-gray-100 focus:border-[#0984e3]" value={acqpaData.dft_theo || ''} onChange={e => setAcqpaData({...acqpaData, dft_theo: e.target.value})} /></div>
-                        </div>
-                    </section>
-                    <section>
-                        <h3 className="flex items-center gap-2 font-black text-gray-800 uppercase text-lg mb-4 border-b border-gray-100 pb-2">
-                            <Ruler className="text-[#0984e3]"/> Contrôles Finaux
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                            {[{l:'Ep. Humide',k:'ep_humide'},{l:'Ep. Sèche',k:'dft_mesure'},{l:'Adhérence',k:'adherence'},{l:'Défauts',k:'defauts',t:'text'},{l:'Retouches',k:'retouches',t:'text'}].map(f=>(
-                                <div key={f.k}>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">{f.l}</label>
-                                    <input type={f.t||'number'} className="w-full bg-gray-50 border border-gray-100 p-2 rounded-xl font-bold text-gray-800 text-center outline-none focus:border-[#0984e3] focus:bg-white transition-colors" value={acqpaData[f.k]||''} onChange={e=>setAcqpaData({...acqpaData,[f.k]:e.target.value})}/>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                </div>
-                <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-4">
-                    <button onClick={()=>{setShowACQPAModal(false);handleSave()}} className="bg-[#0984e3] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg hover:scale-105 transition-transform">
-                        Enregistrer & Fermer
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* ============================================================================================ */}
-      {/* MODALE AJOUT MATÉRIEL                                                                        */}
-      {/* ============================================================================================ */}
-      {showAddMaterielModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 print:hidden">
-            <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
-                <h3 className="font-black text-xl text-[#2d3436] mb-4 flex items-center gap-2">
-                    <Truck className="text-[#6c5ce7]"/> Ajouter Matériel
-                </h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">Matériel</label>
-                        <select className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none cursor-pointer" onChange={e => setNewMat({...newMat, materiel_id: e.target.value})}>
-                            <option value="">Sélectionner...</option>
-                            {catalogueMateriel.map(m => <option key={m.id} value={m.id}>{m.nom} ({m.type_stock})</option>)}
-                        </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Début</label>
-                            <input type="date" className="w-full bg-gray-50 p-3 rounded-xl font-bold" value={newMat.date_debut} onChange={e => setNewMat({...newMat, date_debut: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Fin</label>
-                            <input type="date" className="w-full bg-gray-50 p-3 rounded-xl font-bold" value={newMat.date_fin} onChange={e => setNewMat({...newMat, date_fin: e.target.value})} />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">Quantité</label>
-                        <input type="number" min="1" className="w-full bg-gray-50 p-3 rounded-xl font-bold" value={newMat.qte} onChange={e => setNewMat({...newMat, qte: parseInt(e.target.value)})} />
-                    </div>
-                </div>
-                <div className="mt-6 flex justify-end gap-2">
-                    <button onClick={() => setShowAddMaterielModal(false)} className="px-4 py-2 text-gray-400 font-bold hover:bg-gray-50 rounded-xl">Annuler</button>
-                    <button onClick={handleAddMateriel} className="bg-[#6c5ce7] text-white px-6 py-2 rounded-xl font-bold hover:bg-[#5b4bc4]">Confirmer</button>
-                </div>
             </div>
         </div>
       )}
