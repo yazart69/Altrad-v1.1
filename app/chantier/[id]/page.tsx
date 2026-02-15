@@ -10,7 +10,7 @@ import {
   Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
   Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
   Euro, HardHat, Briefcase, Zap, MapPin, Calculator, Wallet, Receipt, Hash, Check, LayoutDashboard,
-  CreditCard, FileCheck, CalendarClock
+  CreditCard, FileCheck, CalendarClock, BellRing
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -51,7 +51,7 @@ export default function ChantierDetail() {
   const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
   const [stockFournitures, setStockFournitures] = useState<any[]>([]); 
   
-  // NOUVEAU : Liste Facturation / TS
+  // Facturation
   const [facturationList, setFacturationList] = useState<any[]>([]);
   
   // --- FORMULAIRES ---
@@ -60,7 +60,17 @@ export default function ChantierDetail() {
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
-  const [newFacture, setNewFacture] = useState({ type: 'Facture', label: '', montant: 0, date_emission: '', date_echeance: '', statut: 'prevu' });
+  
+  // Formulaire Facture mis à jour
+  const [newFacture, setNewFacture] = useState({ 
+      type: 'Facture', 
+      label: '', 
+      montant: 0, 
+      date_emission: '', // Date d'envoi
+      date_echeance: '', // Date reception prevu / Echéance
+      statut: 'prevu' 
+  });
+
   const [supplySearch, setSupplySearch] = useState(""); 
   const [showSupplyList, setShowSupplyList] = useState(false); 
   const searchWrapperRef = useRef<HTMLDivElement>(null); 
@@ -87,7 +97,7 @@ export default function ChantierDetail() {
             supabase.from('chantier_fournitures').select(`*, fournitures_stock ( id, nom, ral, conditionnement, qte_stock, unite )`).eq('chantier_id', id),
             supabase.from('materiel').select('*').order('nom'),
             supabase.from('fournitures_stock').select('*').order('nom'),
-            supabase.from('chantier_facturation').select('*').eq('chantier_id', id).order('date_emission', { ascending: true }) // FETCH FACTURATION
+            supabase.from('chantier_facturation').select('*').eq('chantier_id', id).order('date_echeance', { ascending: true }) 
         ]);
 
         if (results[0].status === 'fulfilled' && results[0].value.data) setEmployes(results[0].value.data);
@@ -139,10 +149,47 @@ export default function ChantierDetail() {
       }
   };
 
-  const updateFactureStatut = async (fid: string, newStatut: string) => {
-      await supabase.from('chantier_facturation').update({ statut: newStatut }).eq('id', fid);
+  // Toggle "Reçu" / "Payé" directement
+  const toggleFactureRecu = async (facture: any) => {
+      const newStatus = facture.statut === 'paye' ? 'envoye' : 'paye';
+      await supabase.from('chantier_facturation').update({ statut: newStatus }).eq('id', facture.id);
       fetchChantierData(); 
   };
+
+  // --- CALCULS KPI FINANCIERS ---
+  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
+
+  // 1. MONTANT MARCHÉ DYNAMIQUE
+  // On inclut les TS, +Values, -Values qui ne sont pas "prévus" (donc envoyés, validés ou payés)
+  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
+  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
+  
+  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  
+  const montantMarcheInitial = chantier.montant_marche || 0;
+  // Montant Final = Base + (TS et +Values) - (-Values)
+  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
+
+  // 2. Facturation & Encaissements
+  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
+  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  
+  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
+  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  
+  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
+
+  // 3. Coûts Directs
+  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
+  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
+  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
+
+  // 4. Marges
+  const margeBrute = montantMarcheActif - coutDirect_Reel;
+  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
+  const margeNette = margeBrute - chantier.frais_generaux_reel;
+  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
 
   // --- ACTIONS GLOBALES ---
   const handleSave = async () => {
@@ -153,7 +200,7 @@ export default function ChantierDetail() {
         cout_location_prevu: chantier.cout_location_prevu, frais_generaux: chantier.frais_generaux,
         cout_fournitures_reel: chantier.cout_fournitures_reel, cout_sous_traitance_reel: chantier.cout_sous_traitance_reel,
         cout_location_reel: chantier.cout_location_reel, frais_generaux_reel: chantier.frais_generaux_reel,
-        heures_budget: chantier.heures_budget
+        heures_budget: chantier.heures_budget, numero_otp: chantier.numero_otp, responsable: chantier.responsable, equipe_ids: chantier.equipe_ids
     };
     const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
     if (error) alert("Erreur : " + error.message); else { alert('✅ Sauvegardé !'); fetchChantierData(); }
@@ -183,32 +230,7 @@ export default function ChantierDetail() {
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
   const toggleTeamMember = (empId: string) => { const currentTeam = chantier.equipe_ids || []; if (currentTeam.includes(empId)) setChantier({...chantier, equipe_ids: currentTeam.filter((id: string) => id !== empId)}); else setChantier({...chantier, equipe_ids: [...currentTeam, empId]}); };
 
-  // --- CALCULS KPI FINANCIERS AVANCÉS ---
-  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
-
-  // 1. Gestion du Montant Marché DYNAMIQUE (Base + TS Validés)
-  const totalTS = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut === 'valide').reduce((acc, f) => acc + (f.montant || 0), 0);
-  const totalMoinsValues = facturationList.filter(f => f.type === 'MoinsValue' && f.statut === 'valide').reduce((acc, f) => acc + (f.montant || 0), 0);
-  const montantMarcheInitial = chantier.montant_marche || 0;
-  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
-
-  // 2. Facturation & Encaissements
-  const totalFacture = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu').reduce((acc, f) => acc + (f.montant || 0), 0);
-  const totalEncaisse = facturationList.filter(f => f.statut === 'paye').reduce((acc, f) => acc + (f.montant || 0), 0);
-  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
-
-  // 3. Coûts Directs
-  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
-  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
-  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
-
-  // 4. Marges (Basées sur le Montant Actif)
-  const margeBrute = montantMarcheActif - coutDirect_Reel;
-  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
-  const margeNette = margeBrute - chantier.frais_generaux_reel;
-  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
-
-  // --- Graphique Camembert Données ---
+  // Graphique Données
   const chartData = [
     { label: 'Main d\'Oeuvre', value: coutMO_Reel, color: '#3b82f6' }, 
     { label: 'Matériaux', value: chantier.cout_fournitures_reel, color: '#f97316' }, 
@@ -219,23 +241,19 @@ export default function ChantierDetail() {
   ];
   const totalChart = Math.max(montantMarcheActif, chartData.reduce((acc, d) => acc + d.value, 0));
   let currentAngle = 0;
-  const gradientParts = chartData.map(d => {
-    const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0;
-    const endAngle = currentAngle + percentage;
-    const str = `${d.color} ${currentAngle}% ${endAngle}%`;
-    currentAngle = endAngle;
-    return str;
-  }).join(', ');
+  const gradientParts = chartData.map(d => { const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; const endAngle = currentAngle + percentage; const str = `${d.color} ${currentAngle}% ${endAngle}%`; currentAngle = endAngle; return str; }).join(', ');
   const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
 
   // Autres variables render
-  const finishedTasks = tasks.filter(t => t.done);
+  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
   const employeeStats = tasks.reduce((acc: any, task: any) => { const respId = task.responsable_id || 'unassigned'; if (!acc[respId]) acc[respId] = { name: task.responsable ? `${task.responsable.prenom} ${task.responsable.nom}` : 'Non assigné', planned: 0, real: 0, tasks: 0 }; if (task.done) { acc[respId].planned += task.objectif_heures || 0; acc[respId].real += parseFloat(task.heures_reelles) || 0; acc[respId].tasks += 1; } return acc; }, {});
   const matEnCours = materielPrevu.filter(m => m.statut === 'en_cours' || m.statut === 'prevu').length;
-  const totalMateriel = materielPrevu.length;
   const fournituresConsoTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_consommee || 0), 0);
   const fournituresPrevuTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_prevue || 0), 0);
   const percentFournitures = fournituresPrevuTotal > 0 ? Math.round((fournituresConsoTotal/fournituresPrevuTotal)*100) : 0;
+
+  // Check Overdue
+  const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   return (
@@ -267,7 +285,16 @@ export default function ChantierDetail() {
 
                 {/* KPI CARDS */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:grid-cols-4">
-                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><Receipt size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Montant Marché (Final)</p><div className="text-3xl font-black text-[#2d3436] mt-1">{montantMarcheActif.toLocaleString()} €</div><div className="mt-2 text-xs font-bold text-blue-500">Base: {montantMarcheInitial.toLocaleString()} €</div></div>
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><Receipt size={50}/></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Montant Marché Final</p>
+                        <div className="text-3xl font-black text-[#2d3436] mt-1">{montantMarcheActif.toLocaleString()} €</div>
+                        <div className="mt-2 text-[9px] font-bold text-blue-400">
+                            Base: {montantMarcheInitial.toLocaleString()} €
+                            {totalTS > 0 && <span className="text-emerald-600"> + {totalTS}€ (TS)</span>}
+                            {totalMoinsValues > 0 && <span className="text-red-500"> - {totalMoinsValues}€ (MV)</span>}
+                        </div>
+                    </div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Wallet size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Marge Nette</p><div className={`text-3xl font-black mt-1 ${margeNette >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{margeNette.toLocaleString()} €</div><div className="flex items-center gap-2 mt-2"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-black">{tauxMargeNette.toFixed(1)}%</span></div></div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-purple-600"><CreditCard size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Facturé Client</p><div className="text-3xl font-black text-purple-600 mt-1">{totalFacture.toLocaleString()} €</div><div className="mt-2 text-xs font-bold text-gray-400">{percentFacturation}% du Marché</div></div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><HardHat size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coût M.O. (Chargé)</p><div className="text-3xl font-black text-orange-500 mt-1">{coutMO_Reel.toLocaleString()} €</div><p className="text-[10px] font-bold text-gray-400 mt-1">Taux: {chantier.taux_horaire_moyen} + {chantier.cpi} €/h</p></div>
@@ -293,10 +320,49 @@ export default function ChantierDetail() {
 
                 {/* TUILE FACTURATION */}
                 <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
-                    <div className="flex justify-between items-center mb-6"><h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><FileCheck className="text-[#6c5ce7]"/> Suivi Facturation & TS</h3><div className="text-right"><p className="text-[10px] font-bold uppercase text-gray-400">Reste à Facturer</p><p className="text-xl font-black text-blue-600">{(montantMarcheActif - totalFacture).toLocaleString()} €</p></div></div>
-                    <div className="w-full bg-gray-100 h-6 rounded-full overflow-hidden flex relative mb-6 border border-gray-200"><div className="h-full bg-green-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${(totalEncaisse/montantMarcheActif)*100}%`}}>Enc.</div><div className="h-full bg-blue-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${((totalFacture - totalEncaisse)/montantMarcheActif)*100}%`}}>Fact.</div></div>
-                    <table className="w-full text-left text-xs mb-4"><thead className="bg-gray-50 uppercase text-gray-400 font-black"><tr><th className="p-3 rounded-l-lg">Type</th><th className="p-3">Libellé</th><th className="p-3">Date Prévue</th><th className="p-3 text-center">Statut</th><th className="p-3 text-right">Montant HT</th><th className="p-3 text-center print:hidden">Action</th></tr></thead><tbody className="divide-y divide-gray-50 font-bold text-gray-700">{facturationList.map(f => (<tr key={f.id} className={f.type === 'TS' ? 'bg-purple-50/50' : ''}><td className="p-3"><span className={`px-2 py-1 rounded text-[9px] uppercase ${f.type==='Facture'?'bg-blue-100 text-blue-600':f.type==='TS'?'bg-purple-100 text-purple-600':'bg-gray-100'}`}>{f.type}</span></td><td className="p-3">{f.label}</td><td className="p-3 text-gray-500">{f.date_echeance}</td><td className="p-3 text-center"><select value={f.statut} onChange={(e) => updateFactureStatut(f.id, e.target.value)} className="bg-transparent outline-none cursor-pointer"><option value="prevu">Prévu</option><option value="envoye">Envoyé</option><option value="paye">Payé</option><option value="valide">Validé (TS)</option></select></td><td className="p-3 text-right">{f.montant.toLocaleString()} €</td><td className="p-3 text-center print:hidden"><button onClick={() => deleteFacture(f.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button></td></tr>))}</tbody></table>
-                    <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-xl print:hidden"><select className="bg-white p-2 rounded-lg text-xs font-bold outline-none border border-gray-200" value={newFacture.type} onChange={e => setNewFacture({...newFacture, type: e.target.value})}><option value="Facture">Facture</option><option value="Acompte">Acompte</option><option value="TS">Travaux Suppl.</option><option value="PlusValue">+ Value</option><option value="MoinsValue">- Value</option><option value="Solde">Solde</option></select><input type="text" placeholder="Libellé..." className="flex-1 bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.label} onChange={e => setNewFacture({...newFacture, label: e.target.value})} /><input type="number" placeholder="Montant HT" className="w-24 bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.montant} onChange={e => setNewFacture({...newFacture, montant: parseFloat(e.target.value)})} /><input type="date" className="bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.date_echeance} onChange={e => setNewFacture({...newFacture, date_echeance: e.target.value})} /><button onClick={handleAddFacture} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700"><Plus size={16}/></button></div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><FileCheck className="text-[#6c5ce7]"/> Suivi Facturation & TS</h3>
+                        <div className="text-right"><p className="text-[10px] font-bold uppercase text-gray-400">Reste à Facturer</p><p className="text-xl font-black text-blue-600">{(montantMarcheActif - totalFacture).toLocaleString()} €</p></div>
+                    </div>
+                    
+                    {/* BARRE D'AVANCEMENT FACTURATION */}
+                    <div className="w-full bg-gray-100 h-6 rounded-full overflow-hidden flex relative mb-6 border border-gray-200">
+                         <div className="h-full bg-green-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? (totalEncaisse/montantMarcheActif)*100 : 0}%`}}>Enc.</div>
+                         <div className="h-full bg-blue-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? ((totalFacture - totalEncaisse)/montantMarcheActif)*100 : 0}%`}}>Fact.</div>
+                    </div>
+
+                    <table className="w-full text-left text-xs mb-4">
+                        <thead className="bg-gray-50 uppercase text-gray-400 font-black"><tr><th className="p-3 rounded-l-lg">Type</th><th className="p-3">Libellé</th><th className="p-3">Envoi</th><th className="p-3">Echéance</th><th className="p-3 text-right">Montant HT</th><th className="p-3 text-center">Reçu</th><th className="p-3 text-center print:hidden">Action</th></tr></thead>
+                        <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
+                            {facturationList.map(f => (
+                                <tr key={f.id} className={f.type === 'TS' ? 'bg-purple-50/50' : f.type === 'MoinsValue' ? 'bg-red-50/50' : ''}>
+                                    <td className="p-3"><span className={`px-2 py-1 rounded text-[9px] uppercase ${f.type==='Facture'?'bg-blue-100 text-blue-600':f.type==='TS'?'bg-purple-100 text-purple-600':'bg-gray-100'}`}>{f.type}</span></td>
+                                    <td className="p-3">{f.label}</td>
+                                    <td className="p-3 text-gray-500">{f.date_emission || '-'}</td>
+                                    <td className={`p-3 ${isOverdue(f) ? 'text-red-500 font-black flex items-center gap-1' : 'text-gray-500'}`}>{isOverdue(f) && <AlertCircle size={12}/>} {f.date_echeance || '-'}</td>
+                                    <td className={`p-3 text-right ${f.type === 'MoinsValue' ? 'text-red-500' : ''}`}>{f.montant.toLocaleString()} €</td>
+                                    <td className="p-3 text-center">
+                                        <div onClick={() => toggleFactureRecu(f)} className={`w-5 h-5 rounded mx-auto cursor-pointer flex items-center justify-center border-2 transition-all ${f.statut === 'paye' ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'}`}>
+                                            {f.statut === 'paye' && <Check size={14} className="text-white"/>}
+                                        </div>
+                                    </td>
+                                    <td className="p-3 text-center print:hidden"><button onClick={() => deleteFacture(f.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    {/* Formulaire Ajout Facture (Caché Impression) */}
+                    <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-xl print:hidden">
+                        <select className="bg-white p-2 rounded-lg text-xs font-bold outline-none border border-gray-200" value={newFacture.type} onChange={e => setNewFacture({...newFacture, type: e.target.value})}><option value="Facture">Facture</option><option value="Acompte">Acompte</option><option value="TS">Travaux Suppl.</option><option value="PlusValue">+ Value</option><option value="MoinsValue">- Value</option><option value="Solde">Solde</option></select>
+                        <input type="text" placeholder="Libellé..." className="flex-1 bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.label} onChange={e => setNewFacture({...newFacture, label: e.target.value})} />
+                        <input type="number" placeholder="Montant HT" className="w-24 bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.montant} onChange={e => setNewFacture({...newFacture, montant: parseFloat(e.target.value)})} />
+                        <div className="flex flex-col gap-1">
+                            <input type="date" title="Date Envoi" className="bg-white p-1 rounded-lg text-[10px] outline-none border border-gray-200" value={newFacture.date_emission} onChange={e => setNewFacture({...newFacture, date_emission: e.target.value})} />
+                            <input type="date" title="Echéance" className="bg-white p-1 rounded-lg text-[10px] outline-none border border-gray-200 text-red-400" value={newFacture.date_echeance} onChange={e => setNewFacture({...newFacture, date_echeance: e.target.value})} />
+                        </div>
+                        <button onClick={handleAddFacture} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700"><Plus size={16}/></button>
+                    </div>
                 </div>
             </div>
         )}
