@@ -4,10 +4,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ClipboardCheck, Users, Shield, MapPin, User, Check, X, Save, PenTool, AlertCircle, 
-  Trash2, MessageSquare, Camera, Printer, Clock, FileText, ChevronRight, AlertTriangle, Eye
+  Trash2, MessageSquare, Camera, Printer, Clock, FileText, ChevronRight, AlertTriangle, Eye, Plus
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
-import { RISK_DATABASE, EQUIPMENT_TYPES } from '../data'; // Import des données métiers
+import { RISK_DATABASE, EQUIPMENT_TYPES } from '../data'; // Assurez-vous que le chemin est bon
 
 // --- TYPES ---
 interface PrejobProps {
@@ -32,7 +32,7 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
     risques_selectionnes: [] as string[], // IDs des risques
     epi_selectionnes: [] as string[],
     mesures_specifiques: '',
-    participants_presents: equipe.map(e => e.id) // Par défaut toute l'équipe
+    participants_presents: equipe ? equipe.map(e => e.id) : [] // Sécurité si equipe est undefined
   });
   
   const sigPad = useRef<any>(null); // Ref pour la signature
@@ -66,9 +66,10 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
   };
 
   const handleSave = async () => {
-    if (sigPad.current.isEmpty()) return alert("La signature de l'animateur est obligatoire.");
+    if (sigPad.current && sigPad.current.isEmpty()) return alert("La signature de l'animateur est obligatoire.");
     
-    const signatureData = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
+    // Si le composant n'est pas chargé (ex: step différent), on ignore ou on gère autrement
+    const signatureData = sigPad.current ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') : null;
     
     const payload = {
         chantier_id: chantierId,
@@ -78,8 +79,8 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
         risques_id: formData.risques_selectionnes,
         epi_ids: formData.epi_selectionnes,
         mesures_specifiques: `${formData.zone_travail} - ${formData.mesures_specifiques}`,
-        participants: formData.participants_presents, // On stocke les IDs des présents
-        signatures: { animateur: signatureData } // Stockage JSON simple
+        participants: formData.participants_presents, 
+        signatures: { animateur: signatureData }
     };
 
     const { error } = await supabase.from('chantier_prejobs').insert([payload]);
@@ -88,10 +89,10 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
         alert("✅ Pre-Job enregistré avec succès !");
         setView('list');
         fetchArchives();
-        setStep(1); // Reset
+        setStep(1); 
+        // Reset form data si besoin
     }
   };
-
   // --- VUE : LISTE DES ARCHIVES ---
   if (view === 'list') {
     return (
@@ -193,7 +194,6 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Tâche Principale (Activité)</label>
                      <select className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-gray-800 outline-none cursor-pointer focus:ring-2 ring-red-100" value={formData.tache_principale} onChange={e => setFormData({...formData, tache_principale: e.target.value})}>
                          <option value="">Sélectionner l'activité du jour...</option>
-                         {/* On déduit les tâches uniques depuis la base de risques */}
                          {Array.from(new Set(RISK_DATABASE.map(r => r.task))).map(task => (
                              <option key={task} value={task}>{task}</option>
                          ))}
@@ -203,7 +203,7 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
           </div>
         )}
 
-        {/* ÉTAPE 2 : ANALYSE DES RISQUES (Dynamique selon Tâche) */}
+        {/* ÉTAPE 2 : ANALYSE DES RISQUES */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
              <div className="flex items-center gap-4 mb-6">
@@ -215,7 +215,6 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
              </div>
 
              <div className="space-y-4">
-                 {/* On filtre les risques liés à la tâche sélectionnée + Les risques génériques "Logistique" */}
                  {RISK_DATABASE.filter(r => r.task === formData.tache_principale || r.category === 'Logistique').map(risk => (
                      <div key={risk.id} onClick={() => toggleRisk(risk.id)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${formData.risques_selectionnes.includes(risk.id) ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
                          <div className="flex items-start gap-3">
@@ -227,8 +226,6 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
                                      <h4 className="font-black text-gray-800 uppercase text-sm mb-1">{risk.category} - {risk.task}</h4>
                                      <span className="text-[9px] font-black text-gray-300">{risk.id}</span>
                                  </div>
-                                 
-                                 {/* Affichage conditionnel des détails si sélectionné */}
                                  {formData.risques_selectionnes.includes(risk.id) && (
                                      <div className="mt-3 grid grid-cols-2 gap-4 animate-in fade-in">
                                          <div className="bg-white p-3 rounded-xl">
@@ -252,6 +249,7 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
              </div>
           </div>
         )}
+
         {/* ÉTAPE 3 : EPI & MATÉRIEL */}
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
@@ -261,7 +259,6 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
              </div>
 
              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                 {/* On récupère la liste des EPI depuis EQUIPMENT_TYPES ou une liste statique */}
                  {["Casque", "Lunettes", "Gants", "Chaussures Sécu", "Harnais", "Masque P3", "Gilet Haute Visibilité", "Protections Auditives"].map(epi => (
                      <div key={epi} onClick={() => toggleEPI(epi)} className={`p-4 rounded-2xl border-2 cursor-pointer flex flex-col items-center justify-center gap-2 text-center transition-all ${formData.epi_selectionnes.includes(epi) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 hover:bg-gray-50 text-gray-500'}`}>
                          <Shield size={24} className={formData.epi_selectionnes.includes(epi) ? 'text-blue-500' : 'text-gray-300'}/>
@@ -310,11 +307,10 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
                  </div>
              </div>
 
-             {/* Liste des participants (Lecture seule ici, pour rappel) */}
              <div>
-                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Participants présents ({equipe.length})</p>
+                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Participants présents ({equipe ? equipe.length : 0})</p>
                  <div className="flex flex-wrap gap-2">
-                     {equipe.map(m => (
+                     {equipe && equipe.map(m => (
                          <span key={m.id} className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-bold text-gray-600">{m.nom} {m.prenom}</span>
                      ))}
                  </div>
@@ -329,7 +325,7 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
           {step > 1 ? (
               <button onClick={() => setStep(step - 1)} className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors">Retour</button>
           ) : (
-              <div></div> // Spacer
+              <div></div> 
           )}
           
           {step < 4 ? (
