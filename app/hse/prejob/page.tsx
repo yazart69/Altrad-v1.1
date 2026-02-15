@@ -4,10 +4,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ClipboardCheck, Users, Shield, MapPin, User, Check, X, Save, PenTool, AlertCircle, 
-  Trash2, MessageSquare, Camera, Printer, Clock, FileText, ChevronRight, AlertTriangle, Eye, Plus
+  Trash2, MessageSquare, Camera, Printer, Clock, FileText, ChevronRight, AlertTriangle, Eye, Plus,
+  Calendar // <-- AJOUTÉ ICI
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
-import { RISK_DATABASE, EQUIPMENT_TYPES } from '../data'; // Assurez-vous que le chemin est bon
+import { RISK_DATABASE, EQUIPMENT_TYPES } from '../data';
 
 // --- TYPES ---
 interface PrejobProps {
@@ -32,7 +33,7 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
     risques_selectionnes: [] as string[], // IDs des risques
     epi_selectionnes: [] as string[],
     mesures_specifiques: '',
-    participants_presents: equipe ? equipe.map(e => e.id) : [] // Sécurité si equipe est undefined
+    participants_presents: equipe ? equipe.map(e => e.id) : [] 
   });
   
   const sigPad = useRef<any>(null); // Ref pour la signature
@@ -66,10 +67,12 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
   };
 
   const handleSave = async () => {
-    if (sigPad.current && sigPad.current.isEmpty()) return alert("La signature de l'animateur est obligatoire.");
+    // Si le composant de signature n'est pas monté (ex: step différent), on met null
+    const signatureData = (sigPad.current && !sigPad.current.isEmpty()) 
+        ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') 
+        : null;
     
-    // Si le composant n'est pas chargé (ex: step différent), on ignore ou on gère autrement
-    const signatureData = sigPad.current ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') : null;
+    if (!signatureData && step === 4) return alert("La signature de l'animateur est obligatoire.");
     
     const payload = {
         chantier_id: chantierId,
@@ -90,7 +93,6 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
         setView('list');
         fetchArchives();
         setStep(1); 
-        // Reset form data si besoin
     }
   };
   // --- VUE : LISTE DES ARCHIVES ---
