@@ -3,12 +3,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  ClipboardCheck, Users, Shield, MapPin, User, Check, X, Save, PenTool, AlertCircle, 
-  Trash2, MessageSquare, Camera, Printer, Clock, FileText, ChevronRight, AlertTriangle, Eye, Plus,
-  Calendar // <-- AJOUTÉ ICI
+  ClipboardCheck, Users, Shield, User, Check, X, Save, 
+  Trash2, FileText, ChevronRight, Plus, Eye, Calendar, HardHat
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
-import { RISK_DATABASE, EQUIPMENT_TYPES } from '../data';
+import { RISK_DATABASE } from '../data';
 
 // --- TYPES ---
 interface PrejobProps {
@@ -19,66 +18,73 @@ interface PrejobProps {
 }
 
 export default function HSEPrejobModule({ chantierId, chantierNom, equipe, animateurNom }: PrejobProps) {
-  const [view, setView] = useState<'list' | 'create'>('list'); // 'list' = Archives, 'create' = Nouveau
+  const [view, setView] = useState<'list' | 'create'>('list'); 
   const [archives, setArchives] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // --- ÉTATS DU FORMULAIRE DE CRÉATION ---
+  // --- ÉTATS DU FORMULAIRE ---
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    animateur: animateurNom || '',
-    tache_principale: '',
+    animateur_type: 'liste', // 'liste' ou 'manuel'
+    animateur_selectionne: '',
+    animateur_manuel: '',
+    taches_principales: [] as string[], // MULTI-CHOIX
     zone_travail: '',
-    risques_selectionnes: [] as string[], // IDs des risques
+    risques_selectionnes: [] as string[],
     epi_selectionnes: [] as string[],
     mesures_specifiques: '',
-    participants_presents: equipe ? equipe.map(e => e.id) : [] 
+    participants_presents: [] as string[]
   });
   
-  const sigPad = useRef<any>(null); // Ref pour la signature
+  const sigPad = useRef<any>(null);
 
-  // --- CHARGEMENT DES ARCHIVES ---
+  // Initialisation
+  useEffect(() => { 
+      fetchArchives(); 
+      // Pré-selection animateur si trouvé dans la liste
+      if(animateurNom) setFormData(prev => ({...prev, animateur_selectionne: animateurNom}));
+      // Pré-selection equipe complète
+      if(equipe) setFormData(prev => ({...prev, participants_presents: equipe.map(e => e.id)}));
+  }, [chantierId]);
+
   const fetchArchives = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('chantier_prejobs')
-      .select('*')
-      .eq('chantier_id', chantierId)
-      .order('date', { ascending: false });
-    
+    const { data } = await supabase.from('chantier_prejobs').select('*').eq('chantier_id', chantierId).order('date', { ascending: false });
     if (data) setArchives(data);
     setLoading(false);
   };
 
-  useEffect(() => { fetchArchives(); }, [chantierId]);
+  // --- LOGIQUE METIER ---
+  const toggleTask = (task: string) => {
+      const current = formData.taches_principales;
+      if (current.includes(task)) setFormData({...formData, taches_principales: current.filter(t => t !== task)});
+      else setFormData({...formData, taches_principales: [...current, task]});
+  };
 
-  // --- FONCTIONS UTILITAIRES ---
   const toggleRisk = (riskId: string) => {
     const current = formData.risques_selectionnes;
     if (current.includes(riskId)) setFormData({...formData, risques_selectionnes: current.filter(id => id !== riskId)});
     else setFormData({...formData, risques_selectionnes: [...current, riskId]});
   };
 
-  const toggleEPI = (epiLabel: string) => {
+  const toggleEPI = (epi: string) => {
     const current = formData.epi_selectionnes;
-    if (current.includes(epiLabel)) setFormData({...formData, epi_selectionnes: current.filter(l => l !== epiLabel)});
-    else setFormData({...formData, epi_selectionnes: [...current, epiLabel]});
+    if (current.includes(epi)) setFormData({...formData, epi_selectionnes: current.filter(e => e !== epi)});
+    else setFormData({...formData, epi_selectionnes: [...current, epi]});
   };
 
   const handleSave = async () => {
-    // Si le composant de signature n'est pas monté (ex: step différent), on met null
-    const signatureData = (sigPad.current && !sigPad.current.isEmpty()) 
-        ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') 
-        : null;
+    const animateurFinal = formData.animateur_type === 'liste' ? formData.animateur_selectionne : formData.animateur_manuel;
+    if (!animateurFinal) return alert("Veuillez renseigner l'animateur");
     
-    if (!signatureData && step === 4) return alert("La signature de l'animateur est obligatoire.");
-    
+    const signatureData = sigPad.current ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') : null;
+
     const payload = {
         chantier_id: chantierId,
         date: formData.date,
-        animateur: formData.animateur,
-        tache_principale: formData.tache_principale,
+        animateur: animateurFinal,
+        tache_principale: formData.taches_principales.join(', '), // Stocké en string pour compatibilité
         risques_id: formData.risques_selectionnes,
         epi_ids: formData.epi_selectionnes,
         mesures_specifiques: `${formData.zone_travail} - ${formData.mesures_specifiques}`,
@@ -88,259 +94,132 @@ export default function HSEPrejobModule({ chantierId, chantierNom, equipe, anima
 
     const { error } = await supabase.from('chantier_prejobs').insert([payload]);
     if (error) alert("Erreur: " + error.message);
-    else {
-        alert("✅ Pre-Job enregistré avec succès !");
-        setView('list');
-        fetchArchives();
-        setStep(1); 
-    }
+    else { alert("✅ Enregistré !"); setView('list'); fetchArchives(); setStep(1); }
   };
-  // --- VUE : LISTE DES ARCHIVES ---
+
+  // --- VUE ARCHIVES ---
   if (view === 'list') {
-    return (
-      <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-6 min-h-[500px]">
-        <div className="flex justify-between items-center mb-8">
-            <div>
-                <h2 className="text-2xl font-black text-[#2d3436] uppercase flex items-center gap-2"><ClipboardCheck className="text-red-600"/> Archives Pre-Job</h2>
-                <p className="text-sm font-bold text-gray-400">Historique des analyses de risques journalières</p>
-            </div>
-            <button onClick={() => setView('create')} className="bg-[#e21118] hover:bg-red-700 text-white px-6 py-3 rounded-xl font-black uppercase shadow-lg flex items-center gap-2 transition-transform active:scale-95">
-                <Plus size={18}/> Nouveau Pre-Job
-            </button>
-        </div>
-
-        <div className="space-y-3">
-            {loading ? <p className="text-center py-10 font-bold text-gray-300">Chargement...</p> : archives.map((pj) => (
-                <div key={pj.id} className="group flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all cursor-pointer">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-white p-3 rounded-xl border border-gray-100 group-hover:border-red-100 group-hover:bg-red-50 transition-colors">
-                            <FileText size={24} className="text-gray-400 group-hover:text-red-500"/>
-                        </div>
-                        <div>
-                            <p className="font-black text-gray-800 uppercase">{pj.tache_principale || "Activité Générale"}</p>
-                            <p className="text-xs font-bold text-gray-400 flex items-center gap-2">
-                                <Calendar size={12}/> {new Date(pj.date).toLocaleDateString()}
-                                <User size={12}/> {pj.animateur}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="text-right hidden md:block">
-                            <p className="text-xs font-bold text-gray-500 uppercase">{pj.risques_id?.length || 0} Risques identifiés</p>
-                            <div className="flex gap-1 justify-end mt-1">
-                                {pj.epi_ids?.slice(0, 3).map((epi: string) => (
-                                    <span key={epi} className="w-2 h-2 rounded-full bg-blue-400" title={epi}></span>
-                                ))}
-                                {(pj.epi_ids?.length || 0) > 3 && <span className="text-[9px] text-gray-400">...</span>}
-                            </div>
-                        </div>
-                        <button className="p-2 bg-white rounded-lg text-gray-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"><Eye size={20}/></button>
-                    </div>
-                </div>
-            ))}
-            {!loading && archives.length === 0 && (
-                <div className="text-center py-20 bg-gray-50 rounded-[30px] border-2 border-dashed border-gray-200">
-                    <ClipboardCheck size={48} className="mx-auto text-gray-300 mb-4"/>
-                    <p className="font-black text-gray-400 uppercase">Aucun Pre-Job enregistré</p>
-                    <button onClick={() => setView('create')} className="text-red-600 font-bold text-sm mt-2 hover:underline">Commencer maintenant</button>
-                </div>
-            )}
-        </div>
-      </div>
-    );
+      return (
+          <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 min-h-[600px]">
+              <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-black uppercase text-gray-800 flex items-center gap-3"><ClipboardCheck className="text-red-600"/> Historique Pre-Jobs</h2>
+                  <button onClick={() => setView('create')} className="bg-[#e21118] text-white px-6 py-3 rounded-xl font-black uppercase flex items-center gap-2 hover:bg-red-700 transition-all"><Plus size={18}/> Nouveau</button>
+              </div>
+              <div className="space-y-3">
+                  {archives.map(a => (
+                      <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                          <div>
+                              <p className="font-black text-gray-800 text-sm">{a.tache_principale || "Activités Multiples"}</p>
+                              <p className="text-xs text-gray-400 font-bold">{new Date(a.date).toLocaleDateString()} • Animé par {a.animateur}</p>
+                          </div>
+                          <div className="flex items-center gap-4">
+                              <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black">{a.risques_id?.length || 0} Risques</span>
+                              <button className="p-2 text-gray-400 hover:text-blue-600"><Eye size={20}/></button>
+                          </div>
+                      </div>
+                  ))}
+                  {archives.length === 0 && <div className="text-center py-10 text-gray-300 italic">Aucun historique disponible.</div>}
+              </div>
+          </div>
+      )
   }
-  // --- VUE : CRÉATION (STEPS) ---
+
+  // --- VUE CRÉATION ---
   return (
-    <div className="max-w-5xl mx-auto bg-white rounded-[30px] shadow-xl border border-gray-100 overflow-hidden min-h-[600px] flex flex-col">
-      
-      {/* HEADER FORMULAIRE */}
-      <div className="bg-[#e21118] p-6 text-white flex justify-between items-center shrink-0">
-        <div>
-          <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-white/80"/> Nouveau Pre-Job Briefing</h1>
-          <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Analyse de risques avant poste</p>
-        </div>
-        <button onClick={() => setView('list')} className="bg-white/20 p-2 rounded-lg hover:bg-white/30 transition-colors"><X size={20}/></button>
-      </div>
+    <div className="max-w-5xl mx-auto bg-white rounded-[30px] shadow-xl border border-gray-100 overflow-hidden flex flex-col min-h-[700px]">
+       <div className="bg-[#e21118] p-6 text-white flex justify-between items-center">
+          <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-white"/> Analyse de Risques (Pre-Job)</h1>
+          <button onClick={() => setView('list')} className="bg-white/20 p-2 rounded-lg"><X size={20}/></button>
+       </div>
 
-      {/* PROGRESS BAR */}
-      <div className="bg-gray-100 h-1.5 w-full">
-          <div className="h-full bg-red-600 transition-all duration-500 ease-out" style={{width: `${(step/4)*100}%`}}></div>
-      </div>
-
-      <div className="flex-1 p-8 overflow-y-auto">
-        
-        {/* ÉTAPE 1 : CONTEXTE & TÂCHE */}
-        {step === 1 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
-             <div className="flex items-center gap-4 mb-6">
-                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-black">1</div>
-                 <h2 className="text-lg font-black uppercase text-gray-700">Contexte de l'intervention</h2>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div>
-                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Date & Heure</label>
-                     <input type="date" className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-gray-800 outline-none focus:ring-2 ring-red-100" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                 </div>
-                 <div>
-                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Animateur (Chef d'équipe)</label>
-                     <div className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-gray-800 flex items-center gap-2">
-                         <User size={18} className="text-gray-400"/> {formData.animateur}
-                     </div>
-                 </div>
-                 <div className="col-span-2">
-                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Zone de travail précise</label>
-                     <input placeholder="Ex: Zone Nord - Échafaudage Bâtiment C..." className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-gray-800 outline-none focus:ring-2 ring-red-100" value={formData.zone_travail} onChange={e => setFormData({...formData, zone_travail: e.target.value})} />
-                 </div>
-                 <div className="col-span-2">
-                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Tâche Principale (Activité)</label>
-                     <select className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-gray-800 outline-none cursor-pointer focus:ring-2 ring-red-100" value={formData.tache_principale} onChange={e => setFormData({...formData, tache_principale: e.target.value})}>
-                         <option value="">Sélectionner l'activité du jour...</option>
-                         {Array.from(new Set(RISK_DATABASE.map(r => r.task))).map(task => (
-                             <option key={task} value={task}>{task}</option>
-                         ))}
-                     </select>
-                 </div>
-             </div>
-          </div>
-        )}
-
-        {/* ÉTAPE 2 : ANALYSE DES RISQUES */}
-        {step === 2 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
-             <div className="flex items-center gap-4 mb-6">
-                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-black">2</div>
-                 <div>
-                    <h2 className="text-lg font-black uppercase text-gray-700">Analyse des Risques</h2>
-                    <p className="text-xs text-gray-400 font-bold">Cochez les risques applicables aujourd'hui</p>
-                 </div>
-             </div>
-
-             <div className="space-y-4">
-                 {RISK_DATABASE.filter(r => r.task === formData.tache_principale || r.category === 'Logistique').map(risk => (
-                     <div key={risk.id} onClick={() => toggleRisk(risk.id)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${formData.risques_selectionnes.includes(risk.id) ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
-                         <div className="flex items-start gap-3">
-                             <div className={`mt-1 w-5 h-5 rounded flex items-center justify-center border-2 ${formData.risques_selectionnes.includes(risk.id) ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300'}`}>
-                                 {formData.risques_selectionnes.includes(risk.id) && <Check size={12} strokeWidth={4}/>}
-                             </div>
-                             <div className="flex-1">
-                                 <div className="flex justify-between">
-                                     <h4 className="font-black text-gray-800 uppercase text-sm mb-1">{risk.category} - {risk.task}</h4>
-                                     <span className="text-[9px] font-black text-gray-300">{risk.id}</span>
-                                 </div>
-                                 {formData.risques_selectionnes.includes(risk.id) && (
-                                     <div className="mt-3 grid grid-cols-2 gap-4 animate-in fade-in">
-                                         <div className="bg-white p-3 rounded-xl">
-                                             <p className="text-[9px] font-bold text-red-400 uppercase mb-1">Dangers</p>
-                                             <ul className="list-disc pl-3 text-[10px] font-bold text-gray-600 space-y-1">
-                                                 {risk.risks.map((r: string) => <li key={r}>{r}</li>)}
-                                             </ul>
-                                         </div>
-                                         <div className="bg-emerald-50 p-3 rounded-xl">
-                                             <p className="text-[9px] font-bold text-emerald-600 uppercase mb-1">Mesures Prévention</p>
-                                             <ul className="list-disc pl-3 text-[10px] font-bold text-emerald-800 space-y-1">
-                                                 {risk.measures.map((m: string) => <li key={m}>{m}</li>)}
-                                             </ul>
-                                         </div>
-                                     </div>
-                                 )}
-                             </div>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-          </div>
-        )}
-
-        {/* ÉTAPE 3 : EPI & MATÉRIEL */}
-        {step === 3 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
-             <div className="flex items-center gap-4 mb-6">
-                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-black">3</div>
-                 <h2 className="text-lg font-black uppercase text-gray-700">Équipements de Protection (EPI)</h2>
-             </div>
-
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                 {["Casque", "Lunettes", "Gants", "Chaussures Sécu", "Harnais", "Masque P3", "Gilet Haute Visibilité", "Protections Auditives"].map(epi => (
-                     <div key={epi} onClick={() => toggleEPI(epi)} className={`p-4 rounded-2xl border-2 cursor-pointer flex flex-col items-center justify-center gap-2 text-center transition-all ${formData.epi_selectionnes.includes(epi) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 hover:bg-gray-50 text-gray-500'}`}>
-                         <Shield size={24} className={formData.epi_selectionnes.includes(epi) ? 'text-blue-500' : 'text-gray-300'}/>
-                         <span className="font-black text-xs uppercase">{epi}</span>
-                     </div>
-                 ))}
-             </div>
-
-             <div className="mt-8">
-                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Consignes spécifiques / Outillage particulier</label>
-                 <textarea className="w-full bg-gray-50 p-4 rounded-2xl font-bold text-sm text-gray-800 outline-none focus:ring-2 ring-blue-100 min-h-[100px]" placeholder="Ex: Utilisation de la meuleuse interdite après 16h..." value={formData.mesures_specifiques} onChange={e => setFormData({...formData, mesures_specifiques: e.target.value})}></textarea>
-             </div>
-          </div>
-        )}
-
-        {/* ÉTAPE 4 : VALIDATION & SIGNATURE */}
-        {step === 4 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
-             <div className="flex items-center gap-4 mb-6">
-                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-black">4</div>
-                 <h2 className="text-lg font-black uppercase text-gray-700">Engagement & Signature</h2>
-             </div>
-
-             <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex items-start gap-4">
-                 <AlertCircle className="text-orange-500 shrink-0 mt-1"/>
-                 <div>
-                     <h4 className="font-black text-orange-800 uppercase text-sm mb-1">Engagement de l'animateur</h4>
-                     <p className="text-xs text-orange-700 font-medium leading-relaxed">
-                         "Je soussigné, <strong>{formData.animateur}</strong>, certifie avoir présenté les risques et les mesures de prévention à l'ensemble de l'équipe présente ce jour. J'ai vérifié l'adéquation des EPI et la compréhension des consignes."
-                     </p>
-                 </div>
-             </div>
-
-             <div className="space-y-2">
-                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Signature de l'animateur</p>
-                 <div className="border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 h-40 relative overflow-hidden group hover:border-gray-400 transition-colors">
-                     <SignatureCanvas 
-                        ref={sigPad} 
-                        penColor="black"
-                        canvasProps={{className: 'absolute inset-0 w-full h-full cursor-crosshair'}} 
-                     />
-                     <div className="absolute top-2 right-2 flex gap-2">
-                         <button onClick={() => sigPad.current.clear()} className="bg-white/80 p-1 rounded hover:bg-red-100 text-red-500 text-xs font-bold uppercase backdrop-blur-sm">Effacer</button>
-                     </div>
-                     <div className="absolute bottom-2 left-0 w-full text-center pointer-events-none opacity-20 text-xs font-black uppercase">Zone de signature</div>
-                 </div>
-             </div>
-
-             <div>
-                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Participants présents ({equipe ? equipe.length : 0})</p>
-                 <div className="flex flex-wrap gap-2">
-                     {equipe && equipe.map(m => (
-                         <span key={m.id} className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-bold text-gray-600">{m.nom} {m.prenom}</span>
-                     ))}
-                 </div>
-             </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* FOOTER NAVIGATION */}
-      <div className="p-6 border-t border-gray-100 bg-white flex justify-between items-center shrink-0">
-          {step > 1 ? (
-              <button onClick={() => setStep(step - 1)} className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors">Retour</button>
-          ) : (
-              <div></div> 
+       <div className="flex-1 p-8 overflow-y-auto">
+          {/* STEP 1 : CONFIGURATION */}
+          {step === 1 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                  <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">1. Contexte & Activités</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Animateur</label>
+                          <div className="flex gap-2 mb-2">
+                              <button onClick={()=>setFormData({...formData, animateur_type: 'liste'})} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${formData.animateur_type==='liste' ? 'bg-black text-white' : 'bg-white'}`}>Liste</button>
+                              <button onClick={()=>setFormData({...formData, animateur_type: 'manuel'})} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${formData.animateur_type==='manuel' ? 'bg-black text-white' : 'bg-white'}`}>Manuel</button>
+                          </div>
+                          {formData.animateur_type === 'liste' ? (
+                              <select className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" value={formData.animateur_selectionne} onChange={e=>setFormData({...formData, animateur_selectionne: e.target.value})}>
+                                  <option value="">Choisir...</option>
+                                  {equipe.map(e => <option key={e.id} value={`${e.nom} ${e.prenom}`}>{e.nom} {e.prenom}</option>)}
+                              </select>
+                          ) : (
+                              <input className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" placeholder="Nom Prénom" value={formData.animateur_manuel} onChange={e=>setFormData({...formData, animateur_manuel: e.target.value})} />
+                          )}
+                      </div>
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Date</label>
+                          <input type="date" className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" value={formData.date} onChange={e=>setFormData({...formData, date: e.target.value})} />
+                      </div>
+                      <div className="col-span-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Tâches Principales (Multi-choix)</label>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              {Array.from(new Set(RISK_DATABASE.map(r => r.task))).map(task => (
+                                  <div key={task} onClick={() => toggleTask(task)} className={`p-3 rounded-xl border cursor-pointer text-xs font-bold transition-all ${formData.taches_principales.includes(task) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                                      {task}
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              </div>
           )}
-          
-          {step < 4 ? (
-              <button onClick={() => setStep(step + 1)} disabled={step === 1 && !formData.tache_principale} className="bg-[#2d3436] text-white px-8 py-3 rounded-xl font-black uppercase shadow-lg hover:bg-black transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                  Suivant <ChevronRight size={16}/>
-              </button>
-          ) : (
-              <button onClick={handleSave} className="bg-[#e21118] text-white px-10 py-3 rounded-xl font-black uppercase shadow-xl shadow-red-200 hover:bg-red-700 transition-transform active:scale-95 flex items-center gap-2">
-                  <Save size={18}/> Valider & Archiver
-              </button>
-          )}
-      </div>
 
+          {/* STEP 2 : RISQUES (Filtrés par tâches sélectionnées) */}
+          {step === 2 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                  <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">2. Analyse des Risques</h3>
+                  <div className="space-y-3">
+                      {RISK_DATABASE.filter(r => formData.taches_principales.includes(r.task) || r.category === 'Logistique').map(risk => (
+                          <div key={risk.id} onClick={() => toggleRisk(risk.id)} className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${formData.risques_selectionnes.includes(risk.id) ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-white'}`}>
+                              <div className="flex justify-between items-center mb-2">
+                                  <span className="font-black text-gray-800 text-sm uppercase">{risk.category} - {risk.task}</span>
+                                  {formData.risques_selectionnes.includes(risk.id) && <CheckCircle2 className="text-red-500" size={18}/>}
+                              </div>
+                              {formData.risques_selectionnes.includes(risk.id) && (
+                                  <div className="grid grid-cols-2 gap-4 text-xs mt-2 pl-2 border-l-2 border-red-200">
+                                      <div><span className="font-bold text-red-500">Dangers:</span> {risk.risks.join(', ')}</div>
+                                      <div><span className="font-bold text-emerald-600">Mesures:</span> {risk.measures.join(', ')}</div>
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+
+          {/* STEP 3 : EPI & VALIDATION */}
+          {step === 3 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                   <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">3. Protection & Signature</h3>
+                   <div className="grid grid-cols-3 gap-3">
+                       {["Casque", "Lunettes", "Gants", "Chaussures", "Harnais", "Masque", "Gilet", "Auditifs"].map(epi => (
+                           <button key={epi} onClick={() => toggleEPI(epi)} className={`p-3 rounded-xl border font-bold text-xs uppercase ${formData.epi_selectionnes.includes(epi) ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-400'}`}>{epi}</button>
+                       ))}
+                   </div>
+                   <div className="border-2 border-dashed border-gray-300 rounded-2xl h-40 bg-gray-50 relative">
+                       <SignatureCanvas ref={sigPad} penColor="black" canvasProps={{className: 'absolute inset-0 w-full h-full'}} />
+                       <div className="absolute bottom-2 left-2 text-[10px] text-gray-400 uppercase font-bold pointer-events-none">Signature Animateur</div>
+                       <button onClick={()=>sigPad.current.clear()} className="absolute top-2 right-2 text-xs bg-white border px-2 py-1 rounded">Effacer</button>
+                   </div>
+              </div>
+          )}
+       </div>
+
+       <div className="p-6 border-t bg-gray-50 flex justify-between">
+           {step > 1 ? <button onClick={()=>setStep(step-1)} className="px-6 py-3 font-bold text-gray-500">Retour</button> : <div></div>}
+           {step < 3 ? (
+               <button onClick={()=>setStep(step+1)} className="bg-black text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2">Suivant <ChevronRight size={16}/></button>
+           ) : (
+               <button onClick={handleSave} className="bg-[#e21118] text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2"><Save size={18}/> Terminer</button>
+           )}
+       </div>
     </div>
   );
 }
