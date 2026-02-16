@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation'; // Pour la navigation vers les pages dédiées
+import { useRouter } from 'next/navigation'; // Pour naviguer vers les sous-pages
 import { supabase } from '@/lib/supabase';
 import { 
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, 
@@ -10,7 +10,7 @@ import {
   Plus, Trash2, Search, ArrowRight, Download, Eye,
   AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
   ClipboardList, Stethoscope, Factory, Truck, Edit, History,
-  PenTool, QrCode, ExternalLink // Ajout d'icônes
+  PenTool, QrCode, ExternalLink, UserPlus, ClipboardCheck
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
@@ -18,7 +18,7 @@ import {
 
 // Import des données métiers centralisées
 import { 
-  RISK_DATABASE, VGP_RULES, EQUIPMENT_TYPES, Q3SRE_REFERENTIAL, OST_THEMES, CAUSERIE_THEMES 
+  RISK_DATABASE, VGP_RULES, EQUIPMENT_TYPES, Q3SRE_REFERENTIAL, CAUSERIE_THEMES 
 } from '@/app/hse/data';
 
 // --- TYPES ---
@@ -38,8 +38,9 @@ interface IMateriel {
 // =================================================================================================
 // COMPOSANT MAÎTRE : CONSOLE DE PILOTAGE HSE (ALTRAD.OS)
 // =================================================================================================
-export default function HSEUltimateModule() {
+export default function HSEDashboardPage() {
   const router = useRouter();
+  // Vues internes au dashboard (les outils "bureau")
   const [view, setView] = useState<'dashboard'|'generator'|'vgp'|'terrain'|'causerie'|'history'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [activeChantierId, setActiveChantierId] = useState<string>("");
@@ -50,16 +51,21 @@ export default function HSEUltimateModule() {
   const [materiel, setMateriel] = useState<IMateriel[]>([]);
   const [activeEquipe, setActiveEquipe] = useState<IUser[]>([]);
 
-  // Computed
+  // Computed Context
   const activeChantier = chantiers.find(c => c.id === activeChantierId);
   const activeMateriel = materiel.filter(m => m.chantier_actuel_id === activeChantierId);
 
   // --- INIT ---
   useEffect(() => { fetchGlobalData(); }, []);
-  useEffect(() => { if (activeChantierId) fetchCurrentTeam(activeChantierId); }, [activeChantierId]);
+  
+  // Charge l'équipe quand on change de chantier
+  useEffect(() => { 
+    if (activeChantierId) fetchCurrentTeam(activeChantierId); 
+  }, [activeChantierId]);
 
   async function fetchGlobalData() {
     setLoading(true);
+    // On récupère tout en parallèle pour aller vite
     const results = await Promise.all([
         supabase.from('chantiers').select('*'),
         supabase.from('employes').select('*'),
@@ -72,32 +78,32 @@ export default function HSEUltimateModule() {
   }
 
   async function fetchCurrentTeam(cid: string) {
-    // Récupération de l'équipe via le planning ou affectation directe
-    // Simplification : on prend tous les employés pour la démo, ou filtrer si table de liaison existe
-    const { data } = await supabase.from('employes').select('*'); // À affiner selon votre modèle de données
+    // Logique pour trouver l'équipe (simulée ici par tous les employés, à filtrer selon vos tables de liaison)
+    const { data } = await supabase.from('employes').select('*'); 
     if(data) setActiveEquipe(data); 
   }
 
-  // Navigation vers les pages dédiées (Prejob / Accueil)
-  const navigateToModule = (path: string) => {
-    if(!activeChantierId) return alert("Veuillez sélectionner un chantier actif.");
-    // On passe l'ID chantier en paramètre d'URL
-    router.push(`/hse/${path}?cid=${activeChantierId}`);
+  // --- NAVIGATION VERS OUTILS TERRAIN ---
+  const navigateToTool = (tool: 'prejob' | 'accueil') => {
+    if (!activeChantierId) return alert("Veuillez d'abord sélectionner un chantier actif dans le menu de gauche.");
+    // On envoie vers les pages dédiées que nous avons créées précédemment
+    // On passe l'ID du chantier via l'URL
+    router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin text-red-600"><ShieldCheck size={48}/></div></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin text-red-600 mr-3"><ShieldCheck size={32}/></div><p className="font-bold text-gray-500">Chargement du Portail HSE...</p></div>;
 
   return (
     <div className="flex min-h-screen bg-[#f3f4f6] font-sans text-gray-800">
       
-      {/* SIDEBAR */}
+      {/* SIDEBAR GAUCHE (Navigation) */}
       <aside className="w-72 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0 z-50">
         <div className="p-6 border-b border-gray-100">
           <h1 className="text-xl font-black uppercase text-gray-900">ALTRAD<span className="text-red-600">.HSE</span></h1>
           <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1">PILOTAGE SÉCURITÉ</p>
         </div>
 
-        {/* SELECTEUR CHANTIER */}
+        {/* SELECTEUR DE CONTEXTE (Chantier) */}
         <div className="p-4 bg-gray-50/50 border-b border-gray-100">
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Factory size={12}/> Chantier Actif</label>
           <select 
@@ -116,40 +122,48 @@ export default function HSEUltimateModule() {
           <NavBtn id="generator" icon={FileText} label="Générateur Docs" active={view} set={setView} disabled={!activeChantierId} />
           <NavBtn id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} disabled={!activeChantierId} />
           
-          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Terrain (Modules)</p></div>
-          {/* BOUTONS VERS PAGES DÉDIÉES */}
-          <button onClick={() => navigateToModule('prejob')} disabled={!activeChantierId} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-red-50 hover:text-red-600 ${!activeChantierId && 'opacity-50 cursor-not-allowed'}`}>
-             <ClipboardCheck size={20} /> Pre-Job Briefing <ExternalLink size={12} className="ml-auto opacity-50"/>
+          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Outils Terrain (App)</p></div>
+          
+          {/* BOUTONS SPÉCIAUX VERS PAGES DÉDIÉES */}
+          <button onClick={() => navigateToTool('prejob')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-red-50 hover:text-red-600 ${!activeChantierId && 'opacity-40 cursor-not-allowed'}`}>
+             <ClipboardCheck size={20} /> Pre-Job Briefing <ExternalLink size={14} className="ml-auto opacity-50"/>
           </button>
-          <button onClick={() => navigateToModule('accueil')} disabled={!activeChantierId} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-green-50 hover:text-green-600 ${!activeChantierId && 'opacity-50 cursor-not-allowed'}`}>
-             <UserPlus size={20} /> Accueil Sécurité <ExternalLink size={12} className="ml-auto opacity-50"/>
+          <button onClick={() => navigateToTool('accueil')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-green-50 hover:text-green-600 ${!activeChantierId && 'opacity-40 cursor-not-allowed'}`}>
+             <UserPlus size={20} /> Accueil Sécurité <ExternalLink size={14} className="ml-auto opacity-50"/>
           </button>
 
           <div className="pt-2"></div>
-          <NavBtn id="terrain" icon={Camera} label="Visites / Audits" active={view} set={setView} disabled={!activeChantierId} />
-          <NavBtn id="causerie" icon={Megaphone} label="Causeries" active={view} set={setView} disabled={!activeChantierId} />
-          <NavBtn id="history" icon={History} label="Archives" active={view} set={setView} />
+          {/* Outils "bureau" qui restent dans le dashboard */}
+          <NavBtn id="terrain" icon={Camera} label="Saisie Visites / VMT" active={view} set={setView} disabled={!activeChantierId} />
+          <NavBtn id="causerie" icon={Megaphone} label="Enregistrer Causerie" active={view} set={setView} disabled={!activeChantierId} />
+          <NavBtn id="history" icon={History} label="Archives / Historique" active={view} set={setView} />
         </nav>
       </aside>
 
-      {/* MAIN CONTENT */}
+      {/* ZONE CENTRALE */}
       <main className="flex-1 h-screen overflow-hidden flex flex-col bg-[#f8f9fa]">
         <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0 shadow-sm z-40">
            <h2 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-3">
-             {view === 'dashboard' ? <LayoutDashboard className="text-gray-400"/> : null}
-             {view === 'dashboard' ? 'Tableau de Bord HSE' : view.toUpperCase()}
+             {/* Titre dynamique */}
+             {view === 'dashboard' ? 'Tableau de Bord HSE' : view === 'vgp' ? 'Parc Matériel & VGP' : view === 'generator' ? 'Générateur Documentaire' : view.toUpperCase()}
            </h2>
-           {activeChantier && <div className="text-right"><p className="text-xs font-bold text-gray-900">{activeChantier.client}</p><p className="text-[10px] text-gray-500 flex items-center justify-end gap-1"><MapPin size={10}/> {activeChantier.adresse}</p></div>}
+           {activeChantier && (
+             <div className="text-right">
+               <p className="text-xs font-bold text-gray-900">{activeChantier.client}</p>
+               <p className="text-[10px] text-gray-500 flex items-center justify-end gap-1"><MapPin size={10}/> {activeChantier.adresse}</p>
+             </div>
+           )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           {!activeChantierId && view !== 'dashboard' && view !== 'history' ? (
             <div className="flex flex-col items-center justify-center h-full opacity-40">
                 <HardHat size={80} className="mb-4 text-gray-300"/>
-                <p className="font-black text-gray-400 text-xl">SÉLECTIONNEZ UN CHANTIER</p>
+                <p className="font-black text-gray-400 text-xl">SÉLECTIONNEZ UN CHANTIER À GAUCHE</p>
             </div>
           ) : (
             <div className="max-w-7xl mx-auto pb-20">
+               {/* ROUTING INTERNE */}
                {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
                {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} />}
                {view === 'vgp' && <VGPTracker materiel={activeMateriel} chantierId={activeChantierId} onRefresh={fetchGlobalData} />}
@@ -164,6 +178,7 @@ export default function HSEUltimateModule() {
   );
 }
 
+// Petit composant pour les boutons du menu
 const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
   <button onClick={() => !disabled && set(id)} disabled={disabled} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all ${active === id ? 'bg-black text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50 hover:text-black'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
     <Icon size={20} /> {label} {active === id && <ChevronRight size={14} className="ml-auto"/>}
@@ -173,24 +188,28 @@ const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
 // MODULE 1: DASHBOARD (KPIs & Vue d'ensemble)
 // =================================================================================================
 function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], materiel: IMateriel[] }) {
+  // Calcul des VGP périmées
   const vgpPerimees = materiel.filter(m => {
     const freq = VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12;
     const nextDate = new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + freq));
     return nextDate < new Date();
   }).length;
 
+  // Données fictives pour les graphiques (à connecter au réel plus tard)
   const chartData = [{n:'Jan', v:4.2}, {n:'Fev', v:3.8}, {n:'Mar', v:2.1}, {n:'Avr', v:0.0}, {n:'Mai', v:1.2}];
   const pieData = [{name: 'Conforme', value: materiel.length - vgpPerimees, color: '#10b981'}, {name: 'Périmé', value: vgpPerimees, color: '#ef4444'}];
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard label="Taux Fréquence" val="1.2" sub="Objectif < 2.0" icon={AlertOctagon} color="blue" />
-        <StatCard label="Chantiers" val={chantiers.length} sub="Projets actifs" icon={Factory} color="indigo" />
-        <StatCard label="VGP Périmées" val={vgpPerimees} sub="Matériel bloqué" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
+        <StatCard label="Chantiers Actifs" val={chantiers.length} sub="Projets en base" icon={Factory} color="indigo" />
+        <StatCard label="VGP Périmées" val={vgpPerimees} sub="Matériel à contrôler" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
         <StatCard label="Causeries" val="8" sub="Ce mois-ci" icon={Megaphone} color="orange" />
       </div>
       
+      {/* GRAPHIQUES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
           <h3 className="font-black text-gray-800 mb-6 uppercase text-xs tracking-widest">Évolution Taux de Fréquence</h3>
@@ -204,7 +223,7 @@ function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], mate
             <ResponsiveContainer width="100%" height="100%">
               <PieChart><Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{pieData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Legend verticalAlign="bottom"/></PieChart>
             </ResponsiveContainer>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8 flex-col"><span className="text-3xl font-black">{Math.round(((materiel.length-vgpPerimees)/materiel.length)*100 || 0)}%</span><span className="text-[9px] uppercase font-bold text-gray-400">Opérationnel</span></div>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8 flex-col"><span className="text-3xl font-black">{materiel.length > 0 ? Math.round(((materiel.length-vgpPerimees)/materiel.length)*100) : 100}%</span><span className="text-[9px] uppercase font-bold text-gray-400">Opérationnel</span></div>
           </div>
         </div>
       </div>
@@ -222,23 +241,23 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from('materiel').insert([{ ...newEq, chantier_actuel_id: chantierId, statut: 'operationnel' }]);
-    if(!error) { setShowAdd(false); onRefresh(); alert("Matériel ajouté !"); }
+    if(!error) { setShowAdd(false); onRefresh(); alert("Matériel ajouté !"); } else { alert(error.message); }
   };
 
   return (
     <div className="animate-in fade-in">
       <div className="flex justify-between items-end mb-6">
-         <div><h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-2"><Wrench className="text-orange-500"/> Registre Matériel</h3><p className="text-xs text-gray-400 font-bold">Suivi des VGP et affectations</p></div>
+         <div><h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-2"><Wrench className="text-orange-500"/> Registre Matériel</h3><p className="text-xs text-gray-400 font-bold">Suivi des VGP et affectations pour ce chantier</p></div>
          <button onClick={() => setShowAdd(true)} className="bg-black text-white px-5 py-3 rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:bg-gray-800"><Plus size={16}/> Ajouter</button>
       </div>
 
       {showAdd && (
         <div className="bg-gray-50 p-6 rounded-2xl mb-6 border border-gray-100">
            <form onSubmit={handleSave} className="grid grid-cols-2 gap-4">
-              <input required placeholder="Libellé (ex: Nacelle)" className="p-3 rounded-xl border" value={newEq.libelle} onChange={e=>setNewEq({...newEq, libelle:e.target.value})} />
-              <input required placeholder="N° Série" className="p-3 rounded-xl border" value={newEq.numero_serie} onChange={e=>setNewEq({...newEq, numero_serie:e.target.value})} />
-              <select className="p-3 rounded-xl border" value={newEq.categorie} onChange={e=>setNewEq({...newEq, categorie:e.target.value})}>{Object.keys(VGP_RULES).map(k=><option key={k} value={k}>{k}</option>)}</select>
-              <input required type="date" className="p-3 rounded-xl border" value={newEq.derniere_vgp} onChange={e=>setNewEq({...newEq, derniere_vgp:e.target.value})} />
+              <input required placeholder="Libellé (ex: Nacelle)" className="p-3 rounded-xl border outline-none" value={newEq.libelle} onChange={e=>setNewEq({...newEq, libelle:e.target.value})} />
+              <input required placeholder="N° Série" className="p-3 rounded-xl border outline-none" value={newEq.numero_serie} onChange={e=>setNewEq({...newEq, numero_serie:e.target.value})} />
+              <select className="p-3 rounded-xl border outline-none" value={newEq.categorie} onChange={e=>setNewEq({...newEq, categorie:e.target.value})}>{Object.keys(VGP_RULES).map(k=><option key={k} value={k}>{k}</option>)}</select>
+              <input required type="date" className="p-3 rounded-xl border outline-none" value={newEq.derniere_vgp} onChange={e=>setNewEq({...newEq, derniere_vgp:e.target.value})} />
               <button className="col-span-2 bg-orange-500 text-white py-3 rounded-xl font-bold uppercase">Enregistrer</button>
            </form>
         </div>
@@ -261,7 +280,7 @@ function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[]
              )
           })}</tbody>
         </table>
-        {materiel.length === 0 && <div className="p-8 text-center text-gray-400 text-sm italic">Aucun matériel affecté.</div>}
+        {materiel.length === 0 && <div className="p-8 text-center text-gray-400 text-sm italic">Aucun matériel affecté à ce chantier.</div>}
       </div>
     </div>
   );
@@ -302,7 +321,7 @@ function DocumentGenerator({ chantier, equipe }: any) {
 }
 
 // =================================================================================================
-// MODULE 4: VISITES TERRAIN & CAUSERIES
+// MODULE 4: VISITES TERRAIN (VMT / Q3SRE)
 // =================================================================================================
 function FieldVisits({ chantier, equipe }: any) {
   const [obs, setObs] = useState('');
@@ -320,6 +339,9 @@ function FieldVisits({ chantier, equipe }: any) {
   );
 }
 
+// =================================================================================================
+// MODULE 5: CAUSERIES (Saisie Rapide)
+// =================================================================================================
 function SafetyTalks({ chantier, equipe }: any) {
   const [theme, setTheme] = useState('');
   const handleSave = async () => {
@@ -339,6 +361,9 @@ function SafetyTalks({ chantier, equipe }: any) {
   );
 }
 
+// =================================================================================================
+// MODULE 6: ARCHIVES GLOBALES
+// =================================================================================================
 function CauserieArchives() {
   const [archives, setArchives] = useState<any[]>([]);
   useEffect(() => { 
@@ -360,7 +385,7 @@ function CauserieArchives() {
   );
 }
 
-// --- COMPOSANTS UI ---
+// --- PETIT COMPOSANT STATS (UI) ---
 const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
   const themes:any = { 
     red: "bg-red-50 text-red-600 border-red-100", blue: "bg-blue-50 text-blue-600 border-blue-100", 
