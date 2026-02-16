@@ -1,401 +1,407 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation'; // Pour naviguer vers les sous-pages
+import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  LayoutDashboard, FileText, Wrench, Camera, Megaphone, 
-  ShieldCheck, AlertTriangle, CheckCircle2, XCircle, Clock, 
-  MapPin, User, Users, Calendar, Printer, Save, 
-  Plus, Trash2, Search, ArrowRight, Download, Eye,
-  AlertOctagon, Siren, HardHat, FileCheck, X, ChevronRight,
-  ClipboardList, Stethoscope, Factory, Truck, Edit, History,
-  PenTool, QrCode, ExternalLink, UserPlus, ClipboardCheck
+  ClipboardCheck, Users, Shield, User, Check, X, Save, 
+  Trash2, FileText, ChevronRight, Plus, Eye, Calendar, HardHat
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
-} from 'recharts';
-
-// Import des données métiers centralisées
-import { 
-  RISK_DATABASE, VGP_RULES, EQUIPMENT_TYPES, Q3SRE_REFERENTIAL, CAUSERIE_THEMES 
-} from '@/app/hse/data';
+import SignatureCanvas from 'react-signature-canvas';
+import { RISK_DATABASE } from '../data';
 
 // --- TYPES ---
-interface IChantier {
-  id: string; nom: string; client: string; adresse: string;
-  date_debut: string; date_fin: string;
-  responsable_id: string; type_travaux: string[];
-}
-interface IUser {
-  id: string; nom: string; prenom: string; role: string; habilitations: string[];
-}
-interface IMateriel {
-  id: string; libelle: string; type: string; categorie: string; numero_serie: string;
-  derniere_vgp: string; statut: 'operationnel' | 'maintenance' | 'rebut'; chantier_actuel_id: string;
+interface PrejobProps {
+  chantierId: string;
+  chantierNom: string;
+  equipe: Array<{ id: string; nom: string; prenom: string }>;
+  animateurNom: string;
 }
 
-// =================================================================================================
-// COMPOSANT MAÎTRE : CONSOLE DE PILOTAGE HSE (ALTRAD.OS)
-// =================================================================================================
-export default function HSEDashboardPage() {
-  const router = useRouter();
-  // Vues internes au dashboard (les outils "bureau")
-  const [view, setView] = useState<'dashboard'|'generator'|'vgp'|'terrain'|'causerie'|'history'>('dashboard');
-  const [loading, setLoading] = useState(true);
-  const [activeChantierId, setActiveChantierId] = useState<string>("");
-
-  // Data Stores
-  const [chantiers, setChantiers] = useState<IChantier[]>([]);
-  const [users, setUsers] = useState<IUser[]>([]);
-  const [materiel, setMateriel] = useState<IMateriel[]>([]);
-  const [activeEquipe, setActiveEquipe] = useState<IUser[]>([]);
-
-  // Computed Context
-  const activeChantier = chantiers.find(c => c.id === activeChantierId);
-  const activeMateriel = materiel.filter(m => m.chantier_actuel_id === activeChantierId);
-
-  // --- INIT ---
-  useEffect(() => { fetchGlobalData(); }, []);
-  
-  // Charge l'équipe quand on change de chantier
-  useEffect(() => { 
-    if (activeChantierId) fetchCurrentTeam(activeChantierId); 
-  }, [activeChantierId]);
-
-  async function fetchGlobalData() {
-    setLoading(true);
-    // On récupère tout en parallèle pour aller vite
-    const results = await Promise.all([
-        supabase.from('chantiers').select('*'),
-        supabase.from('employes').select('*'),
-        supabase.from('materiel').select('*')
-    ]);
-    if (results[0].data) setChantiers(results[0].data);
-    if (results[1].data) setUsers(results[1].data);
-    if (results[2].data) setMateriel(results[2].data);
-    setLoading(false);
-  }
-
-  async function fetchCurrentTeam(cid: string) {
-    // Logique pour trouver l'équipe (simulée ici par tous les employés, à filtrer selon vos tables de liaison)
-    const { data } = await supabase.from('employes').select('*'); 
-    if(data) setActiveEquipe(data); 
-  }
-
-  // --- NAVIGATION VERS OUTILS TERRAIN ---
-  const navigateToTool = (tool: 'prejob' | 'accueil') => {
-    if (!activeChantierId) return alert("Veuillez d'abord sélectionner un chantier actif dans le menu de gauche.");
-    // On envoie vers les pages dédiées que nous avons créées précédemment
-    // On passe l'ID du chantier via l'URL
-    router.push(`/hse/${tool}?cid=${activeChantierId}`);
-  };
-
-  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin text-red-600 mr-3"><ShieldCheck size={32}/></div><p className="font-bold text-gray-500">Chargement du Portail HSE...</p></div>;
-
-  return (
-    <div className="flex min-h-screen bg-[#f3f4f6] font-sans text-gray-800">
-      
-      {/* SIDEBAR GAUCHE (Navigation) */}
-      <aside className="w-72 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0 z-50">
-        <div className="p-6 border-b border-gray-100">
-          <h1 className="text-xl font-black uppercase text-gray-900">ALTRAD<span className="text-red-600">.HSE</span></h1>
-          <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1">PILOTAGE SÉCURITÉ</p>
-        </div>
-
-        {/* SELECTEUR DE CONTEXTE (Chantier) */}
-        <div className="p-4 bg-gray-50/50 border-b border-gray-100">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Factory size={12}/> Chantier Actif</label>
-          <select 
-            className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
-            value={activeChantierId} onChange={(e) => setActiveChantierId(e.target.value)}
-          >
-            <option value="">-- SÉLECTIONNER --</option>
-            {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-          </select>
-        </div>
-
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
-          <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={view} set={setView} />
-          
-          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Méthodes & Matériel</p></div>
-          <NavBtn id="generator" icon={FileText} label="Générateur Docs" active={view} set={setView} disabled={!activeChantierId} />
-          <NavBtn id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} disabled={!activeChantierId} />
-          
-          <div className="pt-6 pb-2"><p className="text-[10px] font-black text-gray-300 uppercase px-2">Outils Terrain (App)</p></div>
-          
-          {/* BOUTONS SPÉCIAUX VERS PAGES DÉDIÉES */}
-          <button onClick={() => navigateToTool('prejob')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-red-50 hover:text-red-600 ${!activeChantierId && 'opacity-40 cursor-not-allowed'}`}>
-             <ClipboardCheck size={20} /> Pre-Job Briefing <ExternalLink size={14} className="ml-auto opacity-50"/>
-          </button>
-          <button onClick={() => navigateToTool('accueil')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all text-gray-500 hover:bg-green-50 hover:text-green-600 ${!activeChantierId && 'opacity-40 cursor-not-allowed'}`}>
-             <UserPlus size={20} /> Accueil Sécurité <ExternalLink size={14} className="ml-auto opacity-50"/>
-          </button>
-
-          <div className="pt-2"></div>
-          {/* Outils "bureau" qui restent dans le dashboard */}
-          <NavBtn id="terrain" icon={Camera} label="Saisie Visites / VMT" active={view} set={setView} disabled={!activeChantierId} />
-          <NavBtn id="causerie" icon={Megaphone} label="Enregistrer Causerie" active={view} set={setView} disabled={!activeChantierId} />
-          <NavBtn id="history" icon={History} label="Archives / Historique" active={view} set={setView} />
-        </nav>
-      </aside>
-
-      {/* ZONE CENTRALE */}
-      <main className="flex-1 h-screen overflow-hidden flex flex-col bg-[#f8f9fa]">
-        <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0 shadow-sm z-40">
-           <h2 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-3">
-             {/* Titre dynamique */}
-             {view === 'dashboard' ? 'Tableau de Bord HSE' : view === 'vgp' ? 'Parc Matériel & VGP' : view === 'generator' ? 'Générateur Documentaire' : view.toUpperCase()}
-           </h2>
-           {activeChantier && (
-             <div className="text-right">
-               <p className="text-xs font-bold text-gray-900">{activeChantier.client}</p>
-               <p className="text-[10px] text-gray-500 flex items-center justify-end gap-1"><MapPin size={10}/> {activeChantier.adresse}</p>
-             </div>
-           )}
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          {!activeChantierId && view !== 'dashboard' && view !== 'history' ? (
-            <div className="flex flex-col items-center justify-center h-full opacity-40">
-                <HardHat size={80} className="mb-4 text-gray-300"/>
-                <p className="font-black text-gray-400 text-xl">SÉLECTIONNEZ UN CHANTIER À GAUCHE</p>
-            </div>
-          ) : (
-            <div className="max-w-7xl mx-auto pb-20">
-               {/* ROUTING INTERNE */}
-               {view === 'dashboard' && <DashboardModule chantiers={chantiers} materiel={materiel} />}
-               {view === 'generator' && <DocumentGenerator chantier={activeChantier!} equipe={activeEquipe} />}
-               {view === 'vgp' && <VGPTracker materiel={activeMateriel} chantierId={activeChantierId} onRefresh={fetchGlobalData} />}
-               {view === 'terrain' && <FieldVisits chantier={activeChantier!} equipe={activeEquipe} />}
-               {view === 'causerie' && <SafetyTalks chantier={activeChantier!} equipe={activeEquipe} />}
-               {view === 'history' && <CauserieArchives />}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// Petit composant pour les boutons du menu
-const NavBtn = ({id, icon: Icon, label, active, set, disabled}: any) => (
-  <button onClick={() => !disabled && set(id)} disabled={disabled} className={`w-full flex items-center gap-4 px-6 py-4 rounded-[20px] text-[11px] font-black uppercase transition-all ${active === id ? 'bg-black text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50 hover:text-black'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
-    <Icon size={20} /> {label} {active === id && <ChevronRight size={14} className="ml-auto"/>}
-  </button>
-);
-// =================================================================================================
-// MODULE 1: DASHBOARD (KPIs & Vue d'ensemble)
-// =================================================================================================
-function DashboardModule({ chantiers, materiel }: { chantiers: IChantier[], materiel: IMateriel[] }) {
-  // Calcul des VGP périmées
-  const vgpPerimees = materiel.filter(m => {
-    const freq = VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12;
-    const nextDate = new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + freq));
-    return nextDate < new Date();
-  }).length;
-
-  // Données fictives pour les graphiques (à connecter au réel plus tard)
-  const chartData = [{n:'Jan', v:4.2}, {n:'Fev', v:3.8}, {n:'Mar', v:2.1}, {n:'Avr', v:0.0}, {n:'Mai', v:1.2}];
-  const pieData = [{name: 'Conforme', value: materiel.length - vgpPerimees, color: '#10b981'}, {name: 'Périmé', value: vgpPerimees, color: '#ef4444'}];
-
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      {/* KPI CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard label="Taux Fréquence" val="1.2" sub="Objectif < 2.0" icon={AlertOctagon} color="blue" />
-        <StatCard label="Chantiers Actifs" val={chantiers.length} sub="Projets en base" icon={Factory} color="indigo" />
-        <StatCard label="VGP Périmées" val={vgpPerimees} sub="Matériel à contrôler" icon={Siren} color={vgpPerimees > 0 ? "red" : "green"} />
-        <StatCard label="Causeries" val="8" sub="Ce mois-ci" icon={Megaphone} color="orange" />
-      </div>
-      
-      {/* GRAPHIQUES */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
-        <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-black text-gray-800 mb-6 uppercase text-xs tracking-widest">Évolution Taux de Fréquence</h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0"/><XAxis dataKey="n" axisLine={false} tickLine={false} tick={{fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:10}}/><RechartsTooltip cursor={{fill: '#f9fafb'}} contentStyle={{borderRadius:'10px', border:'none', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}}/><Bar dataKey="v" fill="#ef4444" radius={[4,4,0,0]} barSize={40}/></BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-black text-gray-800 mb-2 uppercase text-xs tracking-widest">Conformité Matériel</h3>
-          <div className="flex-1 relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart><Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{pieData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Legend verticalAlign="bottom"/></PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8 flex-col"><span className="text-3xl font-black">{materiel.length > 0 ? Math.round(((materiel.length-vgpPerimees)/materiel.length)*100) : 100}%</span><span className="text-[9px] uppercase font-bold text-gray-400">Opérationnel</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =================================================================================================
-// MODULE 2: VGP TRACKER (Gestion Matériel)
-// =================================================================================================
-function VGPTracker({ materiel, chantierId, onRefresh }: { materiel: IMateriel[], chantierId: string, onRefresh: () => void }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [newEq, setNewEq] = useState({ libelle: '', type: 'interne', categorie: 'Levage', numero_serie: '', derniere_vgp: '' });
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const { error } = await supabase.from('materiel').insert([{ ...newEq, chantier_actuel_id: chantierId, statut: 'operationnel' }]);
-    if(!error) { setShowAdd(false); onRefresh(); alert("Matériel ajouté !"); } else { alert(error.message); }
-  };
-
-  return (
-    <div className="animate-in fade-in">
-      <div className="flex justify-between items-end mb-6">
-         <div><h3 className="text-xl font-black text-gray-800 uppercase flex items-center gap-2"><Wrench className="text-orange-500"/> Registre Matériel</h3><p className="text-xs text-gray-400 font-bold">Suivi des VGP et affectations pour ce chantier</p></div>
-         <button onClick={() => setShowAdd(true)} className="bg-black text-white px-5 py-3 rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:bg-gray-800"><Plus size={16}/> Ajouter</button>
-      </div>
-
-      {showAdd && (
-        <div className="bg-gray-50 p-6 rounded-2xl mb-6 border border-gray-100">
-           <form onSubmit={handleSave} className="grid grid-cols-2 gap-4">
-              <input required placeholder="Libellé (ex: Nacelle)" className="p-3 rounded-xl border outline-none" value={newEq.libelle} onChange={e=>setNewEq({...newEq, libelle:e.target.value})} />
-              <input required placeholder="N° Série" className="p-3 rounded-xl border outline-none" value={newEq.numero_serie} onChange={e=>setNewEq({...newEq, numero_serie:e.target.value})} />
-              <select className="p-3 rounded-xl border outline-none" value={newEq.categorie} onChange={e=>setNewEq({...newEq, categorie:e.target.value})}>{Object.keys(VGP_RULES).map(k=><option key={k} value={k}>{k}</option>)}</select>
-              <input required type="date" className="p-3 rounded-xl border outline-none" value={newEq.derniere_vgp} onChange={e=>setNewEq({...newEq, derniere_vgp:e.target.value})} />
-              <button className="col-span-2 bg-orange-500 text-white py-3 rounded-xl font-bold uppercase">Enregistrer</button>
-           </form>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase"><tr><th className="p-4">Matériel</th><th className="p-4">Catégorie</th><th className="p-4">Fin Validité</th><th className="p-4 text-center">État</th></tr></thead>
-          <tbody className="text-sm">{materiel.map(m => {
-             const freq = VGP_RULES[m.categorie as keyof typeof VGP_RULES] || 12;
-             const next = new Date(new Date(m.derniere_vgp).setMonth(new Date(m.derniere_vgp).getMonth() + freq));
-             const isLate = next < new Date();
-             return (
-               <tr key={m.id} className="border-b last:border-0 hover:bg-gray-50">
-                 <td className="p-4"><div className="font-bold text-gray-800">{m.libelle}</div><div className="text-xs text-gray-400">{m.numero_serie}</div></td>
-                 <td className="p-4"><span className="px-2 py-1 bg-gray-100 rounded text-xs font-bold uppercase">{m.categorie}</span></td>
-                 <td className="p-4 font-mono font-bold text-gray-600">{next.toLocaleDateString()}</td>
-                 <td className="p-4 text-center"><span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${isLate ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{isLate ? 'PÉRIMÉ' : 'CONFORME'}</span></td>
-               </tr>
-             )
-          })}</tbody>
-        </table>
-        {materiel.length === 0 && <div className="p-8 text-center text-gray-400 text-sm italic">Aucun matériel affecté à ce chantier.</div>}
-      </div>
-    </div>
-  );
-}
-// =================================================================================================
-// MODULE 3: GÉNÉRATEUR DOCUMENTS (PPSPS, etc.)
-// =================================================================================================
-function DocumentGenerator({ chantier, equipe }: any) {
-  const [type, setType] = useState('ppsps');
-  
-  const generate = async () => {
-     try {
-       const { jsPDF } = await import("jspdf");
-       const doc = new jsPDF();
-       doc.setFontSize(20); doc.text(type.toUpperCase(), 105, 20, { align: 'center' });
-       doc.setFontSize(12); doc.text(`Chantier: ${chantier.nom}`, 20, 40);
-       doc.text(`Client: ${chantier.client}`, 20, 50);
-       doc.text(`Effectif: ${equipe.length} personnes`, 20, 60);
-       doc.save(`${type}_${chantier.nom}.pdf`);
-     } catch(e) { alert("Erreur génération PDF"); }
-  };
-
-  return (
-    <div className="grid grid-cols-4 gap-6 animate-in fade-in">
-       <div className="col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
-          {['ppsps', 'modop', 'plan_prevention', 'fiche_securite'].map(t => (
-            <button key={t} onClick={()=>setType(t)} className={`p-4 rounded-xl text-left font-bold uppercase text-xs transition-all ${type===t ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'hover:bg-gray-50'}`}>{t.replace('_', ' ')}</button>
-          ))}
-       </div>
-       <div className="col-span-3 bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-          <FileText size={60} className="text-gray-200 mb-4"/>
-          <h3 className="text-xl font-black uppercase text-gray-800 mb-2">Générer {type.toUpperCase()}</h3>
-          <p className="text-sm text-gray-400 max-w-md mb-8">Ce document sera pré-rempli avec les données du chantier (risques, effectifs, matériel) et prêt à être signé.</p>
-          <button onClick={generate} className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase shadow-lg hover:scale-105 transition-transform flex items-center gap-2"><Download size={20}/> Télécharger PDF</button>
-       </div>
-    </div>
-  );
-}
-
-// =================================================================================================
-// MODULE 4: VISITES TERRAIN (VMT / Q3SRE)
-// =================================================================================================
-function FieldVisits({ chantier, equipe }: any) {
-  const [obs, setObs] = useState('');
-  const handleSave = async () => {
-      if(!obs) return;
-      await supabase.from('visites_terrain').insert([{ chantier_id: chantier.id, type: 'vmt', observations: obs, date: new Date().toISOString() }]);
-      setObs(''); alert('Visite enregistrée !');
-  };
-  return (
-    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 animate-in fade-in">
-       <h3 className="font-black text-gray-800 uppercase mb-6 flex items-center gap-2"><Camera className="text-emerald-500"/> Rapport de Visite</h3>
-       <textarea className="w-full p-4 bg-gray-50 rounded-2xl h-32 text-sm font-bold border-0 focus:ring-2 ring-emerald-100" placeholder="Observations, écarts, bonnes pratiques..." value={obs} onChange={e=>setObs(e.target.value)}></textarea>
-       <button onClick={handleSave} className="mt-4 w-full bg-emerald-500 text-white py-4 rounded-2xl font-black uppercase hover:bg-emerald-600 transition-colors">Enregistrer Visite</button>
-    </div>
-  );
-}
-
-// =================================================================================================
-// MODULE 5: CAUSERIES (Saisie Rapide)
-// =================================================================================================
-function SafetyTalks({ chantier, equipe }: any) {
-  const [theme, setTheme] = useState('');
-  const handleSave = async () => {
-     if(!theme) return;
-     await supabase.from('causeries_archives').insert([{ chantier_id: chantier.id, theme, date: new Date().toISOString() }]);
-     setTheme(''); alert('Causerie archivée !');
-  };
-  return (
-    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 animate-in fade-in">
-       <h3 className="font-black text-gray-800 uppercase mb-6 flex items-center gap-2"><Megaphone className="text-purple-500"/> Nouvelle Causerie</h3>
-       <select className="w-full p-4 bg-gray-50 rounded-2xl font-bold text-sm mb-4" value={theme} onChange={e=>setTheme(e.target.value)}>
-          <option value="">-- Choisir un thème --</option>
-          {CAUSERIE_THEMES.map(t => <option key={t} value={t}>{t}</option>)}
-       </select>
-       <button onClick={handleSave} className="w-full bg-purple-600 text-white py-4 rounded-2xl font-black uppercase hover:bg-purple-700 transition-colors">Valider la séance</button>
-    </div>
-  );
-}
-
-// =================================================================================================
-// MODULE 6: ARCHIVES GLOBALES
-// =================================================================================================
-function CauserieArchives() {
+export default function HSEPrejobModule({ chantierId, chantierNom, equipe, animateurNom }: PrejobProps) {
+  const [view, setView] = useState<'list' | 'create'>('list'); 
   const [archives, setArchives] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // --- ÉTATS DU FORMULAIRE ---
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    animateur_type: 'liste', // 'liste' ou 'manuel'
+    animateur_selectionne: '',
+    animateur_manuel: '',
+    taches_principales: [] as string[], // MULTI-CHOIX
+    zone_travail: '',
+    risques_selectionnes: [] as string[],
+    epi_selectionnes: [] as string[],
+    mesures_specifiques: '',
+    participants_presents: [] as string[]
+  });
+  
+  const sigPad = useRef<any>(null);
+
+  // Initialisation
   useEffect(() => { 
-     supabase.from('causeries_archives').select('*, chantiers(nom)').order('date', {ascending:false}).then(({data}) => setArchives(data || [])); 
-  }, []);
+      fetchArchives(); 
+      // Pré-selection animateur si trouvé dans la liste
+      if(animateurNom) setFormData(prev => ({...prev, animateur_selectionne: animateurNom}));
+      // Pré-selection equipe complète
+      if(equipe) setFormData(prev => ({...prev, participants_presents: equipe.map(e => e.id)}));
+  }, [chantierId]);
+
+  const fetchArchives = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('chantier_prejobs').select('*').eq('chantier_id', chantierId).order('date', { ascending: false });
+    if (data) setArchives(data);
+    setLoading(false);
+  };
+
+  // --- LOGIQUE METIER ---
+  const toggleTask = (task: string) => {
+      const current = formData.taches_principales;
+      if (current.includes(task)) setFormData({...formData, taches_principales: current.filter(t => t !== task)});
+      else setFormData({...formData, taches_principales: [...current, task]});
+  };
+
+  const toggleRisk = (riskId: string) => {
+    const current = formData.risques_selectionnes;
+    if (current.includes(riskId)) setFormData({...formData, risques_selectionnes: current.filter(id => id !== riskId)});
+    else setFormData({...formData, risques_selectionnes: [...current, riskId]});
+  };
+
+  const toggleEPI = (epi: string) => {
+    const current = formData.epi_selectionnes;
+    if (current.includes(epi)) setFormData({...formData, epi_selectionnes: current.filter(e => e !== epi)});
+    else setFormData({...formData, epi_selectionnes: [...current, epi]});
+  };
+
+  const handleSave = async () => {
+    const animateurFinal = formData.animateur_type === 'liste' ? formData.animateur_selectionne : formData.animateur_manuel;
+    if (!animateurFinal) return alert("Veuillez renseigner l'animateur");
+    
+    const signatureData = sigPad.current ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') : null;
+
+    const payload = {
+        chantier_id: chantierId,
+        date: formData.date,
+        animateur: animateurFinal,
+        tache_principale: formData.taches_principales.join(', '), // Stocké en string pour compatibilité
+        risques_id: formData.risques_selectionnes,
+        epi_ids: formData.epi_selectionnes,
+        mesures_specifiques: `${formData.zone_travail} - ${formData.mesures_specifiques}`,
+        participants: formData.participants_presents, 
+        signatures: { animateur: signatureData }
+    };
+
+    const { error } = await supabase.from('chantier_prejobs').insert([payload]);
+    if (error) alert("Erreur: " + error.message);
+    else { alert("✅ Enregistré !"); setView('list'); fetchArchives(); setStep(1); }
+  };
+
+  // --- VUE ARCHIVES ---
+  if (view === 'list') {
+      return (
+          <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 min-h-[600px]">
+              <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-black uppercase text-gray-800 flex items-center gap-3"><ClipboardCheck className="text-red-600"/> Historique Pre-Jobs</h2>
+                  <button onClick={() => setView('create')} className="bg-[#e21118] text-white px-6 py-3 rounded-xl font-black uppercase flex items-center gap-2 hover:bg-red-700 transition-all"><Plus size={18}/> Nouveau</button>
+              </div>
+              <div className="space-y-3">
+                  {archives.map(a => (
+                      <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                          <div>
+                              <p className="font-black text-gray-800 text-sm">{a.tache_principale || "Activités Multiples"}</p>
+                              <p className="text-xs text-gray-400 font-bold">{new Date(a.date).toLocaleDateString()} • Animé par {a.animateur}</p>
+                          </div>
+                          <div className="flex items-center gap-4">
+                              <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black">{a.risques_id?.length || 0} Risques</span>
+                              <button className="p-2 text-gray-400 hover:text-blue-600"><Eye size={20}/></button>
+                          </div>
+                      </div>
+                  ))}
+                  {archives.length === 0 && <div className="text-center py-10 text-gray-300 italic">Aucun historique disponible.</div>}
+              </div>
+          </div>
+      )
+  }
+
+  // --- VUE CRÉATION ---
   return (
-    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 animate-in fade-in">
-       <h3 className="font-black text-gray-800 uppercase mb-6 flex items-center gap-2"><History className="text-gray-400"/> Historique</h3>
-       <div className="space-y-4">
-          {archives.map(a => (
-             <div key={a.id} className="p-4 bg-gray-50 rounded-2xl border flex justify-between items-center">
-                <div><p className="font-black text-sm text-gray-800">{a.theme}</p><p className="text-xs text-gray-400">{new Date(a.date).toLocaleDateString()} - {a.chantiers?.nom}</p></div>
-                <button className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+    <div className="max-w-5xl mx-auto bg-white rounded-[30px] shadow-xl border border-gray-100 overflow-hidden flex flex-col min-h-[700px]">
+       <div className="bg-[#e21118] p-6 text-white flex justify-between items-center">
+          <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-white"/> Analyse de Risques (Pre-Job)</h1>
+          <button onClick={() => setView('list')} className="bg-white/20 p-2 rounded-lg"><X size={20}/></button>
+       </div>
+
+       <div className="flex-1 p-8 overflow-y-auto">
+          {/* STEP 1 : CONFIGURATION */}
+          {step === 1 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                  <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">1. Contexte & Activités</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Animateur</label>
+                          <div className="flex gap-2 mb-2">
+                              <button onClick={()=>setFormData({...formData, animateur_type: 'liste'})} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${formData.animateur_type==='liste' ? 'bg-black text-white' : 'bg-white'}`}>Liste</button>
+                              <button onClick={()=>setFormData({...formData, animateur_type: 'manuel'})} className={`flex-1 py-2 text-xs font-bold rounded-lg border ${formData.animateur_type==='manuel' ? 'bg-black text-white' : 'bg-white'}`}>Manuel</button>
+                          </div>
+                          {formData.animateur_type === 'liste' ? (
+                              <select className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" value={formData.animateur_selectionne} onChange={e=>setFormData({...formData, animateur_selectionne: e.target.value})}>
+                                  <option value="">Choisir...</option>
+                                  {equipe.map(e => <option key={e.id} value={`${e.nom} ${e.prenom}`}>{e.nom} {e.prenom}</option>)}
+                              </select>
+                          ) : (
+                              <input className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" placeholder="Nom Prénom" value={formData.animateur_manuel} onChange={e=>setFormData({...formData, animateur_manuel: e.target.value})} />
+                          )}
+                      </div>
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Date</label>
+                          <input type="date" className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm" value={formData.date} onChange={e=>setFormData({...formData, date: e.target.value})} />
+                      </div>
+                      <div className="col-span-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Tâches Principales (Multi-choix)</label>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              {Array.from(new Set(RISK_DATABASE.map(r => r.task))).map(task => (
+                                  <div key={task} onClick={() => toggleTask(task)} className={`p-3 rounded-xl border cursor-pointer text-xs font-bold transition-all ${formData.taches_principales.includes(task) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                                      {task}
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* STEP 2 : RISQUES (Filtrés par tâches sélectionnées) */}
+          {step === 2 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                  <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">2. Analyse des Risques</h3>
+                  <div className="space-y-3">
+                      {RISK_DATABASE.filter(r => formData.taches_principales.includes(r.task) || r.category === 'Logistique').map(risk => (
+                          <div key={risk.id} onClick={() => toggleRisk(risk.id)} className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${formData.risques_selectionnes.includes(risk.id) ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-white'}`}>
+                              <div className="flex justify-between items-center mb-2">
+                                  <span className="font-black text-gray-800 text-sm uppercase">{risk.category} - {risk.task}</span>
+                                  {formData.risques_selectionnes.includes(risk.id) && <CheckCircle2 className="text-red-500" size={18}/>}
+                              </div>
+                              {formData.risques_selectionnes.includes(risk.id) && (
+                                  <div className="grid grid-cols-2 gap-4 text-xs mt-2 pl-2 border-l-2 border-red-200">
+                                      <div><span className="font-bold text-red-500">Dangers:</span> {risk.risks.join(', ')}</div>
+                                      <div><span className="font-bold text-emerald-600">Mesures:</span> {risk.measures.join(', ')}</div>
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+
+          {/* STEP 3 : EPI & VALIDATION */}
+          {step === 3 && (
+              <div className="space-y-6 animate-in slide-in-from-right-8">
+                   <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">3. Protection & Signature</h3>
+                   <div className="grid grid-cols-3 gap-3">
+                       {["Casque", "Lunettes", "Gants", "Chaussures", "Harnais", "Masque", "Gilet", "Auditifs"].map(epi => (
+                           <button key={epi} onClick={() => toggleEPI(epi)} className={`p-3 rounded-xl border font-bold text-xs uppercase ${formData.epi_selectionnes.includes(epi) ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-400'}`}>{epi}</button>
+                       ))}
+                   </div>
+                   <div className="border-2 border-dashed border-gray-300 rounded-2xl h-40 bg-gray-50 relative">
+                       <SignatureCanvas ref={sigPad} penColor="black" canvasProps={{className: 'absolute inset-0 w-full h-full'}} />
+                       <div className="absolute bottom-2 left-2 text-[10px] text-gray-400 uppercase font-bold pointer-events-none">Signature Animateur</div>
+                       <button onClick={()=>sigPad.current.clear()} className="absolute top-2 right-2 text-xs bg-white border px-2 py-1 rounded">Effacer</button>
+                   </div>
+              </div>
+          )}
+       </div>
+
+       <div className="p-6 border-t bg-gray-50 flex justify-between">
+           {step > 1 ? <button onClick={()=>setStep(step-1)} className="px-6 py-3 font-bold text-gray-500">Retour</button> : <div></div>}
+           {step < 3 ? (
+               <button onClick={()=>setStep(step+1)} className="bg-black text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2">Suivant <ChevronRight size={16}/></button>
+           ) : (
+               <button onClick={handleSave} className="bg-[#e21118] text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2"><Save size={18}/> Terminer</button>
+           )}
+       </div>
+    </div>
+  );
+}
+// =================================================================================================
+// FORMULAIRE COMPLEXE : VISITE TERRAIN (VMT) - Identique Capture
+// =================================================================================================
+function VMTForm({ chantier, equipe }: any) {
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    type: { vmt: true, q3sre: false, ost: false },
+    is_sous_traitant: 'non',
+    domaine: '', agence: '', otp: '', site: '', local: '',
+    lignes_defense: [] as any[], // Tableau dynamique
+    individuel: [] as any[] // Tableau dynamique
+  });
+
+  // Gestion Lignes de défense (Tableau dynamique)
+  const addLigneDefense = () => setForm({...form, lignes_defense: [...form.lignes_defense, { ligne: '', point: '', resultat: '', explication: '' }]});
+  
+  // Gestion Individuelle (Tableau dynamique)
+  const addIndividuel = () => setForm({...form, individuel: [...form.individuel, { nom: '', epi: '', culture: '', minute: '' }]});
+
+  return (
+    <div className="bg-white rounded-[40px] shadow-lg border border-gray-200 overflow-hidden max-w-4xl mx-auto">
+       <div className="bg-[#e21118] p-6 text-white"><h2 className="text-2xl font-black uppercase text-center">VISITE TERRAIN</h2></div>
+       <div className="p-8 space-y-8">
+          
+          {/* SECTION 1: TYPE DE VISITE */}
+          <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100">
+             <h3 className="text-xs font-black uppercase text-red-600 mb-4 border-b border-red-200 pb-2">TYPE DE VISITE</h3>
+             <div className="grid grid-cols-2 gap-6">
+                <div><label className="text-[10px] font-bold text-gray-500 uppercase">Date Visite *</label><input type="date" className="w-full p-2 border rounded font-bold" value={form.date} onChange={e=>setForm({...form, date:e.target.value})}/></div>
+                <div>
+                   <label className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Type de visite terrain *</label>
+                   <div className="flex gap-4">
+                      <label className="flex items-center gap-2 font-bold text-xs"><input type="checkbox" checked={form.type.vmt} onChange={()=>setForm({...form, type:{...form.type, vmt:!form.type.vmt}})}/> VMT</label>
+                      <label className="flex items-center gap-2 font-bold text-xs"><input type="checkbox" checked={form.type.q3sre} onChange={()=>setForm({...form, type:{...form.type, q3sre:!form.type.q3sre}})}/> Contrôle Q3SRE</label>
+                   </div>
+                   <label className="flex items-center gap-2 font-bold text-xs mt-2"><input type="checkbox" checked={form.type.ost} onChange={()=>setForm({...form, type:{...form.type, ost:!form.type.ost}})}/> Observation situation travail</label>
+                </div>
+                <div className="col-span-2">
+                   <label className="text-[10px] font-bold text-gray-500 uppercase">La visite concerne-t-elle un sous-traitant ?</label>
+                   <select className="w-full p-2 border rounded font-bold mt-1" value={form.is_sous_traitant} onChange={e=>setForm({...form, is_sous_traitant:e.target.value})}><option value="non">Non</option><option value="oui">Oui</option></select>
+                </div>
              </div>
-          ))}
-          {archives.length === 0 && <p className="text-center text-gray-400 text-sm italic">Aucune archive.</p>}
+          </div>
+
+          {/* SECTION 2: DESCRIPTION */}
+          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+             <h3 className="text-xs font-black uppercase text-gray-600 mb-4 border-b border-gray-300 pb-2">DESCRIPTION DE LA VISITE</h3>
+             <div className="grid grid-cols-3 gap-4 mb-4">
+                <div><label className="text-[10px] font-bold uppercase">Domaine *</label><select className="w-full p-2 border rounded" value={form.domaine} onChange={e=>setForm({...form, domaine:e.target.value})}><option>Sécurité</option><option>Qualité</option></select></div>
+                <div><label className="text-[10px] font-bold uppercase">Agence *</label><select className="w-full p-2 border rounded" value={form.agence} onChange={e=>setForm({...form, agence:e.target.value})}><option>Agence Lyon</option></select></div>
+                <div><label className="text-[10px] font-bold uppercase">OTP *</label><input className="w-full p-2 border rounded" value={form.otp} onChange={e=>setForm({...form, otp:e.target.value})}/></div>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold uppercase">Identification local / équipement</label><input className="w-full p-2 border rounded" value={form.local} onChange={e=>setForm({...form, local:e.target.value})}/></div>
+                <div><label className="text-[10px] font-bold uppercase">Site</label><input className="w-full p-2 border rounded" value={form.site} onChange={e=>setForm({...form, site:e.target.value})}/></div>
+             </div>
+          </div>
+
+          {/* SECTION 3: COLLECTIF (Dynamique) */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+             <h3 className="text-xs font-black uppercase text-gray-600 mb-4 flex justify-between items-center">
+                 <span>COLLECTIF: DÉTAIL DE LA VISITE</span>
+                 <button onClick={addLigneDefense} className="bg-red-100 text-red-600 px-3 py-1 rounded text-[10px] font-black uppercase hover:bg-red-200">+ Ajouter Ligne</button>
+             </h3>
+             {form.lignes_defense.map((l, i) => (
+                 <div key={i} className="p-4 mb-4 bg-gray-50 rounded-xl border border-gray-200">
+                     <div className="grid grid-cols-2 gap-4 mb-2">
+                        <select className="p-2 border rounded text-xs"><option>Technique (Matériel)</option><option>Humaine</option></select>
+                        <select className="p-2 border rounded text-xs"><option>Balisage</option><option>EPI</option></select>
+                     </div>
+                     <textarea className="w-full p-2 border rounded text-xs h-16" placeholder="Explication du résultat..."></textarea>
+                 </div>
+             ))}
+             {form.lignes_defense.length === 0 && <p className="text-center text-xs text-gray-400 italic">Aucune ligne de défense ajoutée.</p>}
+          </div>
+
+          {/* SECTION 4: INDIVIDUEL (Dynamique) */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+             <h3 className="text-xs font-black uppercase text-gray-600 mb-4 flex justify-between items-center">
+                 <span>INDIVIDUEL: OBSERVATION</span>
+                 <button onClick={addIndividuel} className="bg-red-100 text-red-600 px-3 py-1 rounded text-[10px] font-black uppercase hover:bg-red-200">+ Ajouter Observation</button>
+             </h3>
+             {form.individuel.map((ind, i) => (
+                 <div key={i} className="p-4 mb-4 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-2 gap-4">
+                     <select className="p-2 border rounded text-xs"><option>-- Nom Prénom --</option>{equipe.map((u:any)=><option key={u.id}>{u.nom} {u.prenom}</option>)}</select>
+                     <input className="p-2 border rounded text-xs" placeholder="Si hors liste..."/>
+                     <select className="p-2 border rounded text-xs"><option>Port EPI: OK</option><option>NOK</option></select>
+                     <select className="p-2 border rounded text-xs"><option>Culture SSE: Exemplaire</option><option>À améliorer</option></select>
+                 </div>
+             ))}
+          </div>
+
+          <button className="w-full bg-[#e21118] text-white font-black py-4 rounded-xl uppercase shadow-lg hover:bg-black transition-all">Enregistrer la Visite</button>
        </div>
     </div>
   );
 }
 
-// --- PETIT COMPOSANT STATS (UI) ---
-const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
-  const themes:any = { 
-    red: "bg-red-50 text-red-600 border-red-100", blue: "bg-blue-50 text-blue-600 border-blue-100", 
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100", indigo: "bg-indigo-50 text-indigo-600 border-indigo-100", 
-    orange: "bg-orange-50 text-orange-600 border-orange-100" 
-  };
+// =================================================================================================
+// FORMULAIRE COMPLEXE : CAUSERIE QSSE - Identique Capture
+// =================================================================================================
+function CauserieForm({ chantier, equipe }: any) {
+  const [activeTab, setActiveTab] = useState('nouveau');
+  const sigPad = useRef<any>(null);
+
   return (
-    <div className={`p-6 rounded-[30px] border flex items-start justify-between bg-white shadow-sm ${themes[color].split(' ')[2]}`}>
-      <div><p className="text-[10px] font-black uppercase opacity-60 tracking-widest text-gray-500 mb-2">{label}</p><p className="text-3xl font-black text-gray-900 tracking-tighter leading-none">{val}</p><p className={`text-[9px] font-black mt-3 uppercase ${themes[color].split(' ')[1]}`}>{sub}</p></div>
-      <div className={`p-4 rounded-2xl ${themes[color].split(' ').slice(0,2).join(' ')}`}><Icon size={24}/></div>
+    <div className="max-w-4xl mx-auto">
+       <div className="flex gap-4 mb-6">
+          <button onClick={()=>setActiveTab('nouveau')} className={`px-6 py-3 rounded-xl font-black uppercase text-xs flex-1 ${activeTab==='nouveau' ? 'bg-black text-white' : 'bg-white border'}`}>Nouvelle Causerie</button>
+          <button onClick={()=>setActiveTab('archives')} className={`px-6 py-3 rounded-xl font-black uppercase text-xs flex-1 ${activeTab==='archives' ? 'bg-black text-white' : 'bg-white border'}`}>Archives</button>
+       </div>
+
+       {activeTab === 'archives' ? (
+          <div className="bg-white p-8 rounded-[40px] shadow-sm"><p className="text-center text-gray-400 font-bold">Liste des archives causeries...</p></div>
+       ) : (
+          <div className="bg-white rounded-[40px] shadow-lg border border-gray-200 overflow-hidden">
+             <div className="p-8 space-y-8">
+                 <div className="text-right"><h2 className="text-3xl font-black uppercase text-gray-800">CAUSERIE QSSE</h2></div>
+                 
+                 <div className="grid grid-cols-2 gap-6">
+                    <div><label className="text-[10px] font-bold text-gray-500 uppercase">Date</label><input type="date" className="w-full p-3 border rounded-xl font-bold bg-gray-50"/></div>
+                    <div><label className="text-[10px] font-bold text-red-500 uppercase">N° de dossier / OTP *</label><input type="text" className="w-full p-3 border rounded-xl font-bold bg-gray-50" placeholder="Saisir OTP..."/></div>
+                 </div>
+
+                 <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Activité concernée</label>
+                    <div className="flex flex-wrap gap-4">
+                        {['Revêtement', 'Echafaudage', 'Isolation', 'PPI', 'Agencement'].map(a => (
+                            <label key={a} className="flex items-center gap-2 text-xs font-bold"><input type="checkbox"/> {a}</label>
+                        ))}
+                        <input placeholder="Autres :" className="p-1 border-b text-xs outline-none"/>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-6">
+                    <input placeholder="Animateur (Nom Prénom)" className="w-full p-3 border rounded-xl bg-gray-50 font-bold text-sm"/>
+                    <input placeholder="Co-animateur" className="w-full p-3 border rounded-xl bg-gray-50 font-bold text-sm"/>
+                 </div>
+
+                 <div className="border-2 border-dashed border-gray-300 rounded-xl h-40 relative bg-gray-50">
+                     <SignatureCanvas ref={sigPad} penColor="black" canvasProps={{className: 'absolute inset-0 w-full h-full'}} />
+                     <div className="absolute top-2 left-2 text-[10px] text-gray-400 font-bold">Signature Animateur</div>
+                 </div>
+
+                 <div>
+                     <label className="text-[10px] font-bold text-gray-500 uppercase">Domaines</label>
+                     <select className="w-full p-3 border rounded-xl font-bold text-sm mt-1"><option>Travaux en hauteur</option><option>Risque chimique</option></select>
+                 </div>
+
+                 <div>
+                     <label className="text-[10px] font-bold text-gray-500 uppercase">Type de sensibilisation</label>
+                     <select className="w-full p-3 border rounded-xl font-bold text-sm mt-1"><option>Rappel des règles</option><option>Retour d'expérience (REX)</option></select>
+                 </div>
+
+                 <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
+                     <span className="font-bold text-sm">Échange avec l'équipe ?</span>
+                     <div className="flex items-center gap-2"><span className="text-xs">Non</span><div className="w-10 h-5 bg-gray-300 rounded-full relative cursor-pointer"><div className="w-5 h-5 bg-white rounded-full shadow-md absolute left-0"></div></div></div>
+                 </div>
+
+                 <div className="space-y-2">
+                     <div className="flex justify-between items-center">
+                         <span className="font-bold text-sm">Remontées d'information ?</span>
+                         <div className="flex items-center gap-2"><span className="text-xs">Non</span><div className="w-10 h-5 bg-gray-300 rounded-full relative cursor-pointer"><div className="w-5 h-5 bg-white rounded-full shadow-md absolute left-0"></div></div></div>
+                     </div>
+                     <textarea className="w-full p-3 border rounded-xl text-xs h-20 bg-gray-50" placeholder="En cas de remontée d'informations du personnel..."></textarea>
+                 </div>
+
+                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center bg-gray-50 cursor-pointer hover:bg-white hover:border-red-400 transition-colors">
+                     <p className="text-red-500 font-bold text-sm uppercase flex items-center justify-center gap-2"><Paperclip size={16}/> Select Files</p>
+                     <p className="text-xs text-gray-400 mt-1">Photos de la causerie (Preuve)</p>
+                 </div>
+
+                 <div className="flex justify-between items-center pt-6 border-t">
+                     <button className="text-red-500 font-bold uppercase text-xs border border-red-500 px-6 py-3 rounded-xl hover:bg-red-50">Cancel</button>
+                     <button className="bg-[#e21118] text-white font-bold uppercase text-xs px-8 py-3 rounded-xl hover:bg-black transition-colors shadow-lg">Submit</button>
+                 </div>
+             </div>
+          </div>
+       )}
     </div>
-  )
-};
+  );
+}
