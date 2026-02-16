@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ClipboardCheck, Users, Shield, User, Check, X, Save, 
-  Trash2, FileText, ChevronRight, Plus, Eye, Calendar, HardHat
+  Trash2, FileText, ChevronRight, Plus, Eye, Calendar, HardHat, CheckCircle2
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import { RISK_DATABASE } from '../data';
