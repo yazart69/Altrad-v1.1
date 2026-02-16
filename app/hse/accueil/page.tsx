@@ -1,16 +1,29 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ShieldCheck, User, Camera, UploadCloud, ArrowRight, CheckCircle2, 
-  AlertTriangle, Siren, HardHat, FileCheck, X, Save, Printer, QrCode 
+  AlertTriangle, Siren, HardHat, FileCheck, X, Save, Printer, QrCode, 
+  Loader2
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function HSEAccueilSecurite() {
+// Composant principal enveloppé dans Suspense pour la lecture des params URL
+export default function HSEAccueilSecuritePage() {
+  return (
+    <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin"/></div>}>
+      <AccueilSecuriteContent />
+    </Suspense>
+  );
+}
+
+function AccueilSecuriteContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const chantierId = searchParams.get('cid'); // Récupération de l'ID depuis l'URL
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const sigPad = useRef<any>(null);
@@ -21,10 +34,17 @@ export default function HSEAccueilSecurite() {
     prenom: '',
     entreprise: '',
     poste: '',
-    chantier_id: 'c1', // À dynamiser avec un Select ou via Props si intégré
     photo_habilitations: null as File | null,
     quiz_answers: { q1: '', q2: '', q3: '' }
   });
+
+  // --- VÉRIFICATION ID CHANTIER ---
+  useEffect(() => {
+    if (!chantierId) {
+      alert("Aucun chantier sélectionné. Retour au tableau de bord.");
+      router.push('/hse');
+    }
+  }, [chantierId, router]);
 
   // --- QUIZ DATA ---
   const QUIZ = [
@@ -56,7 +76,7 @@ export default function HSEAccueilSecurite() {
   };
 
   const handleQuizChange = (qId: string, value: string) => {
-    setFormData({ ...formData, quiz_answers: { ...formData.quiz_answers, [qId]: value } });
+    setFormData({ ...formData, quiz_answers: { ...formData.quiz_answers, [qId as keyof typeof formData.quiz_answers]: value } });
   };
 
   const validateQuiz = () => {
@@ -71,27 +91,31 @@ export default function HSEAccueilSecurite() {
 
   const handleSave = async () => {
     if (sigPad.current.isEmpty()) return alert("Signature obligatoire");
+    if (!chantierId) return alert("Erreur technique : ID Chantier manquant");
+
     setLoading(true);
 
     try {
-      // 1. Upload Photo (Simulation)
+      // 1. Upload Photo (Si configuré, sinon on met un placeholder ou null)
       let photoUrl = ""; 
       if (formData.photo_habilitations) {
-        // Logique d'upload Supabase Storage ici
-        // const { data } = await supabase.storage.from('hse-docs').upload(...)
-        photoUrl = "https://via.placeholder.com/150"; // Mock
+        // NOTE: Activez le stockage Supabase si besoin
+        // const fileName = `${chantierId}/${Date.now()}_${formData.nom}.jpg`;
+        // const { data, error } = await supabase.storage.from('hse_docs').upload(fileName, formData.photo_habilitations);
+        // if (data) photoUrl = supabase.storage.from('hse_docs').getPublicUrl(fileName).data.publicUrl;
+        photoUrl = "https://via.placeholder.com/150"; // Mock pour éviter l'erreur si Storage non configuré
       }
 
-      // 2. Signature
+      // 2. Signature en Base64
       const signatureData = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
 
-      // 3. Insert DB
+      // 3. Enregistrement Base de Données
       const { error } = await supabase.from('hse_accueils_securite').insert([{
         nom: formData.nom,
         prenom: formData.prenom,
         entreprise: formData.entreprise,
         poste: formData.poste,
-        chantier_id: formData.chantier_id, // Idéalement récupéré du contexte
+        chantier_id: chantierId, // UTILISATION DE L'ID RÉEL RÉCUPÉRÉ
         photo_habilitations_url: photoUrl,
         signature_url: signatureData,
         quiz_resultat: formData.quiz_answers,
@@ -100,7 +124,7 @@ export default function HSEAccueilSecurite() {
 
       if (error) throw error;
       
-      setStep(5); // Vers le Pass Virtuel
+      setStep(5); // Succès
     } catch (e: any) {
       console.error(e);
       alert("Erreur lors de l'enregistrement : " + e.message);
@@ -155,7 +179,7 @@ export default function HSEAccueilSecurite() {
             </div>
           )}
 
-          {/* ÉTAPE 2 : CONSIGNES (Lecture) */}
+          {/* ÉTAPE 2 : CONSIGNES */}
           {step === 2 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-8">
               <h2 className="text-xl font-black text-gray-800 uppercase mb-4 flex items-center gap-2"><Siren className="text-red-500"/> 2. Consignes Vitales du Site</h2>
@@ -236,7 +260,7 @@ export default function HSEAccueilSecurite() {
             </div>
           )}
 
-          {/* ÉTAPE 5 : SUCCÈS & PASS VIRTUEL */}
+          {/* ÉTAPE 5 : SUCCÈS */}
           {step === 5 && (
             <div className="flex flex-col items-center justify-center animate-in zoom-in-95 duration-300 py-10">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-500 mb-6">
@@ -245,13 +269,12 @@ export default function HSEAccueilSecurite() {
               <h2 className="text-3xl font-black uppercase text-gray-800 mb-2">Accueil Validé !</h2>
               <p className="text-gray-400 font-bold mb-8">Vous êtes autorisé à accéder au site.</p>
 
-              {/* LE PASS VIRTUEL */}
+              {/* PASS VIRTUEL */}
               <div className="bg-white w-full max-w-sm rounded-[20px] shadow-2xl border border-gray-200 overflow-hidden relative print:border-2 print:border-black">
                 <div className="bg-[#2d3436] h-24 absolute top-0 w-full z-0"></div>
                 <div className="relative z-10 p-6 flex flex-col items-center pt-10">
-                  <div className="w-24 h-24 bg-gray-200 rounded-full border-4 border-white shadow-lg mb-4 overflow-hidden">
-                     {/* Placeholder photo ou avatar */}
-                     <User size={60} className="mt-4 text-gray-400 mx-auto"/>
+                  <div className="w-24 h-24 bg-gray-200 rounded-full border-4 border-white shadow-lg mb-4 overflow-hidden flex items-center justify-center bg-white">
+                     <User size={50} className="text-gray-300"/>
                   </div>
                   <h3 className="text-xl font-black text-gray-800 uppercase">{formData.prenom} {formData.nom}</h3>
                   <p className="text-sm font-bold text-gray-500 uppercase mb-4">{formData.entreprise}</p>
