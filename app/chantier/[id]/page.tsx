@@ -10,7 +10,7 @@ import {
   Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
   Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
   Euro, HardHat, Briefcase, Zap, MapPin, Calculator, Wallet, Receipt, Hash, Check, LayoutDashboard,
-  CreditCard, FileCheck, CalendarClock, BellRing, Pencil // <--- Ajout icône Pencil
+  CreditCard, FileCheck, CalendarClock, BellRing, Pencil
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,7 +55,7 @@ export default function ChantierDetail() {
   // --- FORMULAIRES ---
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null); // NOUVEAU : ID de la tâche en cours d'édition
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
@@ -145,6 +145,26 @@ export default function ChantierDetail() {
       fetchChantierData(); 
   };
 
+  // --- IMPRESSION INTELLIGENTE ---
+  const handleSectionPrint = (sectionId: string) => {
+    // Création d'un style temporaire pour masquer tout sauf la section cible
+    const style = document.createElement('style');
+    style.id = 'print-section-style';
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden; }
+        #${sectionId}, #${sectionId} * { visibility: visible; }
+        #${sectionId} { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; } 
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
+  };
+
+  const handlePrint = () => { window.print(); };
+
   // --- CALCULS KPI FINANCIERS ---
   const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
 
@@ -214,7 +234,7 @@ export default function ChantierDetail() {
   const addSubTask = async (parentId: string) => { if(!newSubTask.label) return; const parentTask = tasks.find(t => t.id === parentId); const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false }]; const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0); await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t); setTasks(newTasks); setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 }); setActiveParentTask(null); };
   const toggleSubTask = async (parentId: string, subtaskId: number) => { const parentTask = tasks.find(t => t.id === parentId); const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st); const allDone = updatedSubtasks.every((st: any) => st.done); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, done: allDone, heures_reelles: allDone ? (parentTask.heures_reelles || parentTask.objectif_heures) : parentTask.heures_reelles }).eq('id', parentId); if (!error) { const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t); setTasks(newTasks); updateChantierTotalHours(newTasks); } };
   
-  // Supprimer Sous-tâche (NOUVEAU)
+  // Supprimer Sous-tâche
   const deleteSubTask = async (parentId: string, subTaskId: number) => {
       if(!confirm("Supprimer cette sous-tâche ?")) return;
       const parentTask = tasks.find(t => t.id === parentId);
@@ -233,7 +253,6 @@ export default function ChantierDetail() {
   const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
   const handleAddMateriel = async () => { if (!newMat.materiel_id) return alert("Sélectionnez un matériel"); const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]); if (!error) { setShowAddMaterielModal(false); fetchChantierData(); }};
   const deleteMateriel = async (matId: string) => { if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); fetchChantierData(); } };
-  const handlePrint = () => { window.print(); };
   const getSelectedUnit = () => { const selected = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id); return selected ? selected.unite : ''; };
   const filteredStock = stockFournitures.filter(s => s.nom.toLowerCase().includes(supplySearch.toLowerCase()) || (s.ral && s.ral.includes(supplySearch)));
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
@@ -258,6 +277,25 @@ export default function ChantierDetail() {
   const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
 
   const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
+
+  // --- FONCTION IMPRESSION CIBLÉE ---
+  const handlePrint = () => { window.print(); }; // Impression globale
+  const handleSectionPrint = (sectionId: string) => {
+    // Crée une balise style pour cacher tout sauf la section demandée
+    const style = document.createElement('style');
+    style.id = 'print-section-style';
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden; }
+        #${sectionId}, #${sectionId} * { visibility: visible; }
+        #${sectionId} { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; } 
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
+  };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   return (
@@ -361,10 +399,13 @@ export default function ChantierDetail() {
         {activeTab === 'planning' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 {/* 1. GESTION TÂCHES & SOUS-TÂCHES (Interactif) */}
-                <div className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col min-h-[500px]">
-                    <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none"><CheckCircle2 size={200} /></div>
-                    <h3 className="font-black uppercase text-xl mb-4 flex items-center gap-2 relative z-10"><CheckCircle2 size={20}/> Tâches & Planning</h3>
-                    <div className="flex gap-2 mb-4 relative z-10"><input placeholder="Nouvelle étape..." value={newTaskLabel} onChange={(e) => setNewTaskLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" /><button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] shadow-lg transition-transform active:scale-95"><Plus size={20}/></button></div>
+                <div id="tasks-view" className="bg-[#34495e] rounded-[30px] p-6 shadow-xl text-white relative overflow-hidden flex flex-col min-h-[500px]">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none print:hidden"><CheckCircle2 size={200} /></div>
+                    <div className="flex justify-between items-center mb-4 relative z-10">
+                        <h3 className="font-black uppercase text-xl flex items-center gap-2"><CheckCircle2 size={20}/> Tâches</h3>
+                        <button onClick={() => handleSectionPrint('tasks-view')} className="bg-white/10 p-2 rounded-lg hover:bg-white/20 transition-colors print:hidden"><Printer size={18}/></button>
+                    </div>
+                    <div className="flex gap-2 mb-4 relative z-10 print:hidden"><input placeholder="Nouvelle étape..." value={newTaskLabel} onChange={(e) => setNewTaskLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} className="flex-1 bg-white/10 rounded-xl p-3 text-sm font-bold text-white placeholder-white/40 outline-none border border-white/5 focus:bg-white/20 transition-colors" /><button onClick={addTask} className="bg-[#ff9f43] text-white p-3 rounded-xl hover:bg-[#e67e22] shadow-lg transition-transform active:scale-95"><Plus size={20}/></button></div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 relative z-10">
                         {tasks.map((t) => (
                             <div key={t.id} className={`p-4 rounded-2xl border transition-all ${t.done ? 'bg-black/20 border-transparent opacity-80' : 'bg-white/5 border-white/5'}`}>
@@ -379,7 +420,7 @@ export default function ChantierDetail() {
                                             ) : (
                                                 <div className="flex justify-between group">
                                                     <p className={`text-sm font-black uppercase tracking-tight ${t.done ? 'line-through text-gray-500' : 'text-[#ff9f43]'}`}>{t.label}</p>
-                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                                                         <button onClick={() => setEditingTaskId(t.id)} className="text-blue-400 hover:text-white"><Pencil size={14}/></button>
                                                         <button onClick={() => deleteTask(t.id)} className="text-red-400 hover:text-red-500"><Trash2 size={14}/></button>
                                                     </div>
@@ -393,7 +434,7 @@ export default function ChantierDetail() {
                                         {t.done && (<div className="mt-1 flex items-center gap-2 justify-end animate-in fade-in"><span className="text-[9px] font-black uppercase text-[#ff9f43]">Réel :</span><input type="number" className="w-12 bg-white/10 text-center rounded border border-white/10 text-[10px] font-black py-0.5 outline-none focus:border-[#ff9f43] text-white" value={t.heures_reelles} onChange={(e) => updateTaskField(t.id, 'heures_reelles', parseFloat(e.target.value) || 0)} /></div>)}
                                     </div>
                                 </div>
-                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center justify-between text-[11px] py-1 group"><div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>{st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}<span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span></div><div className="flex items-center gap-2"><span className="text-[9px] font-bold text-white/40">{st.heures}h</span><button onClick={() => deleteSubTask(t.id, st.id)} className="text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"><Trash2 size={12}/></button></div></div>))}{!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors">+ Ajouter sous-tâche</button>}</div>
+                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center justify-between text-[11px] py-1 group"><div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>{st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}<span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span></div><div className="flex items-center gap-2"><span className="text-[9px] font-bold text-white/40">{st.heures}h</span><button onClick={() => deleteSubTask(t.id, st.id)} className="text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity print:hidden"><Trash2 size={12}/></button></div></div>))}{!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors print:hidden">+ Ajouter sous-tâche</button>}</div>
                                 {activeParentTask === t.id && (<div className="mt-3 bg-black/20 p-3 rounded-lg flex flex-col gap-2 animate-in fade-in"><input type="text" placeholder="Nom de la sous-tâche..." className="bg-transparent text-xs text-white placeholder-white/30 outline-none border-b border-white/10 p-1" value={newSubTask.label} onChange={e => setNewSubTask({...newSubTask, label: e.target.value})} /><div className="flex gap-2 items-center"><input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} /><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Users size={12} className="text-blue-400"/><input type="number" placeholder="P" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} /></div><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Clock size={12} className="text-orange-400"/><input type="number" placeholder="H" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} /></div><button onClick={() => addSubTask(t.id)} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase ml-auto hover:bg-green-600 transition-colors">Ajouter</button></div></div>)}
                             </div>
                         ))}
@@ -401,10 +442,13 @@ export default function ChantierDetail() {
                 </div>
 
                 {/* 2. GANTT VISUEL (Lecture Seule) - REMIS ICI */}
-                <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100">
+                <div id="planning-view" className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 relative">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3>
-                        <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl"><Users size={18} className="text-blue-600"/><span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span></div>
+                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Tâches & Planning</h3>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl"><Users size={18} className="text-blue-600"/><span className="text-sm font-black text-blue-800">Effectif Total : {chantier.effectif_prevu} pers.</span></div>
+                            <button onClick={() => handleSectionPrint('planning-view')} className="bg-gray-100 p-2 rounded-lg hover:bg-gray-200 transition-colors print:hidden"><Printer size={18} className="text-gray-600"/></button>
+                        </div>
                     </div>
                     <div className="space-y-6">
                         {tasks.map((t, idx) => (
