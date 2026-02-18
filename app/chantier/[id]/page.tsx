@@ -145,51 +145,6 @@ export default function ChantierDetail() {
       fetchChantierData(); 
   };
 
-  // --- IMPRESSION INTELLIGENTE ---
-  const handleSectionPrint = (sectionId: string) => {
-    // Création d'un style temporaire pour masquer tout sauf la section cible
-    const style = document.createElement('style');
-    style.id = 'print-section-style';
-    style.innerHTML = `
-      @media print {
-        body * { visibility: hidden; }
-        #${sectionId}, #${sectionId} * { visibility: visible; }
-        #${sectionId} { position: absolute; left: 0; top: 0; width: 100%; }
-        .no-print { display: none !important; } 
-      }
-    `;
-    document.head.appendChild(style);
-    window.print();
-    document.head.removeChild(style);
-  };
-
-  const handlePrint = () => { window.print(); };
-
-  // --- CALCULS KPI FINANCIERS ---
-  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
-
-  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
-  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
-  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const montantMarcheInitial = chantier.montant_marche || 0;
-  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
-
-  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
-  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
-  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
-
-  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
-  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
-  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
-
-  const margeBrute = montantMarcheActif - coutDirect_Reel;
-  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
-  const margeNette = margeBrute - chantier.frais_generaux_reel;
-  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
-
   // --- ACTIONS GLOBALES ---
   const handleSave = async () => {
     const toSave = { 
@@ -263,25 +218,8 @@ export default function ChantierDetail() {
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
   const toggleTeamMember = (empId: string) => { const currentTeam = chantier.equipe_ids || []; if (currentTeam.includes(empId)) setChantier({...chantier, equipe_ids: currentTeam.filter((id: string) => id !== empId)}); else setChantier({...chantier, equipe_ids: [...currentTeam, empId]}); };
 
-  const chartData = [
-    { label: 'Main d\'Oeuvre', value: coutMO_Reel, color: '#3b82f6' }, 
-    { label: 'Matériaux', value: chantier.cout_fournitures_reel, color: '#f97316' }, 
-    { label: 'Sous-Traitance', value: chantier.cout_sous_traitance_reel, color: '#a855f7' }, 
-    { label: 'Location', value: chantier.cout_location_reel, color: '#ec4899' }, 
-    { label: 'Frais Génx', value: chantier.frais_generaux_reel, color: '#64748b' }, 
-    { label: 'Marge Nette', value: Math.max(0, margeNette), color: '#10b981' } 
-  ];
-  const totalChart = Math.max(montantMarcheActif, chartData.reduce((acc, d) => acc + d.value, 0));
-  let currentAngle = 0;
-  const gradientParts = chartData.map(d => { const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; const endAngle = currentAngle + percentage; const str = `${d.color} ${currentAngle}% ${endAngle}%`; currentAngle = endAngle; return str; }).join(', ');
-  const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
-
-  const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
-
-  // --- FONCTION IMPRESSION CIBLÉE ---
-  const handlePrint = () => { window.print(); }; // Impression globale
+  // --- IMPRESSION INTELLIGENTE ---
   const handleSectionPrint = (sectionId: string) => {
-    // Crée une balise style pour cacher tout sauf la section demandée
     const style = document.createElement('style');
     style.id = 'print-section-style';
     style.innerHTML = `
@@ -296,6 +234,48 @@ export default function ChantierDetail() {
     window.print();
     document.head.removeChild(style);
   };
+
+  const handlePrint = () => { window.print(); };
+
+  // --- CALCULS KPI FINANCIERS ---
+  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
+
+  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
+  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
+  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const montantMarcheInitial = chantier.montant_marche || 0;
+  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
+
+  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
+  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
+  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
+
+  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
+  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
+  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
+
+  const margeBrute = montantMarcheActif - coutDirect_Reel;
+  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
+  const margeNette = margeBrute - chantier.frais_generaux_reel;
+  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
+
+  const chartData = [
+    { label: 'Main d\'Oeuvre', value: coutMO_Reel, color: '#3b82f6' }, 
+    { label: 'Matériaux', value: chantier.cout_fournitures_reel, color: '#f97316' }, 
+    { label: 'Sous-Traitance', value: chantier.cout_sous_traitance_reel, color: '#a855f7' }, 
+    { label: 'Location', value: chantier.cout_location_reel, color: '#ec4899' }, 
+    { label: 'Frais Génx', value: chantier.frais_generaux_reel, color: '#64748b' }, 
+    { label: 'Marge Nette', value: Math.max(0, margeNette), color: '#10b981' } 
+  ];
+  const totalChart = Math.max(montantMarcheActif, chartData.reduce((acc, d) => acc + d.value, 0));
+  let currentAngle = 0;
+  const gradientParts = chartData.map(d => { const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; const endAngle = currentAngle + percentage; const str = `${d.color} ${currentAngle}% ${endAngle}%`; currentAngle = endAngle; return str; }).join(', ');
+  const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
+
+  const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
   return (
@@ -318,7 +298,7 @@ export default function ChantierDetail() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 print:max-w-none print:p-2">
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar print:hidden">
-            {[ { id: 'suivi', label: 'Dashboard & Factures', icon: PieChart, color: 'bg-[#00b894]' }, { id: 'infos', label: 'Infos Chantier', icon: FileText, color: 'bg-[#34495e]' }, { id: 'logistique', label: 'Matériel & Loc.', icon: Truck, color: 'bg-[#6c5ce7]' }, { id: 'fournitures', label: 'Fournitures', icon: Package, color: 'bg-[#fdcb6e]' }, { id: 'planning', label: 'Planning Gantt', icon: BarChart2, color: 'bg-[#00b894]' }, { id: 'hse', label: 'Sécurité / EPI', icon: Shield, color: 'bg-[#e17055]' }, { id: 'acqpa', label: 'Mesures ACQPA', icon: ClipboardCheck, color: 'bg-[#0984e3]' }, { id: 'docs', label: 'Photos / Docs', icon: UploadCloud, color: 'bg-[#6c5ce7]' } ].map(tab => ( <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-5 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all shadow-sm flex items-center gap-2 ${activeTab === tab.id ? `${tab.color} text-white shadow-lg scale-105` : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'}`}><tab.icon size={16} /> {tab.label}</button> ))}
+            {[ { id: 'suivi', label: 'Dashboard & Factures', icon: PieChart, color: 'bg-[#00b894]' }, { id: 'infos', label: 'Infos Chantier', icon: FileText, color: 'bg-[#34495e]' }, { id: 'logistique', label: 'Matériel & Loc.', icon: Truck, color: 'bg-[#6c5ce7]' }, { id: 'fournitures', label: 'Fournitures', icon: Package, color: 'bg-[#fdcb6e]' }, { id: 'planning', label: 'Tâches & Planning', icon: BarChart2, color: 'bg-[#00b894]' }, { id: 'hse', label: 'Sécurité / EPI', icon: Shield, color: 'bg-[#e17055]' }, { id: 'acqpa', label: 'Mesures ACQPA', icon: ClipboardCheck, color: 'bg-[#0984e3]' }, { id: 'docs', label: 'Photos / Docs', icon: UploadCloud, color: 'bg-[#6c5ce7]' } ].map(tab => ( <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-5 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all shadow-sm flex items-center gap-2 ${activeTab === tab.id ? `${tab.color} text-white shadow-lg scale-105` : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'}`}><tab.icon size={16} /> {tab.label}</button> ))}
         </div>
 
         {activeTab === 'suivi' && (
@@ -495,6 +475,7 @@ export default function ChantierDetail() {
         </div>
       )}
 
+      {/* MODALE AJOUT MATÉRIEL */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
