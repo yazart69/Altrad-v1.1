@@ -10,7 +10,7 @@ import {
   Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
   Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
   Euro, HardHat, Briefcase, Zap, MapPin, Calculator, Wallet, Receipt, Hash, Check, LayoutDashboard,
-  CreditCard, FileCheck, CalendarClock, BellRing
+  CreditCard, FileCheck, CalendarClock, BellRing, Pencil // <--- Ajout icône Pencil
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -50,26 +50,16 @@ export default function ChantierDetail() {
   const [fournituresPrevu, setFournituresPrevu] = useState<any[]>([]);
   const [catalogueMateriel, setCatalogueMateriel] = useState<any[]>([]);
   const [stockFournitures, setStockFournitures] = useState<any[]>([]); 
-  
-  // Facturation
   const [facturationList, setFacturationList] = useState<any[]>([]);
   
   // --- FORMULAIRES ---
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null); // NOUVEAU : ID de la tâche en cours d'édition
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
-  
-  // Formulaire Facture mis à jour
-  const [newFacture, setNewFacture] = useState({ 
-      type: 'Facture', 
-      label: '', 
-      montant: 0, 
-      date_emission: '', // Date d'envoi
-      date_echeance: '', // Date reception prevu / Echéance
-      statut: 'prevu' 
-  });
+  const [newFacture, setNewFacture] = useState({ type: 'Facture', label: '', montant: 0, date_emission: '', date_echeance: '', statut: 'prevu' });
 
   const [supplySearch, setSupplySearch] = useState(""); 
   const [showSupplyList, setShowSupplyList] = useState(false); 
@@ -149,7 +139,6 @@ export default function ChantierDetail() {
       }
   };
 
-  // Toggle "Reçu" / "Payé" directement
   const toggleFactureRecu = async (facture: any) => {
       const newStatus = facture.statut === 'paye' ? 'envoye' : 'paye';
       await supabase.from('chantier_facturation').update({ statut: newStatus }).eq('id', facture.id);
@@ -159,31 +148,23 @@ export default function ChantierDetail() {
   // --- CALCULS KPI FINANCIERS ---
   const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
 
-  // 1. MONTANT MARCHÉ DYNAMIQUE
   const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
   const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
-  
   const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
   const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  
   const montantMarcheInitial = chantier.montant_marche || 0;
   const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
 
-  // 2. Facturation & Encaissements
   const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
   const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  
   const facturesPayees = facturationList.filter(f => f.statut === 'paye');
   const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  
   const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
 
-  // 3. Coûts Directs
   const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
   const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
   const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
 
-  // 4. Marges
   const margeBrute = montantMarcheActif - coutDirect_Reel;
   const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
   const margeNette = margeBrute - chantier.frais_generaux_reel;
@@ -204,14 +185,49 @@ export default function ChantierDetail() {
     if (error) alert("Erreur : " + error.message); else { alert('✅ Sauvegardé !'); fetchChantierData(); }
   };
 
-  // Helpers standards
+  // --- GESTION DES TÂCHES ---
   const updateChantierTotalHours = async (currentTasks: any[]) => { const totalRealConsumed = currentTasks.filter(t => t.done).reduce((sum, t) => sum + (parseFloat(t.heures_reelles) || t.objectif_heures || 0), 0); await supabase.from('chantiers').update({ heures_consommees: totalRealConsumed }).eq('id', id); setChantier((prev: any) => ({ ...prev, heures_consommees: totalRealConsumed })); };
   const updateTaskField = async (taskId: string, field: string, value: any) => { const { error } = await supabase.from('chantier_tasks').update({ [field]: value }).eq('id', taskId); if (!error) { const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t); setTasks(updatedTasks); if (field === 'heures_reelles' || field === 'done') updateChantierTotalHours(updatedTasks); } };
   const toggleTask = async (task: any) => { const newStatus = !task.done; const realHoursValue = newStatus ? (task.heures_reelles || task.objectif_heures) : 0; const updatedSubtasks = (task.subtasks || []).map((st: any) => ({ ...st, done: newStatus })); const { error } = await supabase.from('chantier_tasks').update({ done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks }).eq('id', task.id); if (!error) { const newTasks = tasks.map(t => t.id === task.id ? { ...t, done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks } : t); setTasks(newTasks); updateChantierTotalHours(newTasks); } };
+  const addTask = async () => { if (!newTaskLabel) return; const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (data) setTasks([data[0], ...tasks]); setNewTaskLabel(""); };
+  
+  // Suppression Tâche
+  const deleteTask = async (taskId: string) => { 
+      if(confirm('Supprimer cette tâche et ses sous-tâches ?')) { 
+          await supabase.from('chantier_tasks').delete().eq('id', taskId); 
+          const updatedList = tasks.filter(t => t.id !== taskId); 
+          setTasks(updatedList); 
+          updateChantierTotalHours(updatedList); 
+      } 
+  };
+
+  // Modifier Nom Tâche
+  const saveTaskLabel = async (taskId: string, newLabel: string) => {
+      const { error } = await supabase.from('chantier_tasks').update({ label: newLabel }).eq('id', taskId);
+      if(!error) {
+          setTasks(tasks.map(t => t.id === taskId ? { ...t, label: newLabel } : t));
+          setEditingTaskId(null);
+      }
+  };
+
+  // Sous-tâches
   const addSubTask = async (parentId: string) => { if(!newSubTask.label) return; const parentTask = tasks.find(t => t.id === parentId); const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false }]; const newTotalHours = updatedSubtasks.reduce((acc, curr) => acc + (parseFloat(curr.heures) || 0), 0); await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t); setTasks(newTasks); setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 }); setActiveParentTask(null); };
   const toggleSubTask = async (parentId: string, subtaskId: number) => { const parentTask = tasks.find(t => t.id === parentId); const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done } : st); const allDone = updatedSubtasks.every((st: any) => st.done); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, done: allDone, heures_reelles: allDone ? (parentTask.heures_reelles || parentTask.objectif_heures) : parentTask.heures_reelles }).eq('id', parentId); if (!error) { const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t); setTasks(newTasks); updateChantierTotalHours(newTasks); } };
-  const addTask = async () => { if (!newTaskLabel) return; const { data } = await supabase.from('chantier_tasks').insert([{ chantier_id: id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (data) setTasks([data[0], ...tasks]); setNewTaskLabel(""); };
-  const deleteTask = async (taskId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter(t => t.id !== taskId); setTasks(updatedList); updateChantierTotalHours(updatedList); } };
+  
+  // Supprimer Sous-tâche (NOUVEAU)
+  const deleteSubTask = async (parentId: string, subTaskId: number) => {
+      if(!confirm("Supprimer cette sous-tâche ?")) return;
+      const parentTask = tasks.find(t => t.id === parentId);
+      const updatedSubtasks = parentTask.subtasks.filter((st: any) => st.id !== subTaskId);
+      const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0);
+      
+      const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId);
+      if(!error) {
+          const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t);
+          setTasks(newTasks);
+      }
+  };
+
   const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const payload = { chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, qte_prevue: newFourniture.qte_prevue || 0, qte_consommee: 0 }; const { error } = await supabase.from('chantier_fournitures').insert([payload]); if(error) alert("Erreur: " + error.message); else { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); } };
   const updateConsommation = async (fId: string, val: number) => { const newVal = Math.max(0, val); setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: newVal } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: newVal }).eq('id', fId); };
   const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
@@ -228,7 +244,6 @@ export default function ChantierDetail() {
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
   const toggleTeamMember = (empId: string) => { const currentTeam = chantier.equipe_ids || []; if (currentTeam.includes(empId)) setChantier({...chantier, equipe_ids: currentTeam.filter((id: string) => id !== empId)}); else setChantier({...chantier, equipe_ids: [...currentTeam, empId]}); };
 
-  // Graphique Données
   const chartData = [
     { label: 'Main d\'Oeuvre', value: coutMO_Reel, color: '#3b82f6' }, 
     { label: 'Matériaux', value: chantier.cout_fournitures_reel, color: '#f97316' }, 
@@ -242,15 +257,6 @@ export default function ChantierDetail() {
   const gradientParts = chartData.map(d => { const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; const endAngle = currentAngle + percentage; const str = `${d.color} ${currentAngle}% ${endAngle}%`; currentAngle = endAngle; return str; }).join(', ');
   const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
 
-  // Autres variables render
-  const percentHeures = chantier.heures_budget > 0 ? Math.round((chantier.heures_consommees / chantier.heures_budget) * 100) : 0;
-  const employeeStats = tasks.reduce((acc: any, task: any) => { const respId = task.responsable_id || 'unassigned'; if (!acc[respId]) acc[respId] = { name: task.responsable ? `${task.responsable.prenom} ${task.responsable.nom}` : 'Non assigné', planned: 0, real: 0, tasks: 0 }; if (task.done) { acc[respId].planned += task.objectif_heures || 0; acc[respId].real += parseFloat(task.heures_reelles) || 0; acc[respId].tasks += 1; } return acc; }, {});
-  const matEnCours = materielPrevu.filter(m => m.statut === 'en_cours' || m.statut === 'prevu').length;
-  const fournituresConsoTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_consommee || 0), 0);
-  const fournituresPrevuTotal = fournituresPrevu.reduce((acc, f) => acc + (f.qte_prevue || 0), 0);
-  const percentFournitures = fournituresPrevuTotal > 0 ? Math.round((fournituresConsoTotal/fournituresPrevuTotal)*100) : 0;
-
-  // Check Overdue
   const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-['Fredoka'] text-[#34495e] font-bold"><div className="animate-spin mr-3"><Truck/></div> Chargement...</div>;
@@ -280,25 +286,17 @@ export default function ChantierDetail() {
         {activeTab === 'suivi' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6 print:space-y-4">
                 <div className="flex justify-between items-end border-b border-gray-200 pb-4 mb-6"><div><h2 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">Rapport Financier</h2><p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{chantier.nom} — {chantier.type} — {new Date().toLocaleDateString()}</p></div><button onClick={handlePrint} className="bg-[#2d3436] text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold uppercase text-xs shadow-lg print:hidden hover:scale-105 transition-transform"><Printer size={18}/> Imprimer Rapport</button></div>
-
-                {/* KPI CARDS */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:grid-cols-4">
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
                         <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><Receipt size={50}/></div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Montant Marché Final</p>
                         <div className="text-3xl font-black text-[#2d3436] mt-1">{montantMarcheActif.toLocaleString()} €</div>
-                        <div className="mt-2 text-[9px] font-bold text-blue-400">
-                            Base: {montantMarcheInitial.toLocaleString()} €
-                            {totalTS > 0 && <span className="text-emerald-600"> + {totalTS}€ (TS)</span>}
-                            {totalMoinsValues > 0 && <span className="text-red-500"> - {totalMoinsValues}€ (MV)</span>}
-                        </div>
+                        <div className="mt-2 text-[9px] font-bold text-blue-400">Base: {montantMarcheInitial.toLocaleString()} € {totalTS > 0 && <span className="text-emerald-600"> + {totalTS}€ (TS)</span>} {totalMoinsValues > 0 && <span className="text-red-500"> - {totalMoinsValues}€ (MV)</span>}</div>
                     </div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Wallet size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Marge Nette</p><div className={`text-3xl font-black mt-1 ${margeNette >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{margeNette.toLocaleString()} €</div><div className="flex items-center gap-2 mt-2"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-black">{tauxMargeNette.toFixed(1)}%</span></div></div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-purple-600"><CreditCard size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Facturé Client</p><div className="text-3xl font-black text-purple-600 mt-1">{totalFacture.toLocaleString()} €</div><div className="mt-2 text-xs font-bold text-gray-400">{percentFacturation}% du Marché</div></div>
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><HardHat size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coût M.O. (Chargé)</p><div className="text-3xl font-black text-orange-500 mt-1">{coutMO_Reel.toLocaleString()} €</div><p className="text-[10px] font-bold text-gray-400 mt-1">Taux: {chantier.taux_horaire_moyen} + {chantier.cpi} €/h</p></div>
                 </div>
-
-                {/* GRAPHIQUE + SAISIE RAPIDE */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
                     <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break flex flex-col items-center">
                         <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2 self-start"><PieChart className="text-[#6c5ce7]"/> Répartition Prix Vente</h3>
@@ -315,20 +313,15 @@ export default function ChantierDetail() {
                         </div>
                     </div>
                 </div>
-
-                {/* TUILE FACTURATION */}
                 <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><FileCheck className="text-[#6c5ce7]"/> Suivi Facturation & TS</h3>
                         <div className="text-right"><p className="text-[10px] font-bold uppercase text-gray-400">Reste à Facturer</p><p className="text-xl font-black text-blue-600">{(montantMarcheActif - totalFacture).toLocaleString()} €</p></div>
                     </div>
-                    
-                    {/* BARRE D'AVANCEMENT FACTURATION */}
                     <div className="w-full bg-gray-100 h-6 rounded-full overflow-hidden flex relative mb-6 border border-gray-200">
                          <div className="h-full bg-green-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? (totalEncaisse/montantMarcheActif)*100 : 0}%`}}>Enc.</div>
                          <div className="h-full bg-blue-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? ((totalFacture - totalEncaisse)/montantMarcheActif)*100 : 0}%`}}>Fact.</div>
                     </div>
-
                     <table className="w-full text-left text-xs mb-4">
                         <thead className="bg-gray-50 uppercase text-gray-400 font-black"><tr><th className="p-3 rounded-l-lg">Type</th><th className="p-3">Libellé</th><th className="p-3">Envoi</th><th className="p-3">Echéance</th><th className="p-3 text-right">Montant HT</th><th className="p-3 text-center">Reçu</th><th className="p-3 text-center print:hidden">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-50 font-bold text-gray-700">
@@ -349,8 +342,6 @@ export default function ChantierDetail() {
                             ))}
                         </tbody>
                     </table>
-
-                    {/* Formulaire Ajout Facture (Caché Impression) */}
                     <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-xl print:hidden">
                         <select className="bg-white p-2 rounded-lg text-xs font-bold outline-none border border-gray-200" value={newFacture.type} onChange={e => setNewFacture({...newFacture, type: e.target.value})}><option value="Facture">Facture</option><option value="Acompte">Acompte</option><option value="TS">Travaux Suppl.</option><option value="PlusValue">+ Value</option><option value="MoinsValue">- Value</option><option value="Solde">Solde</option></select>
                         <input type="text" placeholder="Libellé..." className="flex-1 bg-white p-2 rounded-lg text-xs outline-none border border-gray-200" value={newFacture.label} onChange={e => setNewFacture({...newFacture, label: e.target.value})} />
@@ -364,8 +355,6 @@ export default function ChantierDetail() {
                 </div>
             </div>
         )}
-
-        {/* --- AUTRES ONGLETS (Code inchangé) --- */}
         {activeTab === 'infos' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4"><div className="space-y-6"><div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><FileText size={20}/> Identification & Client</h3><div className="grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom Chantier</label><input value={chantier.nom || ''} onChange={e => setChantier({...chantier, nom: e.target.value})} className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none border border-transparent focus:border-[#00b894] transition-colors" /></div><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Numéro d'Affaire / OTP</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1"><Hash size={16} className="text-gray-400 mr-2"/><input value={chantier.numero_otp || ''} onChange={e => setChantier({...chantier, numero_otp: e.target.value})} className="w-full bg-transparent p-3 font-bold outline-none" /></div></div><div className="col-span-2 p-4 bg-gray-50 rounded-2xl border border-gray-100 grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label><input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label><input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Phone size={10}/> Tel</label><input value={chantier.client_telephone || ''} onChange={e => setChantier({...chantier, client_telephone: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Mail size={10}/> Email</label><input value={chantier.client_email || ''} onChange={e => setChantier({...chantier, client_email: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div></div></div></div><div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Users size={20}/> Ressources Humaines</h3><div className="space-y-4"><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Chargé d'Affaire (Responsable)</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1"><Briefcase size={16} className="text-gray-400 mr-2"/><input value={chantier.responsable || ''} onChange={e => setChantier({...chantier, responsable: e.target.value})} className="w-full bg-transparent p-3 font-bold outline-none" placeholder="Nom du responsable..." /></div></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable Sur Site (Chef)</label><div className="flex items-center bg-gray-50 rounded-xl px-2 mt-1 border border-transparent focus-within:border-blue-300 transition-colors"><UserCheck size={16} className="text-gray-400 mr-2"/><select className="w-full bg-transparent p-3 font-bold outline-none cursor-pointer" value={chantier.chef_chantier_id || ''} onChange={(e) => setChantier({...chantier, chef_chantier_id: e.target.value})}><option value="">Sélectionner un chef...</option>{employes.map(emp => (<option key={emp.id} value={emp.id}>{emp.nom} {emp.prenom}</option>))}</select></div></div><div className="relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Équipe Terrain (Multisélection)</label><div className="mt-1 bg-gray-50 p-3 rounded-xl font-bold cursor-pointer flex justify-between items-center" onClick={() => setShowTeamSelector(!showTeamSelector)}><span>{chantier.equipe_ids?.length || 0} Compagnons sélectionnés</span><Plus size={16} className="text-gray-400"/></div>{showTeamSelector && (<div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50 p-2">{employes.map(emp => (<div key={emp.id} onClick={() => toggleTeamMember(emp.id)} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${chantier.equipe_ids?.includes(emp.id) ? 'bg-blue-50 text-blue-600' : ''}`}><span className="text-sm font-bold">{emp.nom} {emp.prenom}</span>{chantier.equipe_ids?.includes(emp.id) && <Check size={14}/>}</div>))}</div>)}</div></div></div></div><div className="space-y-6"><div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Euro size={20}/> Budgets Prévisionnels (HT)</h3><div className="grid grid-cols-2 gap-4"><div className="col-span-2 bg-emerald-50 p-3 rounded-xl border border-emerald-100"><label className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Montant Marché (Vente)</label><input type="number" value={chantier.montant_marche || 0} onChange={e => setChantier({...chantier, montant_marche: parseFloat(e.target.value) || 0})} className="w-full bg-transparent p-2 font-black text-xl text-emerald-800 outline-none" /></div><div className="col-span-2 bg-blue-50 p-3 rounded-xl border border-blue-100"><label className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Budget M.O. (Calculé)</label><div className="grid grid-cols-3 gap-2 mt-1"><div><label className="text-[8px] uppercase">Heures</label><input type="number" value={chantier.heures_budget || 0} onChange={e => setChantier({...chantier, heures_budget: parseFloat(e.target.value) || 0})} className="w-full bg-white rounded p-1 font-bold text-center" placeholder="H"/></div><div><label className="text-[8px] uppercase">Taux</label><input type="number" value={chantier.taux_horaire_moyen} onChange={e => setChantier({...chantier, taux_horaire_moyen: parseFloat(e.target.value) || 0})} className="w-full bg-white rounded p-1 font-bold text-center" placeholder="€"/></div><div><label className="text-[8px] uppercase">CPI</label><input type="number" value={chantier.cpi} onChange={e => setChantier({...chantier, cpi: parseFloat(e.target.value) || 0})} className="w-full bg-white rounded p-1 font-bold text-center" placeholder="€"/></div></div><div className="text-right mt-2 font-black text-blue-800 text-lg">Total: {((chantier.heures_budget || 0) * (chantier.taux_horaire_moyen + chantier.cpi)).toLocaleString()} €</div></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Matériaux Prévu</label><input type="number" value={chantier.cout_fournitures_prevu || 0} onChange={e => setChantier({...chantier, cout_fournitures_prevu: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-2 rounded-lg font-bold text-sm outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sous-Traitance Prévu</label><input type="number" value={chantier.cout_sous_traitance_prevu || 0} onChange={e => setChantier({...chantier, cout_sous_traitance_prevu: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-2 rounded-lg font-bold text-sm outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Location Prévu</label><input type="number" value={chantier.cout_location_prevu || 0} onChange={e => setChantier({...chantier, cout_location_prevu: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-2 rounded-lg font-bold text-sm outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Frais Généraux (Prévu)</label><input type="number" value={chantier.frais_generaux || 0} onChange={e => setChantier({...chantier, frais_generaux: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-2 rounded-lg font-bold text-sm outline-none" /></div></div></div><div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 space-y-4"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><LayoutDashboard size={20}/> Options & ACQPA</h3><div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl"><div><h4 className="font-bold text-gray-800">Module ACQPA</h4><p className="text-xs text-gray-400">Activer le suivi qualité peinture</p></div><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={chantier.mesures_obligatoires || false} onChange={e => setChantier({...chantier, mesures_obligatoires: e.target.checked})} className="sr-only peer" /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00b894]"></div></label></div></div></div></div>)}
         {activeTab === 'logistique' && (<div className="animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-center mb-6 print:hidden"><h3 className="text-xl font-black text-gray-700 uppercase flex items-center gap-2"><Truck className="text-[#6c5ce7]"/> Matériel & Locations</h3><button onClick={() => setShowAddMaterielModal(true)} className="bg-[#6c5ce7] text-white px-6 py-2.5 rounded-xl font-bold uppercase text-xs shadow-lg hover:bg-[#5b4bc4] transition-all flex items-center gap-2"><Plus size={16}/> Ajouter / Réserver</button></div><div className="bg-white rounded-[30px] p-1 shadow-sm border border-gray-100 overflow-hidden print:border-none print:shadow-none"><table className="w-full"><thead className="bg-gray-50 border-b border-gray-100"><tr><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Matériel</th><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Type</th><th className="p-4 text-left text-[10px] font-black text-gray-400 uppercase">Période</th><th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase">Quantité</th><th className="p-4 text-center text-[10px] font-black text-gray-400 uppercase print:hidden">Action</th></tr></thead><tbody className="divide-y divide-gray-50">{materielPrevu.map(m => (<tr key={m.id} className="hover:bg-gray-50 transition-colors"><td className="p-4 font-bold text-sm text-gray-800">{m.materiel?.nom}</td><td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${m.materiel?.type_stock === 'Interne' ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-600'}`}>{m.materiel?.type_stock}</span></td><td className="p-4 text-xs font-bold text-gray-600">{m.date_debut} ➔ {m.date_fin}</td><td className="p-4 text-center font-black text-gray-800">{m.qte_prise}</td><td className="p-4 text-center print:hidden"><button onClick={() => deleteMateriel(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div></div>)}
         {activeTab === 'fournitures' && (<div className="space-y-8 animate-in fade-in slide-in-from-bottom-4"><div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:hidden"><div className="bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 h-fit overflow-visible z-20"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><Package className="text-yellow-500"/> Ajouter Besoin</h3><div className="space-y-4"><div className="relative" ref={searchWrapperRef}><label className="text-[10px] font-bold text-gray-400 uppercase">Produit</label><div className="relative"><input type="text" className="w-full bg-gray-50 p-3 pl-10 rounded-xl font-bold text-sm outline-none border border-transparent focus:border-yellow-400 transition-colors" placeholder="Chercher..." value={supplySearch} onChange={(e) => { setSupplySearch(e.target.value); setShowSupplyList(true); if(newFourniture.fourniture_ref_id) setNewFourniture({...newFourniture, fourniture_ref_id: ''}); }} onFocus={() => setShowSupplyList(true)} /><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/></div>{showSupplyList && supplySearch && (<div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50">{filteredStock.map(s => (<div key={s.id} className="p-3 hover:bg-yellow-50 cursor-pointer border-b border-gray-50 last:border-0" onClick={() => { setSupplySearch(s.nom); setNewFourniture({...newFourniture, fourniture_ref_id: s.id}); setShowSupplyList(false); }}><div className="font-bold text-sm text-gray-800">{s.nom}</div><div className="text-[10px] text-gray-400">{s.ral} - {s.qte_stock} {s.unite} dispo</div></div>))}</div>)}</div><div><label className="text-[10px] font-bold text-gray-400 uppercase">Quantité Prévue ({getSelectedUnit()})</label><input type="number" value={newFourniture.qte_prevue || ''} onChange={e => setNewFourniture({...newFourniture, qte_prevue: parseFloat(e.target.value) || 0})} className="w-full bg-gray-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 border border-transparent" /></div><button onClick={addFourniture} disabled={!newFourniture.fourniture_ref_id} className="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-black uppercase py-3 rounded-xl shadow-lg">Valider le besoin</button></div></div><div className="lg:col-span-2 bg-white rounded-[30px] p-6 shadow-sm border border-gray-100 z-10"><h3 className="font-black uppercase text-gray-700 mb-4 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Besoins Atelier</h3><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400"><tr><th className="p-3">Produit</th><th className="p-3 text-center">Prévu</th><th className="p-3 text-center bg-blue-50/50 text-blue-600">Stock Magasin</th><th className="p-3 text-center bg-orange-50/50 text-orange-600">À Commander</th><th className="p-3 text-right">Statut</th></tr></thead><tbody className="divide-y divide-gray-50">{fournituresPrevu.map(f => { const stockInfo = f.fournitures_stock || {}; const aCommander = Math.max(0, f.qte_prevue - stockInfo.qte_stock); return (<tr key={f.id} className="hover:bg-gray-50 transition-colors"><td className="p-3 font-bold text-sm text-gray-800">{f.nom}<button onClick={() => deleteFourniture(f.id)} className="ml-2 text-gray-300 hover:text-red-500"><Trash2 size={12}/></button></td><td className="p-3 text-center font-black">{f.qte_prevue} {f.unite}</td><td className="p-3 text-center font-bold text-blue-600 bg-blue-50/20">{stockInfo.qte_stock}</td><td className={`p-3 text-center font-black bg-orange-50/20 ${aCommander > 0 ? 'text-red-500' : 'text-gray-300'}`}>{aCommander > 0 ? aCommander : '-'}</td><td className="p-3 text-right">{stockInfo.qte_stock >= f.qte_prevue ? (<span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">Stock OK</span>) : (<span className="text-[9px] font-black uppercase text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">Commander</span>)}</td></tr>); })}</tbody></table></div></div></div><div className="bg-white rounded-[35px] p-8 shadow-xl border border-gray-100 relative overflow-hidden"><div className="flex justify-between items-center mb-6 relative z-10"><div><h3 className="text-xl font-black uppercase text-gray-700 flex items-center gap-2"><Scale className="text-emerald-500"/> Saisie Consommation Terrain</h3><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Mise à jour du stock déporté</p></div></div><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[11px] font-black uppercase text-gray-400"><tr><th className="p-4">Fourniture</th><th className="p-4 text-center">Quantité Utilisée</th><th className="p-4 text-center bg-emerald-50/50 text-emerald-700">Stock Chantier Restant</th></tr></thead><tbody className="divide-y divide-gray-100">{fournituresPrevu.map(f => { const prevu = f.qte_prevue || 1; const conso = f.qte_consommee || 0; return (<tr key={f.id} className="hover:bg-gray-50/80 transition-all group"><td className="p-4"><p className="font-black text-gray-800">{f.nom}</p><span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Init: {prevu} {f.unite}</span></td><td className="p-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => updateConsommation(f.id, conso - 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><Minus size={14}/></button><input type="number" className="w-20 text-center font-black text-sm bg-gray-50 border-2 border-transparent focus:border-emerald-400 rounded-lg py-1 outline-none" value={conso} onChange={(e) => updateConsommation(f.id, parseFloat(e.target.value) || 0)} /><button onClick={() => updateConsommation(f.id, conso + 1)} className="w-7 h-7 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"><Plus size={14}/></button></div></td><td className="p-4 text-center bg-emerald-50/30 font-black text-emerald-700">{Math.max(0, prevu - conso)} {f.unite}</td></tr>); })}</tbody></table></div></div></div>)}
@@ -380,23 +369,38 @@ export default function ChantierDetail() {
                         {tasks.map((t) => (
                             <div key={t.id} className={`p-4 rounded-2xl border transition-all ${t.done ? 'bg-black/20 border-transparent opacity-80' : 'bg-white/5 border-white/5'}`}>
                                 <div className="flex justify-between items-start mb-3">
-                                    <div className="flex items-start gap-3">
+                                    <div className="flex items-start gap-3 flex-1">
                                         <button onClick={() => toggleTask(t)} className={`mt-1 transition-colors ${t.done ? 'text-[#00b894]' : 'text-gray-500 hover:text-white'}`}>{t.done ? <CheckCircle2 size={24} /> : <Circle size={24} />}</button>
-                                        <div><p className={`text-sm font-black uppercase tracking-tight ${t.done ? 'line-through text-gray-500' : 'text-[#ff9f43]'}`}>{t.label}</p><div className="flex items-center gap-2 mt-1"><div className="flex items-center gap-1 bg-black/30 px-2 py-0.5 rounded-lg border border-white/5"><UserPlus size={10} className="text-blue-400"/><select className="bg-transparent text-[9px] font-bold text-blue-200 outline-none cursor-pointer w-24" value={t.responsable_id || ''} onChange={(e) => updateTaskField(t.id, 'responsable_id', e.target.value)}><option value="" className="text-gray-800">Assigner...</option>{employes.map(emp => <option key={emp.id} value={emp.id} className="text-gray-800">{emp.nom} {emp.prenom}</option>)}</select></div></div></div>
+                                        <div className="flex-1">
+                                            {editingTaskId === t.id ? (
+                                                <div className="flex gap-2 mb-2">
+                                                    <input className="bg-white/10 text-white rounded p-1 text-sm font-bold w-full outline-none focus:ring-1 ring-[#ff9f43]" defaultValue={t.label} onBlur={(e) => saveTaskLabel(t.id, e.target.value)} autoFocus onKeyDown={(e) => e.key === 'Enter' && saveTaskLabel(t.id, (e.target as HTMLInputElement).value)} />
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between group">
+                                                    <p className={`text-sm font-black uppercase tracking-tight ${t.done ? 'line-through text-gray-500' : 'text-[#ff9f43]'}`}>{t.label}</p>
+                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => setEditingTaskId(t.id)} className="text-blue-400 hover:text-white"><Pencil size={14}/></button>
+                                                        <button onClick={() => deleteTask(t.id)} className="text-red-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center gap-2 mt-1"><div className="flex items-center gap-1 bg-black/30 px-2 py-0.5 rounded-lg border border-white/5"><UserPlus size={10} className="text-blue-400"/><select className="bg-transparent text-[9px] font-bold text-blue-200 outline-none cursor-pointer w-24" value={t.responsable_id || ''} onChange={(e) => updateTaskField(t.id, 'responsable_id', e.target.value)}><option value="" className="text-gray-800">Assigner...</option>{employes.map(emp => <option key={emp.id} value={emp.id} className="text-gray-800">{emp.nom} {emp.prenom}</option>)}</select></div></div>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="text-right pl-4">
                                         <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase justify-end"><Clock size={10}/> Prévu: {t.objectif_heures}h</div>
                                         {t.done && (<div className="mt-1 flex items-center gap-2 justify-end animate-in fade-in"><span className="text-[9px] font-black uppercase text-[#ff9f43]">Réel :</span><input type="number" className="w-12 bg-white/10 text-center rounded border border-white/10 text-[10px] font-black py-0.5 outline-none focus:border-[#ff9f43] text-white" value={t.heures_reelles} onChange={(e) => updateTaskField(t.id, 'heures_reelles', parseFloat(e.target.value) || 0)} /></div>)}
                                     </div>
                                 </div>
-                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center justify-between text-[11px] py-1"><div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>{st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}<span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span></div><span className="text-[9px] font-bold text-white/40">{st.heures}h</span></div>))}{!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors">+ Ajouter sous-tâche</button>}</div>
+                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center justify-between text-[11px] py-1 group"><div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>{st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}<span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span></div><div className="flex items-center gap-2"><span className="text-[9px] font-bold text-white/40">{st.heures}h</span><button onClick={() => deleteSubTask(t.id, st.id)} className="text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"><Trash2 size={12}/></button></div></div>))}{!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors">+ Ajouter sous-tâche</button>}</div>
                                 {activeParentTask === t.id && (<div className="mt-3 bg-black/20 p-3 rounded-lg flex flex-col gap-2 animate-in fade-in"><input type="text" placeholder="Nom de la sous-tâche..." className="bg-transparent text-xs text-white placeholder-white/30 outline-none border-b border-white/10 p-1" value={newSubTask.label} onChange={e => setNewSubTask({...newSubTask, label: e.target.value})} /><div className="flex gap-2 items-center"><input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} /><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Users size={12} className="text-blue-400"/><input type="number" placeholder="P" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} /></div><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Clock size={12} className="text-orange-400"/><input type="number" placeholder="H" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} /></div><button onClick={() => addSubTask(t.id)} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase ml-auto hover:bg-green-600 transition-colors">Ajouter</button></div></div>)}
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* 2. GANTT VISUEL (Lecture Seule) */}
+                {/* 2. GANTT VISUEL (Lecture Seule) - REMIS ICI */}
                 <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><BarChart2 className="text-[#00b894]"/> Planning Gantt Prévisionnel</h3>
@@ -447,7 +451,6 @@ export default function ChantierDetail() {
         </div>
       )}
 
-      {/* MODALE AJOUT MATÉRIEL */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
