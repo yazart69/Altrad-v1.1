@@ -55,7 +55,11 @@ export default function ChantierDetail() {
   // --- FORMULAIRES ---
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
+  
+  // États d'édition
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingSubTaskId, setEditingSubTaskId] = useState<number | null>(null); // NOUVEAU
+
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: '', date_fin: '', qte: 1 });
   const [newFourniture, setNewFourniture] = useState({ fourniture_ref_id: '', qte_prevue: 0 });
@@ -145,6 +149,50 @@ export default function ChantierDetail() {
       fetchChantierData(); 
   };
 
+  // --- IMPRESSION INTELLIGENTE ---
+  const handleSectionPrint = (sectionId: string) => {
+    const style = document.createElement('style');
+    style.id = 'print-section-style';
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden; }
+        #${sectionId}, #${sectionId} * { visibility: visible; }
+        #${sectionId} { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; } 
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
+  };
+
+  const handlePrint = () => { window.print(); };
+
+  // --- CALCULS KPI FINANCIERS ---
+  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
+
+  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
+  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
+  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const montantMarcheInitial = chantier.montant_marche || 0;
+  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
+
+  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
+  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
+  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
+  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
+
+  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
+  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
+  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
+
+  const margeBrute = montantMarcheActif - coutDirect_Reel;
+  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
+  const margeNette = margeBrute - chantier.frais_generaux_reel;
+  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
+
   // --- ACTIONS GLOBALES ---
   const handleSave = async () => {
     const toSave = { 
@@ -203,6 +251,19 @@ export default function ChantierDetail() {
       }
   };
 
+  // Modifier Sous-tâche (NOUVEAU)
+  const saveSubTaskLabel = async (parentId: string, subTaskId: number, newLabel: string) => {
+      const parentTask = tasks.find(t => t.id === parentId);
+      const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subTaskId ? { ...st, label: newLabel } : st);
+      
+      const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks }).eq('id', parentId);
+      if(!error) {
+          const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks } : t);
+          setTasks(newTasks);
+          setEditingSubTaskId(null);
+      }
+  };
+
   const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const payload = { chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, qte_prevue: newFourniture.qte_prevue || 0, qte_consommee: 0 }; const { error } = await supabase.from('chantier_fournitures').insert([payload]); if(error) alert("Erreur: " + error.message); else { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); } };
   const updateConsommation = async (fId: string, val: number) => { const newVal = Math.max(0, val); setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: newVal } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: newVal }).eq('id', fId); };
   const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
@@ -217,50 +278,6 @@ export default function ChantierDetail() {
   const deleteDocument = async (docId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
   const toggleTeamMember = (empId: string) => { const currentTeam = chantier.equipe_ids || []; if (currentTeam.includes(empId)) setChantier({...chantier, equipe_ids: currentTeam.filter((id: string) => id !== empId)}); else setChantier({...chantier, equipe_ids: [...currentTeam, empId]}); };
-
-  // --- IMPRESSION INTELLIGENTE ---
-  const handleSectionPrint = (sectionId: string) => {
-    const style = document.createElement('style');
-    style.id = 'print-section-style';
-    style.innerHTML = `
-      @media print {
-        body * { visibility: hidden; }
-        #${sectionId}, #${sectionId} * { visibility: visible; }
-        #${sectionId} { position: absolute; left: 0; top: 0; width: 100%; }
-        .no-print { display: none !important; } 
-      }
-    `;
-    document.head.appendChild(style);
-    window.print();
-    document.head.removeChild(style);
-  };
-
-  const handlePrint = () => { window.print(); };
-
-  // --- CALCULS KPI FINANCIERS ---
-  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
-
-  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
-  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
-  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const montantMarcheInitial = chantier.montant_marche || 0;
-  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
-
-  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
-  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
-  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
-
-  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
-  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
-  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
-
-  const margeBrute = montantMarcheActif - coutDirect_Reel;
-  const tauxMargeBrute = montantMarcheActif > 0 ? (margeBrute / montantMarcheActif) * 100 : 0;
-  const margeNette = margeBrute - chantier.frais_generaux_reel;
-  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
 
   const chartData = [
     { label: 'Main d\'Oeuvre', value: coutMO_Reel, color: '#3b82f6' }, 
@@ -414,7 +431,28 @@ export default function ChantierDetail() {
                                         {t.done && (<div className="mt-1 flex items-center gap-2 justify-end animate-in fade-in"><span className="text-[9px] font-black uppercase text-[#ff9f43]">Réel :</span><input type="number" className="w-12 bg-white/10 text-center rounded border border-white/10 text-[10px] font-black py-0.5 outline-none focus:border-[#ff9f43] text-white" value={t.heures_reelles} onChange={(e) => updateTaskField(t.id, 'heures_reelles', parseFloat(e.target.value) || 0)} /></div>)}
                                     </div>
                                 </div>
-                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">{t.subtasks && t.subtasks.map((st: any) => (<div key={st.id} className="flex items-center justify-between text-[11px] py-1 group"><div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleSubTask(t.id, st.id)}>{st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}<span className={st.done ? 'line-through text-white/30' : 'text-white/80'}>{st.label}</span></div><div className="flex items-center gap-2"><span className="text-[9px] font-bold text-white/40">{st.heures}h</span><button onClick={() => deleteSubTask(t.id, st.id)} className="text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity print:hidden"><Trash2 size={12}/></button></div></div>))}{!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors print:hidden">+ Ajouter sous-tâche</button>}</div>
+                                <div className="mt-3 space-y-1 pl-4 border-l-2 border-white/10">
+                                    {t.subtasks && t.subtasks.map((st: any) => (
+                                        <div key={st.id} className="flex items-center justify-between text-[11px] py-1 group">
+                                            <div className="flex items-center gap-2 cursor-pointer flex-1" onClick={() => toggleSubTask(t.id, st.id)}>
+                                                {st.done ? <CheckCircle2 size={12} className="text-green-400"/> : <Circle size={12} className="text-white/30"/>}
+                                                {editingSubTaskId === st.id ? (
+                                                    <input className="bg-white/10 text-white rounded p-0.5 text-[11px] w-full outline-none" defaultValue={st.label} autoFocus onBlur={(e) => saveSubTaskLabel(t.id, st.id, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveSubTaskLabel(t.id, st.id, (e.target as HTMLInputElement).value)} onClick={(e) => e.stopPropagation()}/>
+                                                ) : (
+                                                    <span className={`${st.done ? 'line-through text-white/30' : 'text-white/80'} hover:text-white`}>{st.label}</span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-bold text-white/40">{st.heures}h</span>
+                                                <div className="opacity-0 group-hover:opacity-100 flex gap-1 print:hidden">
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingSubTaskId(st.id); }} className="text-blue-400 hover:text-white"><Pencil size={10}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); deleteSubTask(t.id, st.id); }} className="text-red-400 hover:text-red-500"><Trash2 size={10}/></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {!t.done && <button onClick={() => setActiveParentTask(activeParentTask === t.id ? null : t.id)} className="text-[9px] font-black uppercase text-white/20 hover:text-white/50 py-1 transition-colors print:hidden">+ Ajouter sous-tâche</button>}
+                                </div>
                                 {activeParentTask === t.id && (<div className="mt-3 bg-black/20 p-3 rounded-lg flex flex-col gap-2 animate-in fade-in"><input type="text" placeholder="Nom de la sous-tâche..." className="bg-transparent text-xs text-white placeholder-white/30 outline-none border-b border-white/10 p-1" value={newSubTask.label} onChange={e => setNewSubTask({...newSubTask, label: e.target.value})} /><div className="flex gap-2 items-center"><input type="date" className="bg-transparent text-xs text-white/70 outline-none w-24 border-b border-white/10 p-1" value={newSubTask.date} onChange={e => setNewSubTask({...newSubTask, date: e.target.value})} /><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Users size={12} className="text-blue-400"/><input type="number" placeholder="P" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.effectif || ''} onChange={e => setNewSubTask({...newSubTask, effectif: parseInt(e.target.value) || 1})} /></div><div className="flex items-center gap-1 bg-white/5 rounded px-2"><Clock size={12} className="text-orange-400"/><input type="number" placeholder="H" className="bg-transparent text-xs text-white outline-none w-10 text-center p-1" value={newSubTask.heures || ''} onChange={e => setNewSubTask({...newSubTask, heures: parseFloat(e.target.value) || 0})} /></div><button onClick={() => addSubTask(t.id)} className="bg-green-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase ml-auto hover:bg-green-600 transition-colors">Ajouter</button></div></div>)}
                             </div>
                         ))}
@@ -475,7 +513,6 @@ export default function ChantierDetail() {
         </div>
       )}
 
-      {/* MODALE AJOUT MATÉRIEL */}
       {showAddMaterielModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl p-6 animate-in zoom-in-95">
