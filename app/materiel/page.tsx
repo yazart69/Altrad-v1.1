@@ -791,7 +791,7 @@ export default function MagasinierPage() {
                                 <select className="w-full bg-gray-50 p-3 rounded-xl font-bold outline-none" value={newSupply.categorie} onChange={e => setNewSupply({...newSupply, categorie: e.target.value})}>
                                     <option value="Peinture">Peinture</option>
                                     <option value="Consommable">Consommable</option>
-                                    <option value="Visserie">Visserie</option>
+                                    <option value="Visserie">matériel</option>
                                     <option value="EPI">EPI</option>
                                 </select>
                             </div>
