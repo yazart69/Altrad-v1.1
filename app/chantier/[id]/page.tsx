@@ -272,7 +272,31 @@ export default function ChantierDetail() {
   };
 
   // Logistique, Fournitures...
-  const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const payload = { chantier_id: id, fourniture_ref_id: newFourniture.fourniture_ref_id, qte_prevue: newFourniture.qte_prevue || 0, qte_consommee: 0 }; const { error } = await supabase.from('chantier_fournitures').insert([payload]); if(error) alert("Erreur: " + error.message); else { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); fetchChantierData(); } };
+  const addFourniture = async () => { 
+      if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); 
+      
+ 
+      const selectedItem = stockFournitures.find(s => s.id === newFourniture.fourniture_ref_id);
+      
+     
+      const payload = { 
+          chantier_id: id, 
+          fourniture_ref_id: newFourniture.fourniture_ref_id, 
+          nom: selectedItem?.nom || 'Produit sans nom',
+          unite: selectedItem?.unite || 'u',            
+          qte_prevue: newFourniture.qte_prevue || 0, 
+          qte_consommee: 0 
+      }; 
+      
+      const { error } = await supabase.from('chantier_fournitures').insert([payload]); 
+      
+      if(error) alert("Erreur: " + error.message); 
+      else { 
+          setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); 
+          setSupplySearch(""); 
+          fetchChantierData(); 
+      } 
+  };
   const updateConsommation = async (fId: string, val: number) => { const newVal = Math.max(0, val); setFournituresPrevu(prev => prev.map(f => f.id === fId ? { ...f, qte_consommee: newVal } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: newVal }).eq('id', fId); };
   const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); fetchChantierData(); } };
   const handleAddMateriel = async () => { if (!newMat.materiel_id) return alert("Sélectionnez un matériel"); const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]); if (!error) { setShowAddMaterielModal(false); fetchChantierData(); }};
