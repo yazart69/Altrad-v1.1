@@ -353,9 +353,9 @@ export default function TasksTile() {
         )}
       </div>
 
-      {/* FOOTER ANALYTIQUE */}
+      {/* FOOTER ANALYTIQUE (Lien corrigé vers /planning) */}
       <div className="mt-4 pt-4 border-t border-white/10 z-10 flex gap-2">
-        <Link href="/taches" className="flex-1">
+        <Link href="/planning" className="flex-1">
           <button className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 border border-white/5">
             Rapport de Pointage
             <ArrowUpRight size={14} />
