@@ -43,12 +43,13 @@ export default function BudgetHeuresTile() {
 
     try {
       // 1. Trouver les IDs des chantiers ayant du personnel affecté cette semaine
+      // Utilisation correcte des colonnes date_debut et date_fin
       const { data: planningData, error: planningError } = await supabase
         .from('planning')
         .select('chantier_id')
         .eq('type', 'chantier')
-        .gte('date', monday)
-        .lte('date', sunday);
+        .lte('date_debut', sunday)
+        .gte('date_fin', monday);
 
       if (planningError) throw planningError;
 
