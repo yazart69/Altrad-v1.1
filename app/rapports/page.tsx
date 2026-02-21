@@ -220,7 +220,22 @@ export default function Rapports() {
 
               {meetingTab === 'recap_hebdo' && (
                 <div className="flex-1 animate-in fade-in relative">
-                  <style>{`@media print { body * { visibility: hidden; } #print-recap-area, #print-recap-area * { visibility: visible; } #print-recap-area { position: absolute; left: 0; right: 0; top: 0; margin: auto; width: 100%; padding: 0; } @page { size: ${printFormat}; margin: 10mm; } .print-hidden { display: none !important; } .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; } }`}</style>
+                  <style>{`
+                    @media print { 
+                      body * { visibility: hidden; } 
+                      #print-recap-area, #print-recap-area * { visibility: visible; } 
+                      #print-recap-area { position: absolute; left: 0; right: 0; top: 0; margin: auto; width: 100%; max-width: 100%; padding: 0; background: #fff; color: #000; } 
+                      @page { size: ${printFormat}; margin: 12mm 10mm; } 
+                      .print-hidden { display: none !important; } 
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 20px; } 
+                      table { page-break-inside: auto; border-collapse: collapse; } 
+                      tr { page-break-inside: avoid; page-break-after: auto; } 
+                      thead { display: table-header-group; } 
+                      tfoot { display: table-footer-group; } 
+                      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                    }
+                  `}</style>
+                  
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
@@ -230,144 +245,168 @@ export default function Rapports() {
                     </div>
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
-                  <div id="print-recap-area" className="bg-white print:p-0 print:border-none w-full text-black">
-                    <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-end break-inside-avoid">
-                      <div>
-                        <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
-                        <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
-                          <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
-                          <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
-                          {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
-                        </div>
-                      </div>
-                      <div className="text-right text-xs font-medium bg-gray-50 p-3 rounded-lg border border-gray-200 print:border-black print:bg-white">
-                        <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
-                        <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-6">
-                      
-                      <div className="break-inside-avoid w-full">
-                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches de la Semaine (Avancement & Heures)</h3>
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="border-b-2 border-gray-300">
-                              <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1">Responsable</th><th className="py-2 px-1 text-center w-16">Hrs Prév.</th><th className="py-2 px-1 text-center w-24">Hrs Réel.</th><th className="py-2 px-1 text-center w-24">% Avanc.</th><th className="py-2 px-1 text-center w-16">Fait</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {taches.length > 0 ? taches.map(t => (
-                              <React.Fragment key={t.id || Math.random()}>
-                                <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
-                                  <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
-                                  <td className="py-2 px-1 font-bold">{t.responsable ? t.responsable : <div className="w-24 border-b border-dotted border-gray-400"></div>}</td>
-                                  <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
-                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
-                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
-                                </tr>
-                                {t.subtasks && t.subtasks.map((st: any) => (
-                                  <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
-                                    <td className="py-1.5 px-1 pl-6 flex items-center gap-2 text-gray-700"><ChevronRight size={10}/> {st.label || st.nom}</td>
-                                    <td className="py-1.5 px-1 text-gray-500 italic">Chef d'équipe</td>
-                                    <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
-                                    <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
-                                    <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
-                                    <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
+                  
+                  {/* DOCUMENT RÉCAPITULATIF POUR IMPRESSION */}
+                  <table id="print-recap-area" className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm">
+                    <thead className="print:table-header-group">
+                      <tr>
+                        <td className="pb-4 border-b-[3px] border-black mb-6">
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
+                              <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
+                                <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
+                                <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
+                                {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
+                              </div>
+                            </div>
+                            <div className="text-right text-xs font-medium bg-gray-50 p-3 rounded-lg border border-gray-200 print:border-black print:bg-white">
+                              <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
+                              <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none print:text-black" />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="pt-6">
+                          <div className="grid grid-cols-1 gap-6">
+                            
+                            <div className="break-inside-avoid w-full">
+                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches de la Semaine (Avancement & Heures)</h3>
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="border-b-2 border-gray-300">
+                                    <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1">Responsable</th><th className="py-2 px-1 text-center w-16">Hrs Prév.</th><th className="py-2 px-1 text-center w-24">Hrs Réel.</th><th className="py-2 px-1 text-center w-24">% Avanc.</th><th className="py-2 px-1 text-center w-16">Fait</th>
                                   </tr>
-                                ))}
-                              </React.Fragment>
-                            )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche assignée...</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
+                                </thead>
+                                <tbody>
+                                  {taches.length > 0 ? taches.map(t => (
+                                    <React.Fragment key={t.id || Math.random()}>
+                                      <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
+                                        <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
+                                        <td className="py-2 px-1 font-bold">{t.responsable ? t.responsable : <div className="w-24 border-b border-dotted border-gray-400 h-4"></div>}</td>
+                                        <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
+                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
+                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
+                                      </tr>
+                                      {t.subtasks && t.subtasks.map((st: any) => (
+                                        <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
+                                          <td className="py-1.5 px-1 pl-6 flex items-center gap-2 text-gray-700"><ChevronRight size={10}/> {st.label || st.nom}</td>
+                                          <td className="py-1.5 px-1 text-gray-500 italic">Chef d'équipe</td>
+                                          <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
+                                          <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
+                                          <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
+                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        </tr>
+                                      ))}
+                                    </React.Fragment>
+                                  )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche assignée...</td></tr>}
+                                </tbody>
+                              </table>
+                            </div>
 
-                      <div className="break-inside-avoid">
-                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="border-b-2 border-gray-300">
-                              <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-20">Qté Prévue</th><th className="py-2 px-1 text-center w-24">Qté Utilisée</th><th className="py-2 px-1 text-center w-20">Dispo OK</th><th className="py-2 px-1 text-center w-24">Commandé</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {fournitures.length > 0 ? fournitures.map(f => {
-                              const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
-                              return (
-                                <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
-                                  <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
-                                  <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
-                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                                </tr>
-                              );
-                            }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
-                        <div>
-                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b-2 border-gray-300">
-                                <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-16">Présent</th><th className="py-2 px-1 text-center w-16">Manquant</th><th className="py-2 px-1 text-center w-16">En Panne</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {materiels.length > 0 ? materiels.map(m => (
-                                <tr key={m.id} className="border-b border-gray-200">
-                                  <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                                </tr>
-                              )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div>
-                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Machine</th><th className="py-2 px-1 text-center w-24">Fin prévue</th><th className="py-2 px-1 text-center w-16">Retour OK</th></tr>
-                            </thead>
-                            <tbody>
-                              {locations.length > 0 ? locations.map(l => {
-                                const crit = isExpiringSoon(l.date_fin);
-                                return (
-                                  <tr key={l.id} className="border-b border-gray-200">
-                                    <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
-                                    <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                            <div className="break-inside-avoid">
+                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="border-b-2 border-gray-300">
+                                    <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-20">Qté Prévue</th><th className="py-2 px-1 text-center w-24">Qté Utilisée</th><th className="py-2 px-1 text-center w-20">Dispo OK</th><th className="py-2 px-1 text-center w-24">Commandé</th>
                                   </tr>
-                                );
-                              }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                                </thead>
+                                <tbody>
+                                  {fournitures.length > 0 ? fournitures.map(f => {
+                                    const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
+                                    return (
+                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
+                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
+                                        <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
+                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                      </tr>
+                                    );
+                                  }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
+                                </tbody>
+                              </table>
+                            </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
-                        <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                          <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
-                          <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
-                        </div>
-                        <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                          <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
-                          <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
-                        </div>
-                      </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
+                              <div>
+                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <thead>
+                                    <tr className="border-b-2 border-gray-300">
+                                      <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-16">Présent</th><th className="py-2 px-1 text-center w-16">Manquant</th><th className="py-2 px-1 text-center w-16">En Panne</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {materiels.length > 0 ? materiels.map(m => (
+                                      <tr key={m.id} className="border-b border-gray-200">
+                                        <td className="py-2 px-1 font-bold">{m.nom}</td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                      </tr>
+                                    )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div>
+                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <thead>
+                                    <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Machine</th><th className="py-2 px-1 text-center w-24">Fin prévue</th><th className="py-2 px-1 text-center w-16">Retour OK</th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {locations.length > 0 ? locations.map(l => {
+                                      const crit = isExpiringSoon(l.date_fin);
+                                      return (
+                                        <tr key={l.id} className="border-b border-gray-200">
+                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        </tr>
+                                      );
+                                    }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
 
-                      <div className="mt-8 pt-6 border-t-2 border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
-                        <div><p className="uppercase mb-8">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
-                        <div><p className="uppercase mb-8">Date :</p><div className="w-32 border-b border-dotted border-black"></div></div>
-                        <div className="text-right">
-                          <p className="uppercase mb-4">Validation :</p>
-                          <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
+                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
+                                <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
+                              </div>
+                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
+                                <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
+                              </div>
+                            </div>
+
+                            {/* SECTION 5 : SIGNATURES */}
+                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
+                              <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
+                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed border-gray-300 print:border-gray-500 rounded-lg"></div></div>
+                              <div className="text-right">
+                                <p className="uppercase mb-6">Validation :</p>
+                                <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot className="print:table-footer-group">
+                      <tr>
+                        <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
                 </div>
               )}
             </div>
