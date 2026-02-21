@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
-import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil, Undo, Type, Minus, Target, CheckCircle } from 'lucide-react';
+import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil, Undo, Type, Minus, Target, CheckCircle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
@@ -199,7 +199,6 @@ const SketchTool = forwardRef(({ type, dims }: { type: string, dims: any }, ref)
       <canvas ref={canvasBaseRef} width={1000} height={500} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
       <canvas ref={canvasDrawRef} width={1000} height={500} className={`absolute inset-0 w-full h-full touch-none z-10 ${tool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerOut={handlePointerUp} />
       
-      {/* Barre d'outils flottante */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur px-4 py-2 rounded-2xl shadow-xl border border-gray-200 z-20 transition-all opacity-20 hover:opacity-100 print-hidden">
         <div className="flex gap-1 border-r border-gray-200 pr-3 mr-1">
             <button onClick={()=>setTool('pencil')} className={`p-1.5 rounded-lg transition-all ${tool === 'pencil' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Pencil size={16}/></button>
@@ -226,6 +225,9 @@ SketchTool.displayName = 'SketchTool';
 
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+
   const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('actions');
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantier, setSelectedChantier] = useState<string>("");
@@ -244,17 +246,14 @@ export default function Rapports() {
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const [selectedPrintNotes, setSelectedPrintNotes] = useState<number[]>([]);
 
-  // Toggles pour l'onglet Calculs
   const [showAbrasive, setShowAbrasive] = useState(true);
   const [showDewPoint, setShowDewPoint] = useState(true);
 
-  // States Onglet Calculs
   const sketchRef = useRef<any>(null);
   const [calcForm, setCalcForm] = useState({ type: 'rectangle', L: 10, l: 5, D: 2, H: 5, microns: 200, rendement: 5, degree: 'Sa2.5', pertes: 20, name: '' });
   const [dewPointForm, setDewPointForm] = useState({ T_amb: 20, RH: 65, T_acier: 18 });
   const [metreHistory, setMetreHistory] = useState<any[]>([]);
 
-  // States Onglet Actions
   const [actionsList, setActionsList] = useState<any[]>([]);
   const [actionForm, setActionForm] = useState({ titre: '', responsable: '', delai: '' });
 
@@ -267,56 +266,65 @@ export default function Rapports() {
   const [commandeApasser, setCommandeApasser] = useState("");
   const [risqueIdentifie, setRisqueIdentifie] = useState("");
 
+  const updatePendingCount = async () => {
+    if (db) {
+      const count = await db.reports.count();
+      setPendingSyncCount(count);
+    }
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setIsOnline(navigator.onLine);
-        const handleOnline = () => setIsOnline(true), handleOffline = () => setIsOnline(false);
+        const handleOnline = () => { setIsOnline(true); updatePendingCount(); };
+        const handleOffline = () => setIsOnline(false);
         window.addEventListener('online', handleOnline); window.addEventListener('offline', handleOffline);
         supabase.from('chantiers').select('id, nom').order('nom', { ascending: true }).then(({data}) => data && setChantiers(data));
+        updatePendingCount();
         return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
     }
   }, []);
 
-  useEffect(() => {
-    async function getDetails() {
-      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); setActionsList([]); return; }
-      try {
-        const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
-        setChantierDetails(data);
-        const { data: fData } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', selectedChantier);
-        setFournitures((fData || []).map((f: any) => ({ ...f, quantite_prevue: f.qte_prevue || 0, quantite_consommee: f.qte_consommee || 0, quantite_dispo: (f.qte_prevue || 0) - (f.qte_consommee || 0) })));
-        const { data: cmData } = await supabase.from('chantier_materiel').select('*').eq('chantier_id', selectedChantier);
-        if (cmData && cmData.length > 0) {
-          const matIds = cmData.map((cm: any) => cm.materiel_id).filter(Boolean);
-          const { data: matData } = matIds.length > 0 ? await supabase.from('materiel').select('*').in('id', matIds) : { data: [] };
-          const merged = cmData.map((cm: any) => {
-            const mat = (matData || []).find((m: any) => m.id === cm.materiel_id) || {};
-            return { id: cm.id, nom: mat.nom || 'Matériel inconnu', etat: mat.etat || 'Opérationnel', date_fin: cm.date_fin, type_stock: mat.type_stock || 'Interne' };
-          });
-          setMateriels(merged.filter((m: any) => m.type_stock !== 'Externe')); setLocations(merged.filter((m: any) => m.type_stock === 'Externe'));
-        } else { setMateriels([]); setLocations([]); }
-        const { data: tData } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', selectedChantier);
-        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-        setTaches((tData || []).map((t: any) => {
-          let sub = [];
-          try { sub = typeof t.subtasks === 'string' ? JSON.parse(t.subtasks) : (t.subtasks || []); } catch(e) {}
-          return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
-        }));
+  const getDetails = async () => {
+    if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); setActionsList([]); return; }
+    try {
+      const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
+      setChantierDetails(data);
+      const { data: fData } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', selectedChantier);
+      setFournitures((fData || []).map((f: any) => ({ ...f, quantite_prevue: f.qte_prevue || 0, quantite_consommee: f.qte_consommee || 0, quantite_dispo: (f.qte_prevue || 0) - (f.qte_consommee || 0) })));
+      const { data: cmData } = await supabase.from('chantier_materiel').select('*').eq('chantier_id', selectedChantier);
+      if (cmData && cmData.length > 0) {
+        const matIds = cmData.map((cm: any) => cm.materiel_id).filter(Boolean);
+        const { data: matData } = matIds.length > 0 ? await supabase.from('materiel').select('*').in('id', matIds) : { data: [] };
+        const merged = cmData.map((cm: any) => {
+          const mat = (matData || []).find((m: any) => m.id === cm.materiel_id) || {};
+          return { id: cm.id, nom: mat.nom || 'Matériel inconnu', etat: mat.etat || 'Opérationnel', date_fin: cm.date_fin, type_stock: mat.type_stock || 'Interne' };
+        });
+        setMateriels(merged.filter((m: any) => m.type_stock !== 'Externe')); setLocations(merged.filter((m: any) => m.type_stock === 'Externe'));
+      } else { setMateriels([]); setLocations([]); }
+      const { data: tData } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', selectedChantier);
+      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+      setTaches((tData || []).map((t: any) => {
+        let sub = [];
+        try { sub = typeof t.subtasks === 'string' ? JSON.parse(t.subtasks) : (t.subtasks || []); } catch(e) {}
+        return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
+      }));
 
-        const { data: rData } = await supabase.from('reunions').select('id, notes, actions').eq('chantier_id', selectedChantier).order('date', { ascending: false });
-        if (rData) {
-          const allSaved = rData.flatMap((r: any) => (r.notes || []).map((n: any) => ({ ...n, reunion_id: r.id })));
-          setSavedNotes(allSaved);
-          
-          const allActions = rData.flatMap((r: any) => (r.actions || []).map((a: any) => ({ ...a, reunion_id: r.id })));
-          // On filtre pour ne garder que les actions non "Fait" pour le suivi actif (ou on peut tout afficher, ici on affiche tout pour l'historique)
-          setActionsList(allActions);
-        } else {
-          setSavedNotes([]);
-          setActionsList([]);
-        }
-      } catch (e) {}
-    }
+      const { data: rData } = await supabase.from('reunions').select('id, notes, actions').eq('chantier_id', selectedChantier).order('date', { ascending: false });
+      if (rData) {
+        const allSaved = rData.flatMap((r: any) => (r.notes || []).map((n: any) => ({ ...n, reunion_id: r.id })));
+        setSavedNotes(allSaved);
+        
+        const allActions = rData.flatMap((r: any) => (r.actions || []).map((a: any) => ({ ...a, reunion_id: r.id })));
+        setActionsList(allActions);
+      } else {
+        setSavedNotes([]);
+        setActionsList([]);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
     getDetails();
   }, [selectedChantier]);
 
@@ -327,8 +335,11 @@ export default function Rapports() {
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      setNotePhoto(url);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) setNotePhoto(event.target.result.toString());
+      };
+      reader.readAsDataURL(e.target.files[0]);
     }
   };
 
@@ -358,10 +369,71 @@ export default function Rapports() {
       }));
   };
 
+  // ARCHITECTURE LOCAL FIRST + SUPABASE STORAGE SYNC
+  const syncPendingReports = async () => {
+    if (!isOnline) return alert("Vous êtes hors-ligne. Impossible de synchroniser.");
+    setIsSyncing(true);
+    try {
+      const pending = await db?.reports.toArray() || [];
+      if (pending.length === 0) { setIsSyncing(false); return; }
+
+      for (const report of pending) {
+        // 1. Upload Base64 Photos -> Supabase Storage
+        const updatedNotes = await Promise.all((report.notes || []).map(async (n: any) => {
+          if (n.photo && n.photo.startsWith('data:image')) {
+            const res = await fetch(n.photo);
+            const blob = await res.blob();
+            const fileName = `notes/${report.chantier_id}_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+            const { error } = await supabase.storage.from('chantier_media').upload(fileName, blob);
+            if (!error) {
+              const { data: { publicUrl } } = supabase.storage.from('chantier_media').getPublicUrl(fileName);
+              n.photo = publicUrl;
+            }
+          }
+          return n;
+        }));
+
+        // 2. Upload Base64 Sketches -> Supabase Storage
+        const updatedCalculs = await Promise.all((report.calculs || []).map(async (m: any) => {
+          if (m.image && m.image.startsWith('data:image')) {
+            const res = await fetch(m.image);
+            const blob = await res.blob();
+            const fileName = `metres/${report.chantier_id}_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+            const { error } = await supabase.storage.from('chantier_media').upload(fileName, blob);
+            if (!error) {
+              const { data: { publicUrl } } = supabase.storage.from('chantier_media').getPublicUrl(fileName);
+              m.image = publicUrl;
+            }
+          }
+          return m;
+        }));
+
+        // 3. Insert Final Report to Supabase
+        const payload = {
+          chantier_id: report.chantier_id,
+          date: report.date,
+          notes: updatedNotes,
+          calculs: updatedCalculs,
+          actions: report.actions,
+          metriques_techniques: report.metriques_techniques
+        };
+        
+        const { error: insertError } = await supabase.from('reunions').insert([payload]);
+        if (!insertError) await db?.reports.delete(report.id);
+      }
+      
+      alert("Synchronisation Cloud terminée avec succès !");
+      await updatePendingCount();
+      getDetails(); // Refresh view
+    } catch (e: any) {
+      alert("Erreur lors de la synchronisation : " + e.message);
+    }
+    setIsSyncing(false);
+  };
+
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
     
-    // On sépare les nouvelles actions à sauvegarder dans ce rapport, des anciennes modifiées
     const newActions = actionsList.filter(a => a.isNew).map(({ isNew, isModified, ...rest }) => rest);
     
     const report = { 
@@ -370,49 +442,41 @@ export default function Rapports() {
         notes, 
         calculs: metreHistory, 
         actions: newActions,
-        metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, 
-        is_synced: false 
+        metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }
     };
     
-    const reportToSave = { ...report };
-    if (db) try { await db.reports.add(reportToSave); } catch (e) {}
+    // On sauvegarde toujours en LOCAL en priorité
+    if (db) {
+        await db.reports.add({ ...report, is_synced: false });
+        await updatePendingCount();
+    }
     
-    if (isOnline) {
-      try {
-        const { data, error } = await supabase.from('reunions').insert([report]).select('id').single();
-        if (error) throw error;
-        
-        // Mettre à jour les statuts des anciennes actions dans la BDD
-        const modifiedActions = actionsList.filter(a => a.isModified);
-        for(const modAction of modifiedActions) {
-            if(modAction.reunion_id) {
-                const { data: rData } = await supabase.from('reunions').select('actions').eq('id', modAction.reunion_id).single();
-                if(rData && rData.actions) {
-                    const updatedArray = rData.actions.map((a:any) => a.id === modAction.id ? { ...a, statut: modAction.statut } : a);
-                    await supabase.from('reunions').update({ actions: updatedArray }).eq('id', modAction.reunion_id);
-                }
-            }
-        }
+    // On met à jour l'UI locale pour que l'utilisateur voit son ajout instantanément (même hors-ligne)
+    const localNotes = notes.map(n => ({...n, reunion_id: 'local'}));
+    setSavedNotes([...localNotes, ...savedNotes]);
+    setNotes([]);
+    setMetreHistory([]);
+    setCalcForm({...calcForm, name: ''});
+    setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
 
-        alert("Rapport synchronisé avec la base de données centrale !");
-        
-        // Nettoyage de l'UI
-        const savedWithReunionId = notes.map(n => ({...n, reunion_id: data.id}));
-        setSavedNotes([...savedWithReunionId, ...savedNotes]);
-        setNotes([]);
-        setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false, reunion_id: a.isNew ? data.id : a.reunion_id})));
-        
-      } catch (e: any) { alert("Erreur Sync Supabase: " + e.message); }
+    if (isOnline) {
+      // Maj des actions pré-existantes modifiées
+      const modifiedActions = actionsList.filter(a => a.isModified && a.reunion_id);
+      for(const modAction of modifiedActions) {
+          const { data: rData } = await supabase.from('reunions').select('actions').eq('id', modAction.reunion_id).single();
+          if(rData && rData.actions) {
+              const updatedArray = rData.actions.map((a:any) => a.id === modAction.id ? { ...a, statut: modAction.statut } : a);
+              await supabase.from('reunions').update({ actions: updatedArray }).eq('id', modAction.reunion_id);
+          }
+      }
+      syncPendingReports(); // Lancement de la synchro des nouveaux éléments
     } else {
-      alert("Rapport enregistré localement (En attente de connexion).");
-      setSavedNotes([...notes, ...savedNotes]);
-      setNotes([]);
-      setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
+      alert("Rapport enregistré localement. Il sera envoyé automatiquement au retour de la connexion.");
     }
   };
 
   const handleUpdateNote = async (reunionId: string, noteId: number) => {
-    if (!reunionId) return alert("Erreur: ID Réunion manquant.");
+    if (!reunionId || reunionId === 'local') return alert("Impossible de modifier une note en attente de synchronisation.");
     try {
         const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
         if (data && data.notes) {
@@ -426,7 +490,7 @@ export default function Rapports() {
   };
 
   const handleDeleteNote = async (reunionId: string, noteId: number) => {
-    if (!reunionId) return alert("Erreur: ID Réunion manquant.");
+    if (!reunionId || reunionId === 'local') return alert("Impossible de supprimer une note en attente de synchronisation.");
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette note ?")) return;
     try {
         const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
@@ -461,21 +525,6 @@ export default function Rapports() {
       surface: acc.surface + curr.surface, paint: acc.paint + curr.paint, abrasive: acc.abrasive + curr.abrasive
   }), { surface: 0, paint: 0, abrasive: 0 });
 
-  const addToMetre = () => {
-      const imgData = sketchRef.current?.exportImage();
-      setMetreHistory([...metreHistory, { 
-          id: Date.now(), 
-          name: calcForm.name || `Calcul ${metreHistory.length + 1}`, 
-          type: calcForm.type, 
-          surface: surfaceCalculated, 
-          paint: paintNeeded, 
-          abrasive: showAbrasive ? sandNeeded : 0,
-          image: imgData
-      }]);
-      setCalcForm({...calcForm, name: ''});
-      sketchRef.current?.clearStrokes();
-  };
-  const removeMetre = (id: number) => setMetreHistory(metreHistory.filter(m => m.id !== id));
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
   const { filteredTaches, periodStr } = useMemo(() => {
@@ -531,8 +580,12 @@ export default function Rapports() {
             <div>
               <h1 className="text-2xl font-black uppercase tracking-tight text-gray-800">Réunion Chantier</h1>
               <div className="flex items-center gap-2">
-                {isOnline ? <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 uppercase bg-emerald-50 px-2 py-0.5 rounded-full"><Wifi size={12}/> Connecté</span> : <span className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase bg-red-50 px-2 py-0.5 rounded-full"><WifiOff size={12}/> Mode Hors-Ligne</span>}
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">• Altrad Services v3.1</span>
+                {isOnline ? <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 uppercase bg-emerald-50 px-2 py-0.5 rounded-full"><Wifi size={12}/> Connecté</span> : <span className="flex items-center gap-1 text-[10px] font-bold text-red-500 uppercase bg-red-50 px-2 py-0.5 rounded-full"><WifiOff size={12}/> Hors-Ligne</span>}
+                {pendingSyncCount > 0 && (
+                    <button onClick={syncPendingReports} disabled={!isOnline || isSyncing} className="flex items-center gap-1 text-[10px] font-bold text-orange-500 uppercase bg-orange-50 px-2 py-0.5 rounded-full hover:bg-orange-100 transition-colors disabled:opacity-50">
+                        <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''}/> Sync ({pendingSyncCount})
+                    </button>
+                )}
               </div>
             </div>
           </div>
@@ -769,7 +822,7 @@ export default function Rapports() {
                                 <button onClick={toggleSelectAllPrint} className="text-xs font-bold text-gray-500 hover:text-black transition-colors">{selectedPrintNotes.length === savedNotes.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
                                 <div className="flex items-center gap-2">
                                   <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
-                                    <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                                    <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 portrait</option><option value="A3 landscape">A3 Paysage</option>
                                   </select>
                                   <button onClick={() => { if(selectedPrintNotes.length===0) alert("Sélectionnez au moins une note."); else window.print(); }} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer ({selectedPrintNotes.length})</button>
                                 </div>
