@@ -170,9 +170,9 @@ export default function Rapports() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print-reset">
-          <div className="lg:col-span-2 space-y-6 print-reset">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col ${meetingTab === 'recap_hebdo' ? 'print-reset' : ''}`}>
+        <div className="w-full print-reset">
+          <div className="w-full space-y-6 print-reset">
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' ? 'print-reset' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -428,36 +428,6 @@ export default function Rapports() {
 
                 </div>
               )}
-            </div>
-          </div>
-          <div className="space-y-6 print-hidden">
-            <div className="bg-[#1e272e] rounded-[35px] p-8 text-white shadow-xl relative overflow-hidden transition-all">
-               <AlertTriangle size={150} className="absolute -right-10 -bottom-10 opacity-5" />
-               <h3 className="text-xl font-black uppercase italic mb-6 flex items-center gap-2"><AlertCircle className="text-yellow-400" /> Indicateurs Clés</h3>
-               {chantierDetails ? (
-                   <div className="space-y-4 relative z-10">
-                     <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
-                       <div className="bg-red-500/20 p-2 rounded-lg"><Layers size={20} className="text-red-400" /></div>
-                       <div><p className="text-xs font-black uppercase text-red-400">Budget Consommé</p><p className="text-lg font-bold">{chantierDetails.budget_conso || 0}% <span className="text-[10px] opacity-60 font-normal">du global</span></p></div>
-                     </div>
-                     <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
-                       <div className="bg-blue-500/20 p-2 rounded-lg"><Calendar size={20} className="text-blue-400" /></div>
-                       <div><p className="text-xs font-black uppercase text-blue-400">Date Fin Prévue</p><p className="text-sm font-bold">{chantierDetails.date_fin || 'Non définie'}</p></div>
-                     </div>
-                   </div>
-               ) : <div className="text-center py-10 opacity-50"><p className="text-sm">Sélectionnez un chantier pour voir les KPI en temps réel.</p></div>}
-            </div>
-            <div className="bg-white rounded-[35px] p-8 shadow-sm border border-gray-100">
-               <h3 className="font-black text-gray-700 uppercase text-sm mb-6 flex items-center gap-2"><Layers size={18} /> Avancement Réel</h3>
-               {chantierDetails ? (
-                   <div className="space-y-4">
-                     <div>
-                       <div className="flex justify-between text-[10px] font-black uppercase mb-1"><span>Production</span><span>{chantierDetails.avancement || 0}%</span></div>
-                       <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full transition-all duration-1000 ease-out" style={{ width: `${chantierDetails.avancement || 0}%` }} /></div>
-                     </div>
-                     <p className="text-xs text-gray-400 italic mt-2">Données synchronisées depuis la table 'chantiers'.</p>
-                   </div>
-               ) : <div className="h-20 flex items-center justify-center text-gray-300 text-xs">En attente de sélection...</div>}
             </div>
           </div>
         </div>
