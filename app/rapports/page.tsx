@@ -191,11 +191,16 @@ export default function Rapports() {
 
         // --- FETCH FOURNITURES (table: chantier_fournitures) ---
         const { data: fData } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', selectedChantier);
-        const formatFournitures = (fData || []).map((f: any) => ({
-          ...f,
-          quantite_prevue: f.qte_prevue,
-          quantite_dispo: f.qte_restante
-        }));
+        const formatFournitures = (fData || []).map((f: any) => {
+          const qtePrevue = f.qte_prevue || 0;
+          const qteConsommee = f.qte_consommee || 0;
+          return {
+            ...f,
+            quantite_prevue: qtePrevue,
+            quantite_consommee: qteConsommee,
+            quantite_dispo: qtePrevue - qteConsommee
+          };
+        });
         setFournitures(formatFournitures);
 
         // --- FETCH MATÉRIELS ET LOCATIONS (tables: chantier_materiel + materiel) ---
@@ -532,6 +537,7 @@ export default function Rapports() {
                             <tr className="border-b-2 border-gray-300">
                               <th className="py-2 px-1">Désignation</th>
                               <th className="py-2 px-1 text-center">Qté Prévue</th>
+                              <th className="py-2 px-1 text-center">Qté Utilisée</th>
                               <th className="py-2 px-1 text-center">Qté Dispo</th>
                               <th className="py-2 px-1 text-center w-20">Dispo OK</th>
                               <th className="py-2 px-1 text-center w-24">Commandé</th>
@@ -546,12 +552,13 @@ export default function Rapports() {
                                     {alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}
                                   </td>
                                   <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
+                                  <td className="py-2 px-1 text-center font-bold text-gray-600 print:text-black">{f.quantite_consommee || 0}</td>
                                   <td className={`py-2 px-1 text-center font-bold ${alertQty ? 'text-red-600 print:text-black' : ''}`}>{f.quantite_dispo || 0}</td>
                                   <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                   <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                 </tr>
                               );
-                            }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
+                            }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
                           </tbody>
                         </table>
                       </div>
