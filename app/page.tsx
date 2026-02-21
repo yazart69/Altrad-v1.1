@@ -112,38 +112,38 @@ export default function Home() {
       {/* 🧱 GRILLE FLATTENED ADAPTATIVE */}
       <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6 xl:auto-rows-min">
 
-        {/* 1. ALERTES LOGISTIQUES & CHANTIERS (Priorité 1 Mobile) */}
-        <div className="order-1 xl:order-none xl:col-span-5 xl:col-start-5 xl:row-start-1 min-h-[280px] tile-print">
+        {/* 1. ALERTES LOGISTIQUES & CHANTIERS (Ajout de h-fit pour éviter l'étirement) */}
+        <div className="order-1 xl:order-none xl:col-span-5 xl:col-start-5 xl:row-start-1 min-h-[280px] h-fit tile-print">
           <MiddleTiles alertsCount={stats.alerts} /> 
         </div>
 
-        {/* 2. TÂCHES PRIORITAIRES (Passé en GRAND au centre) */}
+        {/* 2. TÂCHES PRIORITAIRES */}
         <div className="order-2 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-2 min-h-[350px] tile-print"> 
           <TasksTile />
         </div>
 
-        {/* 3. STAFFING DU JOUR (Priorité 3 Mobile) */}
-        <div className="order-3 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-3 min-h-[300px] tile-print">
+        {/* 3. STAFFING DU JOUR */}
+        <div className="order-3 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-3 min-h-[300px] h-fit tile-print">
           <StaffingTile staffCount={stats.staff} />
         </div>
 
-        {/* 4. HSE & SÉCURITÉ (Priorité 4 Mobile) */}
-        <div className="order-4 xl:order-none xl:col-span-6 xl:col-start-7 xl:row-start-3 min-h-[300px] tile-print">
+        {/* 4. HSE & SÉCURITÉ */}
+        <div className="order-4 xl:order-none xl:col-span-6 xl:col-start-7 xl:row-start-3 min-h-[300px] h-fit tile-print">
           <HSETile />
         </div>
 
-        {/* 5. BUDGET HEURES / CHANTIERS EN COURS (Passé sur la LONGUEUR à droite) */}
+        {/* 5. BUDGET HEURES / CHANTIERS EN COURS */}
         <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-2 min-h-[400px] xl:min-h-full tile-print">
           <BudgetHeuresTile />
         </div>
 
-        {/* 6. CONGÉS (Priorité 6 Mobile - Moins urgent) */}
-        <div className="order-6 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-1 min-h-[280px] tile-print">
+        {/* 6. CONGÉS */}
+        <div className="order-6 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-1 min-h-[280px] h-fit tile-print">
           <LeavesTile />
         </div>
 
-        {/* 7. POINTAGE & ÉQUIPE COMPACTE (Priorité 7 Mobile) */}
-        <div className="order-7 xl:order-none xl:col-span-2 xl:col-start-5 xl:row-start-3 flex flex-col gap-4 min-h-[300px] tile-print">
+        {/* 7. POINTAGE & ÉQUIPE COMPACTE */}
+        <div className="order-7 xl:order-none xl:col-span-2 xl:col-start-5 xl:row-start-3 flex flex-col gap-4 min-h-[300px] h-fit tile-print">
           <div className="flex-1 min-h-[140px]">
               <TeamTile isCompact={true} />
           </div>
