@@ -21,29 +21,71 @@ export default function BudgetHeuresTile() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  // RÉCUPÉRATION DES DONNÉES AVEC SYNCHRO TÂCHES
+  // Helper pour obtenir le début et la fin de la semaine en cours (Lundi à Dimanche)
+  const getWeekRange = () => {
+    const today = new Date();
+    const day = today.getDay() || 7; // Dimanche = 7
+    
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - day + 1);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    return { monday: monday.toISOString(), sunday: sunday.toISOString() };
+  };
+
+  // RÉCUPÉRATION DES DONNÉES AVEC FILTRE PLANNING & SYNCHRO TÂCHES
   const fetchChantiers = async () => {
-    // On récupère les chantiers et on compte les tâches liées pour la synchro
-    const { data, error } = await supabase
-      .from('chantiers')
-      .select(`
-        *,
-        chantier_tasks (
-          id,
-          done,
-          objectif_heures
-        )
-      `)
-      .order('created_at', { ascending: false });
+    const { monday, sunday } = getWeekRange();
 
-    if (error) {
-      console.error("Erreur fetch chantiers:", error);
-    }
+    try {
+      // 1. Trouver les IDs des chantiers ayant du personnel affecté cette semaine
+      const { data: planningData, error: planningError } = await supabase
+        .from('planning')
+        .select('chantier_id')
+        .eq('type', 'chantier')
+        .gte('date', monday)
+        .lte('date', sunday);
 
-    if (data) {
-      setChantierData(data);
+      if (planningError) throw planningError;
+
+      // Extraire les IDs uniques des chantiers actifs cette semaine
+      const activeChantierIds = [...new Set((planningData || []).map(p => p.chantier_id).filter(Boolean))];
+
+      if (activeChantierIds.length === 0) {
+        setChantiers([]);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Récupérer les détails de ces chantiers spécifiques et leurs tâches
+      const { data, error } = await supabase
+        .from('chantiers')
+        .select(`
+          *,
+          chantier_tasks (
+            id,
+            done,
+            objectif_heures
+          )
+        `)
+        .eq('statut', 'en_cours')
+        .in('id', activeChantierIds) // Filtre crucial : Uniquement ceux du planning
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        setChantierData(data);
+      }
+    } catch (err) {
+      console.error("Erreur fetch chantiers filtrés:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const setChantierData = (data: any[]) => {
@@ -51,7 +93,7 @@ export default function BudgetHeuresTile() {
       const tasks = c.chantier_tasks || [];
       const totalTasks = tasks.length;
       const doneTasks = tasks.filter((t: any) => t.done).length;
-      // On détecte s'il y a de l'activité (pour le tri)
+      // On détecte s'il y a de l'activité (pour le tri, bien que tous ici soient déjà filtrés)
       const hasActivity = totalTasks > 0 || c.heures_consommees > 0;
       return { ...c, totalTasks, doneTasks, hasActivity };
     });
@@ -104,7 +146,7 @@ export default function BudgetHeuresTile() {
               Chantiers <span className="text-emerald-900 opacity-60">en cours</span>
             </h2>
             <p className="text-[10px] text-emerald-50 font-bold mt-1 uppercase tracking-widest opacity-80 flex items-center gap-1">
-              <Activity size={10} /> Synchro Pointage & Tâches
+              <Activity size={10} /> Chantiers planifiés cette semaine
             </p>
           </div>
           <div className="opacity-0 group-hover/title:opacity-100 transition-opacity bg-white/20 p-1.5 rounded-full text-white">
@@ -121,7 +163,7 @@ export default function BudgetHeuresTile() {
         </button>
       </div>
 
-      {/* LISTE DES CHANTIERS ACTIFS */}
+      {/* LISTE DES CHANTIERS ACTIFS ET PLANIFIÉS */}
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4 z-10">
         {loading ? (
           <div className="space-y-3">
@@ -130,8 +172,8 @@ export default function BudgetHeuresTile() {
             ))}
           </div>
         ) : chantiers.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-60 italic text-sm">
-             Aucun chantier en cours.
+          <div className="h-full flex flex-col items-center justify-center opacity-60 italic text-sm text-center">
+             Aucun chantier avec du personnel planifié cette semaine.
           </div>
         ) : (
           chantiers.map((chantier) => {
