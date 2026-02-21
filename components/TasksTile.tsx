@@ -128,7 +128,6 @@ export default function TasksTile() {
       .update({ heures_reelles: hours })
       .eq('id', taskId);
     await recalculateChantierHours(chantierId);
-    // On ne fait pas de fetchData complet ici pour garder le focus de l'input
   };
 
   const toggleMainTask = async (task: any) => {
@@ -202,22 +201,39 @@ export default function TasksTile() {
           </div>
         ) : (
           <div className="space-y-4">
-            {tasks.map((chantierGroup: any) => (
+            {tasks.map((chantierGroup: any) => {
+              // Calcul de la progression globale du chantier pour afficher la barre ici
+              const totalTasks = chantierGroup.items.length;
+              const doneTasks = chantierGroup.items.filter((t: any) => t.done).length;
+              const globalProgress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+              return (
               <div key={chantierGroup.id} className="bg-white/5 rounded-[22px] overflow-hidden border border-white/5">
                 
-                {/* LIGNE CHANTIER (NIVEAU 1) */}
+                {/* LIGNE CHANTIER (NIVEAU 1) AVEC BARRE PROGRESSION GLOBALE */}
                 <div 
                   onClick={() => toggleChantier(chantierGroup.id)}
                   className="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#ff9f43]/20 rounded-lg text-[#ff9f43]">
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="p-2 bg-[#ff9f43]/20 rounded-lg text-[#ff9f43] shrink-0">
                       <Building2 size={18} />
                     </div>
-                    <span className="font-black uppercase text-sm tracking-wide">{chantierGroup.nom}</span>
+                    <div className="flex flex-col flex-1 max-w-[200px] md:max-w-[300px]">
+                      <span className="font-black uppercase text-sm tracking-wide truncate">{chantierGroup.nom}</span>
+                      
+                      {/* Barre de progression globale du chantier déplacée ici */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#ff9f43] transition-all duration-500" style={{ width: `${globalProgress}%` }}></div>
+                        </div>
+                        <span className="text-[9px] font-bold opacity-80 text-[#ff9f43]">{globalProgress}%</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 opacity-60">
-                    <span className="text-[10px] font-bold uppercase">{chantierGroup.items.length} items</span>
+
+                  <div className="flex items-center gap-3 opacity-60 ml-4 shrink-0">
+                    <span className="text-[10px] font-bold uppercase hidden sm:inline">{chantierGroup.items.length} actions</span>
                     {expandedChantiers.includes(chantierGroup.id) ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
                   </div>
                 </div>
@@ -289,7 +305,7 @@ export default function TasksTile() {
                             </div>
                           </div>
 
-                          {/* Zone de saisie du Réel si Tâche Finie */}
+                          {/* Zone de saisie du Réel si Tâche Finie (Suppression des barres internes demandée) */}
                           {task.done && (
                             <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
@@ -300,12 +316,6 @@ export default function TasksTile() {
                                   defaultValue={task.heures_reelles || task.objectif_heures}
                                   onBlur={(e) => updateRealHours(task.id, parseFloat(e.target.value) || 0, task.chantier_id)}
                                 />
-                              </div>
-                              
-                              {/* Mini Bar Chart */}
-                              <div className="flex-1 ml-6 h-2 bg-white/5 rounded-full overflow-hidden flex">
-                                <div className="h-full bg-[#0984e3]" style={{ width: '50%' }}></div>
-                                <div className={`h-full ${delta >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: '50%' }}></div>
                               </div>
                             </div>
                           )}
@@ -348,12 +358,12 @@ export default function TasksTile() {
                   </div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
 
-      {/* FOOTER ANALYTIQUE (Lien corrigé vers /planning) */}
+      {/* FOOTER ANALYTIQUE */}
       <div className="mt-4 pt-4 border-t border-white/10 z-10 flex gap-2">
         <Link href="/planning" className="flex-1">
           <button className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 border border-white/5">
