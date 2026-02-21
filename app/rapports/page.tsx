@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
-import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil, Undo, Type, Minus } from 'lucide-react';
+import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil, Undo, Type, Minus, Target, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
@@ -226,7 +226,7 @@ SketchTool.displayName = 'SketchTool';
 
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
-  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('calculs');
+  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('actions');
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantier, setSelectedChantier] = useState<string>("");
   const [chantierDetails, setChantierDetails] = useState<any>(null);
@@ -254,6 +254,10 @@ export default function Rapports() {
   const [dewPointForm, setDewPointForm] = useState({ T_amb: 20, RH: 65, T_acier: 18 });
   const [metreHistory, setMetreHistory] = useState<any[]>([]);
 
+  // States Onglet Actions
+  const [actionsList, setActionsList] = useState<any[]>([]);
+  const [actionForm, setActionForm] = useState({ titre: '', responsable: '', delai: '' });
+
   const [materiels, setMateriels] = useState<any[]>([]);
   const [fournitures, setFournitures] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -275,7 +279,7 @@ export default function Rapports() {
 
   useEffect(() => {
     async function getDetails() {
-      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); return; }
+      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); setActionsList([]); return; }
       try {
         const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
         setChantierDetails(data);
@@ -299,12 +303,17 @@ export default function Rapports() {
           return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
         }));
 
-        const { data: rData } = await supabase.from('reunions').select('id, notes').eq('chantier_id', selectedChantier).order('date', { ascending: false });
+        const { data: rData } = await supabase.from('reunions').select('id, notes, actions').eq('chantier_id', selectedChantier).order('date', { ascending: false });
         if (rData) {
           const allSaved = rData.flatMap((r: any) => (r.notes || []).map((n: any) => ({ ...n, reunion_id: r.id })));
           setSavedNotes(allSaved);
+          
+          const allActions = rData.flatMap((r: any) => (r.actions || []).map((a: any) => ({ ...a, reunion_id: r.id })));
+          // On filtre pour ne garder que les actions non "Fait" pour le suivi actif (ou on peut tout afficher, ici on affiche tout pour l'historique)
+          setActionsList(allActions);
         } else {
           setSavedNotes([]);
+          setActionsList([]);
         }
       } catch (e) {}
     }
@@ -329,9 +338,41 @@ export default function Rapports() {
     setActiveNote(""); setNoteSeverity("Info"); setNoteWeather([]); setNotePhoto(null);
   };
 
+  const addAction = () => {
+      if(!actionForm.titre) return;
+      setActionsList([{ id: Date.now(), titre: actionForm.titre, responsable: actionForm.responsable || 'Non défini', delai: actionForm.delai || '-', statut: 'À faire', isNew: true }, ...actionsList]);
+      setActionForm({ titre: '', responsable: '', delai: '' });
+  };
+
+  const removeAction = (id: number) => {
+      setActionsList(actionsList.filter(a => a.id !== id));
+  };
+
+  const toggleActionStatus = (id: number) => {
+      setActionsList(actionsList.map(a => {
+          if(a.id === id) {
+              const nextStatus = a.statut === 'À faire' ? 'En cours' : a.statut === 'En cours' ? 'Fait' : 'À faire';
+              return { ...a, statut: nextStatus, isModified: !a.isNew };
+          }
+          return a;
+      }));
+  };
+
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
-    const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs: metreHistory, metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, is_synced: false };
+    
+    // On sépare les nouvelles actions à sauvegarder dans ce rapport, des anciennes modifiées
+    const newActions = actionsList.filter(a => a.isNew).map(({ isNew, isModified, ...rest }) => rest);
+    
+    const report = { 
+        chantier_id: selectedChantier, 
+        date: new Date().toISOString(), 
+        notes, 
+        calculs: metreHistory, 
+        actions: newActions,
+        metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, 
+        is_synced: false 
+    };
     
     const reportToSave = { ...report };
     if (db) try { await db.reports.add(reportToSave); } catch (e) {}
@@ -340,15 +381,33 @@ export default function Rapports() {
       try {
         const { data, error } = await supabase.from('reunions').insert([report]).select('id').single();
         if (error) throw error;
+        
+        // Mettre à jour les statuts des anciennes actions dans la BDD
+        const modifiedActions = actionsList.filter(a => a.isModified);
+        for(const modAction of modifiedActions) {
+            if(modAction.reunion_id) {
+                const { data: rData } = await supabase.from('reunions').select('actions').eq('id', modAction.reunion_id).single();
+                if(rData && rData.actions) {
+                    const updatedArray = rData.actions.map((a:any) => a.id === modAction.id ? { ...a, statut: modAction.statut } : a);
+                    await supabase.from('reunions').update({ actions: updatedArray }).eq('id', modAction.reunion_id);
+                }
+            }
+        }
+
         alert("Rapport synchronisé avec la base de données centrale !");
+        
+        // Nettoyage de l'UI
         const savedWithReunionId = notes.map(n => ({...n, reunion_id: data.id}));
         setSavedNotes([...savedWithReunionId, ...savedNotes]);
         setNotes([]);
+        setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false, reunion_id: a.isNew ? data.id : a.reunion_id})));
+        
       } catch (e: any) { alert("Erreur Sync Supabase: " + e.message); }
     } else {
       alert("Rapport enregistré localement (En attente de connexion).");
       setSavedNotes([...notes, ...savedNotes]);
       setNotes([]);
+      setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
     }
   };
 
@@ -488,7 +547,7 @@ export default function Rapports() {
 
         <div className="w-full">
           <div className="w-full space-y-6">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab !== 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab !== 'notes' && meetingTab !== 'actions' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -499,6 +558,137 @@ export default function Rapports() {
                   <button key={t} onClick={() => setMeetingTab(t)} className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${meetingTab === t ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>{t === 'recap_hebdo' ? 'Récap Hebdo' : t}</button>
                 ))}
               </div>
+
+              {meetingTab === 'actions' && (
+                <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
+                  <div className="print-hidden w-full mb-8">
+                    <div className="flex flex-col md:flex-row gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">Action à réaliser</label>
+                        <input type="text" value={actionForm.titre} onChange={(e) => setActionForm({...actionForm, titre: e.target.value})} placeholder="Ex: Commander 50L de diluant" className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-3 font-bold text-sm text-gray-700 outline-none transition-all" />
+                      </div>
+                      <div className="w-full md:w-48">
+                        <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">Responsable</label>
+                        <input type="text" value={actionForm.responsable} onChange={(e) => setActionForm({...actionForm, responsable: e.target.value})} placeholder="Ex: Jean (Magasinier)" className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-3 font-bold text-sm text-gray-700 outline-none transition-all" />
+                      </div>
+                      <div className="w-full md:w-40">
+                        <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">Délai</label>
+                        <input type="text" value={actionForm.delai} onChange={(e) => setActionForm({...actionForm, delai: e.target.value})} placeholder="Ex: Mercredi" className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-3 font-bold text-sm text-gray-700 outline-none transition-all" />
+                      </div>
+                      <button onClick={addAction} disabled={!actionForm.titre || !selectedChantier} className="w-full md:w-auto bg-black text-white px-6 py-3 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50 h-[46px]"><Plus size={16} /> Ajouter</button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-4 border-b pb-2 print-hidden">
+                    <h3 className="text-xs font-black uppercase text-gray-400 flex items-center gap-2"><Target size={16} className="text-blue-500" /> Plan d'Actions / To-Do List</h3>
+                    <div className="flex items-center gap-2">
+                      <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option>
+                      </select>
+                      <button onClick={() => window.print()} className="bg-white border border-gray-200 text-black px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm"><Printer size={12} /> Imprimer Plan d'Actions</button>
+                    </div>
+                  </div>
+
+                  {actionsList.length > 0 ? (
+                    <div className="space-y-3 print-hidden">
+                      {actionsList.map((a) => (
+                        <div key={a.id} className={`flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-xl border transition-all ${a.statut === 'Fait' ? 'bg-emerald-50/50 border-emerald-200 opacity-60' : a.statut === 'En cours' ? 'bg-orange-50/30 border-orange-200' : 'bg-white border-gray-200 shadow-sm'}`}>
+                          <div className="flex-1 pr-4">
+                            <p className={`font-bold text-sm ${a.statut === 'Fait' ? 'line-through text-gray-500' : 'text-gray-800'}`}>{a.titre}</p>
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><User size={12}/> {a.responsable}</span>
+                              <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 border-l pl-4"><Clock size={12}/> {a.delai}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 mt-4 md:mt-0 w-full md:w-auto justify-between md:justify-end">
+                            <button onClick={() => toggleActionStatus(a.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${a.statut === 'Fait' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200' : a.statut === 'En cours' ? 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`}>
+                              {a.statut}
+                            </button>
+                            <button onClick={() => removeAction(a.id)} className="text-gray-300 hover:text-red-500 transition-colors p-2"><Trash2 size={16}/></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200 print-hidden">
+                        <p className="text-xs font-bold text-gray-400 uppercase">Aucune action planifiée</p>
+                    </div>
+                  )}
+
+                  {/* VUE IMPRESSION DES ACTIONS */}
+                  <table className="hidden print:table print-document">
+                    <thead className="print:table-header-group">
+                      <tr>
+                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <h2 className="text-xl font-black uppercase tracking-tight">Plan d'Actions de Visite</h2>
+                              <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
+                                <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
+                                <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs font-medium">
+                              <p className="mb-1 uppercase font-bold text-black">Édité le :</p>
+                              <p className="font-bold text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="pt-6">
+                          {actionsList.length > 0 ? (
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="border-b-2 border-black">
+                                  <th className="py-2 px-2 w-[40%] uppercase font-black">Action à réaliser</th>
+                                  <th className="py-2 px-2 w-[25%] uppercase font-black text-center border-l border-gray-300">Responsable</th>
+                                  <th className="py-2 px-2 w-[20%] uppercase font-black text-center border-l border-gray-300">Délai</th>
+                                  <th className="py-2 px-2 w-[15%] uppercase font-black text-center border-l border-gray-300">Statut</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {actionsList.map((a) => (
+                                  <tr key={a.id} className="border-b border-gray-300 break-inside-avoid">
+                                    <td className="py-3 px-2 font-bold text-sm text-black">{a.titre}</td>
+                                    <td className="py-3 px-2 text-center text-gray-700 border-l border-gray-300">{a.responsable}</td>
+                                    <td className="py-3 px-2 text-center text-gray-700 border-l border-gray-300">{a.delai}</td>
+                                    <td className="py-3 px-2 text-center border-l border-gray-300">
+                                      {a.statut === 'Fait' ? (
+                                        <span className="text-[10px] font-black uppercase text-emerald-600 flex items-center justify-center gap-1"><CheckCircle size={12}/> Fait</span>
+                                      ) : a.statut === 'En cours' ? (
+                                        <span className="text-[10px] font-black uppercase text-orange-600 flex items-center justify-center gap-1"><Clock size={12}/> En cours</span>
+                                      ) : (
+                                        <span className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1"><Square size={12}/> À faire</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="text-center text-gray-400 italic py-10">Aucune action planifiée pour cette visite.</p>
+                          )}
+
+                          <div className="mt-12 pt-6 border-t-[3px] border-black grid grid-cols-2 gap-4 text-sm font-bold break-inside-avoid">
+                            <div><p className="uppercase mb-12">Signature Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
+                            <div className="text-right"><p className="uppercase mb-12">Signature Chargé d'Affaires :</p><div className="w-48 border-b border-dotted border-black ml-auto"></div></div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot className="print:table-footer-group print-footer">
+                      <tr>
+                        <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
 
               {meetingTab === 'notes' && (
                 <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
@@ -877,7 +1067,8 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative w-full">
+                <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
+                  
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
