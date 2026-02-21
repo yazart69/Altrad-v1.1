@@ -369,6 +369,31 @@ export default function Rapports() {
       }));
   };
 
+  // Ajout des fonctions de métré manquantes
+  const addToMetre = () => {
+    const surface = ScientificEngine.calculateSurface(calcForm.type, calcForm);
+    const paint = ScientificEngine.calculatePaint(surface, calcForm.microns, calcForm.rendement, calcForm.pertes);
+    const abrasive = ScientificEngine.calculateAbrasive(surface, calcForm.degree, calcForm.pertes);
+    const sketchImage = sketchRef.current?.exportImage();
+
+    setMetreHistory([{
+      id: Date.now(),
+      name: calcForm.name,
+      type: calcForm.type,
+      surface,
+      paint,
+      abrasive,
+      image: sketchImage
+    }, ...metreHistory]);
+
+    setCalcForm({ ...calcForm, name: '' });
+    sketchRef.current?.clearStrokes();
+  };
+
+  const removeMetre = (id: number) => {
+    setMetreHistory(metreHistory.filter(m => m.id !== id));
+  };
+
   // ARCHITECTURE LOCAL FIRST + SUPABASE STORAGE SYNC
   const syncPendingReports = async () => {
     if (!isOnline) return alert("Vous êtes hors-ligne. Impossible de synchroniser.");
@@ -1309,4 +1334,3 @@ export default function Rapports() {
     </div>
   );
 }
-
