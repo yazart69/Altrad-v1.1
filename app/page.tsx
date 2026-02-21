@@ -3,12 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Users, HardHat, AlertTriangle, ShoppingCart } from 'lucide-react';
+import Link from 'next/link';
 import TeamTile from "@/components/TeamTile";
 import BudgetHeuresTile from "@/components/BudgetHeuresTile";
-import LeavesTile from "@/components/LeavesTile";
 import TasksTile from "@/components/TasksTile";
 import StaffingTile from "@/components/StaffingTile"; 
-import MiddleTiles from "@/components/MiddleTiles";
 import HSETile from "@/components/HSETile"; 
 import PointageTile from "@/components/PointageTile"; 
 
@@ -77,83 +76,78 @@ export default function Home() {
         }
       `}</style>
 
-      {/* 🔝 BANDEAU SYNTHÈSE KPI (Vision Chef d'Entreprise) */}
+      {/* 🔝 BANDEAU SYNTHÈSE KPI (Vision Chef d'Entreprise - CLIQUABLES) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 tile-print">
-        <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-blue-50 p-3 rounded-xl text-blue-500 hidden sm:block"><Users size={20}/></div>
+        <Link href="/equipe" className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md hover:scale-[1.02] hover:border-blue-200 transition-all cursor-pointer group">
+          <div className="bg-blue-50 p-3 rounded-xl text-blue-500 hidden sm:block group-hover:bg-blue-500 group-hover:text-white transition-colors"><Users size={20}/></div>
           <div>
-            <p className="text-[10px] font-black uppercase text-gray-400">Effectif Total</p>
+            <p className="text-[10px] font-black uppercase text-gray-400 group-hover:text-blue-500 transition-colors">Effectif Total</p>
             <p className="text-2xl font-black text-gray-800 leading-none mt-1">{stats.staff} <span className="text-xs text-gray-400 font-bold">Gars</span></p>
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-emerald-50 p-3 rounded-xl text-emerald-500 hidden sm:block"><HardHat size={20}/></div>
+        </Link>
+
+        <Link href="/chantier" className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md hover:scale-[1.02] hover:border-emerald-200 transition-all cursor-pointer group">
+          <div className="bg-emerald-50 p-3 rounded-xl text-emerald-500 hidden sm:block group-hover:bg-emerald-500 group-hover:text-white transition-colors"><HardHat size={20}/></div>
           <div>
-            <p className="text-[10px] font-black uppercase text-gray-400">Chantiers Actifs</p>
+            <p className="text-[10px] font-black uppercase text-gray-400 group-hover:text-emerald-500 transition-colors">Chantiers Actifs</p>
             <p className="text-2xl font-black text-gray-800 leading-none mt-1">{stats.activeSites} <span className="text-xs text-gray-400 font-bold">Sites</span></p>
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-red-50 p-3 rounded-xl text-red-500 hidden sm:block"><AlertTriangle size={20}/></div>
+        </Link>
+
+        <Link href="/equipe" className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md hover:scale-[1.02] hover:border-red-200 transition-all cursor-pointer group">
+          <div className="bg-red-50 p-3 rounded-xl text-red-500 hidden sm:block group-hover:bg-red-500 group-hover:text-white transition-colors"><AlertTriangle size={20}/></div>
           <div>
-            <p className="text-[10px] font-black uppercase text-gray-400">Alertes RH</p>
+            <p className="text-[10px] font-black uppercase text-gray-400 group-hover:text-red-500 transition-colors">Alertes RH</p>
             <p className="text-2xl font-black text-red-600 leading-none mt-1">{stats.alerts} <span className="text-xs text-red-400 font-bold">Bloqués</span></p>
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-amber-50 p-3 rounded-xl text-amber-500 hidden sm:block"><ShoppingCart size={20}/></div>
+        </Link>
+
+        <Link href="/materiel" className="bg-white p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md hover:scale-[1.02] hover:border-amber-200 transition-all cursor-pointer group">
+          <div className="bg-amber-50 p-3 rounded-xl text-amber-500 hidden sm:block group-hover:bg-amber-500 group-hover:text-white transition-colors"><ShoppingCart size={20}/></div>
           <div>
-            <p className="text-[10px] font-black uppercase text-gray-400">Commandes Urgentes</p>
+            <p className="text-[10px] font-black uppercase text-gray-400 group-hover:text-amber-500 transition-colors">Commandes Urgentes</p>
             <p className="text-2xl font-black text-amber-600 leading-none mt-1">{stats.urgentOrders} <span className="text-xs text-amber-400 font-bold">En attente</span></p>
           </div>
-        </div>
+        </Link>
       </div>
 
-      {/* 🧱 GRILLE FLATTENED ADAPTATIVE SANS TROUS */}
-      <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6 xl:auto-rows-min">
+      {/* 🧱 NOUVELLE GRILLE SELON CROQUIS MANUEL */}
+      <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6">
 
-        {/* LIGNE 1 */}
-        {/* CONGÉS */}
-        <div className="order-6 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-1 min-h-[280px] h-fit tile-print">
-          <LeavesTile />
-        </div>
-
-        {/* ALERTES LOGISTIQUES & MATÉRIEL */}
-        <div className="order-1 xl:order-none xl:col-span-5 xl:col-start-5 xl:row-start-1 min-h-[280px] h-fit tile-print">
-          <MiddleTiles alertsCount={stats.alerts} /> 
-        </div>
-
-        {/* LIGNE 2 (Comble le trou blanc) */}
-        {/* STAFFING DU JOUR */}
-        <div className="order-3 xl:order-none xl:col-span-3 xl:col-start-1 xl:row-start-2 min-h-[300px] h-fit tile-print">
-          <StaffingTile staffCount={stats.staff} />
-        </div>
-
-        {/* POINTAGE & ÉQUIPE COMPACTE */}
-        <div className="order-7 xl:order-none xl:col-span-2 xl:col-start-4 xl:row-start-2 flex flex-col gap-4 min-h-[300px] h-fit tile-print">
-          <div className="flex-1 min-h-[140px]">
-              <TeamTile isCompact={true} />
-          </div>
-          <div className="flex-1 min-h-[140px]">
-              <PointageTile />
-          </div>
-        </div>
-
-        {/* HSE & SÉCURITÉ */}
-        <div className="order-4 xl:order-none xl:col-span-4 xl:col-start-6 xl:row-start-2 min-h-[300px] h-fit tile-print">
-          <HSETile />
-        </div>
-
-        {/* LIGNE 3 */}
-        {/* TÂCHES PRIORITAIRES (En bas à gauche, s'étire sur toute la largeur de gauche) */}
-        <div className="order-2 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-3 min-h-[350px] tile-print"> 
+        {/* 1. ACTIONS PRIORITAIRES (Pleine largeur en haut) */}
+        <div className="xl:col-span-12 min-h-[350px] tile-print"> 
           <TasksTile />
         </div>
 
-        {/* COLONNE DROITE (S'étire sur toute la hauteur) */}
-        {/* BUDGET HEURES / CHANTIERS EN COURS */}
-        <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-3 min-h-[400px] xl:max-h-[1200px] tile-print">
+        {/* 2. BLOC GAUCHE (8 colonnes) */}
+        <div className="xl:col-span-8 flex flex-col gap-6">
+          
+          {/* STAFFING TERRAIN */}
+          <div className="min-h-[300px] h-fit tile-print">
+            <StaffingTile staffCount={stats.staff} />
+          </div>
+
+          {/* RÉPARTITIONS & POINTAGES (Cote à cote) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="min-h-[250px] h-fit tile-print">
+              <TeamTile isCompact={true} />
+            </div>
+            <div className="min-h-[250px] h-fit tile-print">
+              <PointageTile />
+            </div>
+          </div>
+
+        </div>
+
+        {/* 3. BLOC DROIT (4 colonnes) - CHANTIERS EN COURS */}
+        {/* Prend toute la hauteur disponible à côté du bloc gauche */}
+        <div className="xl:col-span-4 min-h-[600px] xl:h-full tile-print">
           <BudgetHeuresTile />
+        </div>
+
+        {/* 4. HSE & SÉCURITÉ (Pleine largeur en bas) */}
+        <div className="xl:col-span-12 min-h-[300px] h-fit tile-print mt-2">
+          <HSETile />
         </div>
 
       </div>
