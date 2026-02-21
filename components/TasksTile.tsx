@@ -173,16 +173,21 @@ export default function TasksTile() {
   return (
     <div className="h-full w-full bg-[#34495e] rounded-[25px] flex flex-col shadow-lg overflow-hidden p-6 font-['Fredoka'] text-white relative group border border-white/5 transition-all duration-300">
       
-      {/* HEADER */}
+      {/* HEADER RENDU CLIQUABLE AVEC FLÈCHE */}
       <div className="flex justify-between items-start mb-6 z-10">
-        <div>
-          <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
-            Actions <span className="text-[#ff9f43]">Prioritaires</span>
-          </h2>
-          <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-widest">
-            Analyse de rentabilité & Responsabilités
-          </p>
-        </div>
+        <Link href="/chantier" className="group/title flex items-center gap-3 cursor-pointer">
+          <div>
+            <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
+              Actions <span className="text-[#ff9f43]">Prioritaires</span>
+            </h2>
+            <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-widest">
+              Analyse de rentabilité & Responsabilités
+            </p>
+          </div>
+          <div className="opacity-0 group-hover/title:opacity-100 transition-opacity bg-white/20 p-1.5 rounded-full text-white">
+             <ArrowUpRight size={16} />
+          </div>
+        </Link>
         <div className="bg-white/10 p-2 rounded-xl">
            <ListTodo size={20} className="text-[#ff9f43]" />
         </div>
