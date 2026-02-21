@@ -509,6 +509,7 @@ export default function Rapports() {
                             <tr className="border-b-2 border-gray-300">
                               <th className="py-2 px-1">Désignation</th>
                               <th className="py-2 px-1">État Maintenance</th>
+                              <th className="py-2 px-1 text-center">Opérationnel</th>
                               <th className="py-2 px-1 text-center w-20">Présent</th>
                               <th className="py-2 px-1 text-center w-20">Manquant</th>
                             </tr>
@@ -521,10 +522,13 @@ export default function Rapports() {
                                   {m.etat === 'En panne' && <AlertTriangle size={12} className="inline mr-1 text-red-500 print-hidden" />}
                                   {m.etat || 'Opérationnel'}
                                 </td>
+                                <td className="py-2 px-1 text-center font-bold">
+                                  {m.etat === 'En panne' ? 'Non' : 'Oui'}
+                                </td>
                                 <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                 <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                               </tr>
-                            )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
+                            )) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -602,7 +606,10 @@ export default function Rapports() {
                               <tr className="border-b-2 border-gray-300">
                                 <th className="py-2 px-1">Tâche</th>
                                 <th className="py-2 px-1">Responsable</th>
-                                <th className="py-2 px-1 text-center w-16">Statut</th>
+                                <th className="py-2 px-1 text-center">Hrs Prév.</th>
+                                <th className="py-2 px-1 text-center">Hrs Réel.</th>
+                                <th className="py-2 px-1 text-center">Avancement</th>
+                                <th className="py-2 px-1 text-center">Statut</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -610,9 +617,12 @@ export default function Rapports() {
                                 <tr key={t.id || Math.random()} className="border-b border-gray-200">
                                   <td className="py-2 px-1 font-bold">{t.nom || t.tache || t.name || '-'}</td>
                                   <td className="py-2 px-1">{t.responsable || '-'}</td>
-                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                  <td className="py-2 px-1 text-center">{t.heures_prevues || t.hrs_prevu || '-'}</td>
+                                  <td className="py-2 px-1 text-center">{t.heures_reelles || t.heures_consommees || t.hrs_reel || '-'}</td>
+                                  <td className="py-2 px-1 text-center font-bold text-blue-600 print:text-black">{t.avancement != null ? `${t.avancement}%` : '-'}</td>
+                                  <td className="py-2 px-1 text-center uppercase text-[10px] font-black">{t.statut || 'En attente'}</td>
                                 </tr>
-                              )) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune tâche assignée...</td></tr>}
+                              )) : <tr><td colSpan={6} className="py-2 text-gray-400 italic">Aucune tâche assignée...</td></tr>}
                             </tbody>
                           </table>
                         </div>
