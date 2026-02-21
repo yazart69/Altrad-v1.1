@@ -99,7 +99,7 @@ export default function Rapports() {
         setTaches((tData || []).map((t: any) => {
           let sub = [];
           try { sub = typeof t.subtasks === 'string' ? JSON.parse(t.subtasks) : (t.subtasks || []); } catch(e) {}
-          return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
+          return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
         }));
       } catch (e) {}
     }
@@ -240,15 +240,17 @@ export default function Rapports() {
                   <style>{`
                     @media print { 
                       @page { size: ${printFormat}; margin: 15mm 10mm; } 
-                      body, html { background: #fff !important; margin: 0 !important; padding: 0 !important; } 
+                      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; min-height: auto !important; overflow: visible !important; } 
+                      aside, nav, header, footer:not(.print-footer), [class*="sidebar"], [class*="Sidebar"], [class*="menu"], [class*="Menu"], [class*="nav"] { display: none !important; } 
                       .print-hidden { display: none !important; } 
                       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
-                      .print-reset { margin: 0 !important; padding: 0 !important; max-width: none !important; box-shadow: none !important; border: none !important; background: transparent !important; display: block !important; } 
+                      .print-reset, .print-reset * { overflow: visible !important; height: auto !important; min-height: auto !important; position: static !important; } 
+                      .print-reset { margin: 0 !important; padding: 0 !important; max-width: none !important; width: 100% !important; box-shadow: none !important; border: none !important; background: transparent !important; display: block !important; } 
                       table { width: 100%; border-collapse: collapse; page-break-inside: auto; } 
                       tr { page-break-inside: avoid; page-break-after: auto; } 
                       thead { display: table-header-group; } 
                       tfoot { display: table-footer-group; } 
-                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; } 
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
                     }
                   `}</style>
                   
@@ -294,7 +296,7 @@ export default function Rapports() {
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
-                                    <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1">Responsable</th><th className="py-2 px-1 text-center w-16">Hrs Prév.</th><th className="py-2 px-1 text-center w-24">Hrs Réel.</th><th className="py-2 px-1 text-center w-24">% Avanc.</th><th className="py-2 px-1 text-center w-16">Fait</th>
+                                    <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1 text-center">Responsable</th><th className="py-2 px-1 text-center w-12">Effectif</th><th className="py-2 px-1 text-center w-12">Hrs Prév.</th><th className="py-2 px-1 text-center w-16">Hrs Réel.</th><th className="py-2 px-1 text-center w-16">% Avanc.</th><th className="py-2 px-1 text-center w-12">Fait</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -302,24 +304,26 @@ export default function Rapports() {
                                     <React.Fragment key={t.id || Math.random()}>
                                       <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
                                         <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
-                                        <td className="py-2 px-1 font-bold">{t.responsable ? t.responsable : <div className="w-24 border-b border-dotted border-gray-400 h-4"></div>}</td>
+                                        <td className="py-2 px-1 text-center font-bold">{t.responsable ? t.responsable : <div className="w-20 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
+                                        <td className="py-2 px-1 text-center font-bold">{t.effectif ? t.effectif : <div className="w-8 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
-                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
+                                        <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
+                                        <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
                                         <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
                                       </tr>
                                       {t.subtasks && t.subtasks.map((st: any) => (
                                         <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
                                           <td className="py-1.5 px-1 pl-6 flex items-center gap-2 text-gray-700"><ChevronRight size={10}/> {st.label || st.nom}</td>
-                                          <td className="py-1.5 px-1 text-gray-500 italic">Chef d'équipe</td>
+                                          <td className="py-1.5 px-1 text-center"><div className="w-20 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
+                                          <td className="py-1.5 px-1 text-center text-gray-500">{st.effectif ? st.effectif : <div className="w-8 mx-auto border-b border-dotted border-gray-300 h-3"></div>}</td>
                                           <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
-                                          <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
-                                          <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
+                                          <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
+                                          <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
                                           <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
                                         </tr>
                                       ))}
                                     </React.Fragment>
-                                  )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche prévue pour cette semaine...</td></tr>}
+                                  )) : <tr><td colSpan={7} className="py-4 text-center text-gray-400 italic">Aucune tâche prévue pour cette semaine...</td></tr>}
                                 </tbody>
                               </table>
                             </div>
@@ -413,7 +417,7 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group w-full">
+                    <tfoot className="print:table-footer-group w-full print-footer">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
                           Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
