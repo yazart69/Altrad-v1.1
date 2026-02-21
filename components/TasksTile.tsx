@@ -222,7 +222,7 @@ export default function TasksTile() {
                     <div className="flex flex-col flex-1 max-w-[200px] md:max-w-[300px]">
                       <span className="font-black uppercase text-sm tracking-wide truncate">{chantierGroup.nom}</span>
                       
-                      {/* Barre de progression globale du chantier déplacée ici */}
+                      {/* Barre de progression globale du chantier */}
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
                           <div className="h-full bg-[#ff9f43] transition-all duration-500" style={{ width: `${globalProgress}%` }}></div>
@@ -305,7 +305,7 @@ export default function TasksTile() {
                             </div>
                           </div>
 
-                          {/* Zone de saisie du Réel si Tâche Finie (Suppression des barres internes demandée) */}
+                          {/* Zone de saisie du Réel si Tâche Finie (Aucune barre affichée) */}
                           {task.done && (
                             <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
