@@ -5,7 +5,8 @@ import {
   FileText, Plus, Calculator, PencilRuler, Save, 
   Trash2, ChevronRight, CheckCircle2, AlertTriangle, 
   Settings, Layers, Pipette, Share2, Wifi, WifiOff,
-  User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin
+  User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin,
+  Printer, Square, CheckSquare, Clock
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
@@ -109,7 +110,7 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
 // =================================================================================================
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
-  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions'>('notes');
+  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('notes');
   
   // Données connectées
   const [chantiers, setChantiers] = useState<any[]>([]);
@@ -122,6 +123,18 @@ export default function Rapports() {
   const [noteCategory, setNoteCategory] = useState("Technique");
 
   const [calcForm, setCalcForm] = useState({ L: 10, l: 5, microns: 200, rendement: 5, degree: 'Sa2.5' });
+
+  // Données connectées pour Récap Hebdo
+  const [materiels, setMateriels] = useState<any[]>([]);
+  const [fournitures, setFournitures] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [taches, setTaches] = useState<any[]>([]);
+  
+  // Bonus & Print settings
+  const [printFormat, setPrintFormat] = useState('A4 portrait');
+  const [controleLe, setControleLe] = useState(new Date().toISOString().split('T')[0]);
+  const [commandeApasser, setCommandeApasser] = useState("");
+  const [risqueIdentifie, setRisqueIdentifie] = useState("");
 
   // 1. Initialisation & Listeners
   useEffect(() => {
@@ -159,17 +172,16 @@ export default function Rapports() {
     }
   }
 
-  // 3. Fetch des détails complets quand on sélectionne un chantier (Sidebar dynamique)
+  // 3. Fetch des détails complets quand on sélectionne un chantier (Sidebar dynamique + Récap Hebdo)
   useEffect(() => {
     async function getDetails() {
       if (!selectedChantier) {
         setChantierDetails(null);
+        setMateriels([]); setFournitures([]); setLocations([]); setTaches([]);
         return;
       }
       
       try {
-        // ASSURE-TOI QUE CES COLONNES EXISTENT DANS TA TABLE 'chantiers'
-        // Exemple: ville, client, avancement (int), budget_conso (int)
         const { data, error } = await supabase
           .from('chantiers')
           .select('*')
@@ -178,6 +190,18 @@ export default function Rapports() {
 
         if (error) throw error;
         setChantierDetails(data);
+
+        // Fetch des données réelles connectées (tolérance d'erreur si tables manquantes)
+        const fetchSafe = async (table: string) => {
+          const { data } = await supabase.from(table).select('*').eq('chantier_id', selectedChantier);
+          return data || [];
+        };
+
+        setMateriels(await fetchSafe('materiels'));
+        setFournitures(await fetchSafe('fournitures'));
+        setLocations(await fetchSafe('locations'));
+        setTaches(await fetchSafe('taches'));
+
       } catch (e) {
         console.error("Erreur détails chantier:", e);
       }
@@ -247,12 +271,19 @@ export default function Rapports() {
   const paintNeeded = ScientificEngine.calculatePaint(surfaceCalculated, calcForm.microns, calcForm.rendement);
   const sandNeeded = ScientificEngine.calculateAbrasive(surfaceCalculated, calcForm.degree);
 
+  // Fonction utilitaire pour alertes locations
+  const isExpiringSoon = (dateString: string) => {
+    if (!dateString) return false;
+    const diffDays = Math.ceil((new Date(dateString).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 3 && diffDays >= 0;
+  };
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* HEADER & SYNC STATUS */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4 print-hidden">
           <div className="flex items-center gap-4">
             <div className="bg-black p-3 rounded-2xl text-white shadow-lg shadow-gray-200">
               <FileText size={28} />
@@ -285,12 +316,12 @@ export default function Rapports() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* ZONE PRINCIPALE (Notes & Calculs) */}
+          {/* ZONE PRINCIPALE (Notes & Calculs & Récap) */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col">
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col ${meetingTab === 'recap_hebdo' ? 'print-container-wrapper' : ''}`}>
               
               {/* Infos contextuelles du chantier sélectionné */}
-              {chantierDetails && (
+              {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -298,14 +329,14 @@ export default function Rapports() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 mb-8 bg-gray-50 p-2 rounded-2xl self-start">
-                {['notes', 'calculs', 'actions'].map((t: any) => (
+              <div className="flex items-center gap-2 mb-8 bg-gray-50 p-2 rounded-2xl self-start print-hidden">
+                {['notes', 'calculs', 'actions', 'recap_hebdo'].map((t: any) => (
                   <button 
                     key={t} 
                     onClick={() => setMeetingTab(t)}
                     className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${meetingTab === t ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    {t}
+                    {t === 'recap_hebdo' ? 'Récap Hebdo' : t}
                   </button>
                 ))}
               </div>
@@ -374,11 +405,221 @@ export default function Rapports() {
                     </div>
                 </div>
               )}
+
+              {meetingTab === 'recap_hebdo' && (
+                <div className="flex-1 animate-in fade-in relative">
+                  
+                  {/* CSS D'IMPRESSION GLOBAL (Injecté uniquement si onglet actif) */}
+                  <style>{`
+                    @media print {
+                      body * { visibility: hidden; }
+                      #print-recap-area, #print-recap-area * { visibility: visible; }
+                      #print-recap-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+                      @page { size: ${printFormat}; margin: 10mm; }
+                      .print-hidden { display: none !important; }
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }
+                    }
+                  `}</style>
+
+                  {/* Barre d'action Impression */}
+                  <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
+                      <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black">
+                        <option value="A4 portrait">A4 Portrait</option>
+                        <option value="A4 landscape">A4 Paysage</option>
+                        <option value="A3 portrait">A3 Portrait</option>
+                        <option value="A3 landscape">A3 Paysage</option>
+                      </select>
+                    </div>
+                    <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md">
+                      <Printer size={16} /> Imprimer Document
+                    </button>
+                  </div>
+
+                  {/* DOCUMENT RÉCAPITULATIF POUR IMPRESSION */}
+                  <div id="print-recap-area" className="bg-white print:p-0 print:border-none w-full text-black">
+                    
+                    {/* En-tête Document */}
+                    <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-end break-inside-avoid">
+                      <div>
+                        <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
+                        <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex items-center gap-4">
+                          <span>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></span>
+                          {chantierDetails?.ville && <span>| Ville : <span className="text-black">{chantierDetails.ville}</span></span>}
+                        </div>
+                      </div>
+                      <div className="text-right text-xs font-medium bg-gray-50 p-3 rounded-lg border border-gray-200 print:border-black print:bg-white">
+                        <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
+                        <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6">
+                      
+                      {/* SECTION 1 : MATÉRIELS */}
+                      <div className="break-inside-avoid">
+                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Matériels sur Chantier</h3>
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b-2 border-gray-300">
+                              <th className="py-2 px-1">Désignation</th>
+                              <th className="py-2 px-1">État Maintenance</th>
+                              <th className="py-2 px-1 text-center w-20">Présent</th>
+                              <th className="py-2 px-1 text-center w-20">Manquant</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {materiels.length > 0 ? materiels.map(m => (
+                              <tr key={m.id} className="border-b border-gray-200">
+                                <td className="py-2 px-1 font-bold">{m.nom}</td>
+                                <td className={`py-2 px-1 font-medium ${m.etat === 'En panne' ? 'text-red-500 print:text-black print:font-black' : ''}`}>
+                                  {m.etat === 'En panne' && <AlertTriangle size={12} className="inline mr-1 text-red-500 print-hidden" />}
+                                  {m.etat || 'Opérationnel'}
+                                </td>
+                                <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                              </tr>
+                            )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* SECTION 2 : FOURNITURES */}
+                      <div className="break-inside-avoid">
+                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables</h3>
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b-2 border-gray-300">
+                              <th className="py-2 px-1">Désignation</th>
+                              <th className="py-2 px-1 text-center">Qté Prévue</th>
+                              <th className="py-2 px-1 text-center">Qté Dispo</th>
+                              <th className="py-2 px-1 text-center w-20">Dispo OK</th>
+                              <th className="py-2 px-1 text-center w-24">Commandé</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fournitures.length > 0 ? fournitures.map(f => {
+                              const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
+                              return (
+                                <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
+                                  <td className="py-2 px-1 font-bold flex items-center gap-2">
+                                    {alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}
+                                  </td>
+                                  <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
+                                  <td className={`py-2 px-1 text-center font-bold ${alertQty ? 'text-red-600 print:text-black' : ''}`}>{f.quantite_dispo || 0}</td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                </tr>
+                              );
+                            }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* SECTION 3 : LOCATIONS & TÂCHES (Sur 2 colonnes en format paysage/A3 si place dispo) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
+                        
+                        {/* Locations */}
+                        <div>
+                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2">
+                            <Clock size={14} /> Locations en cours
+                          </h3>
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b-2 border-gray-300">
+                                <th className="py-2 px-1">Machine</th>
+                                <th className="py-2 px-1">Fin prévue</th>
+                                <th className="py-2 px-1 text-center w-16">Retour</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {locations.length > 0 ? locations.map(l => {
+                                const crit = isExpiringSoon(l.date_fin);
+                                return (
+                                  <tr key={l.id} className="border-b border-gray-200">
+                                    <td className="py-2 px-1 font-bold">{l.nom}</td>
+                                    <td className={`py-2 px-1 ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                    <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                  </tr>
+                                );
+                              }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Tâches */}
+                        <div>
+                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">Tâches Semaine</h3>
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b-2 border-gray-300">
+                                <th className="py-2 px-1">Tâche</th>
+                                <th className="py-2 px-1">Responsable</th>
+                                <th className="py-2 px-1 text-center w-16">Statut</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {taches.length > 0 ? taches.map(t => (
+                                <tr key={t.id} className="border-b border-gray-200">
+                                  <td className="py-2 px-1 font-bold">{t.nom}</td>
+                                  <td className="py-2 px-1">{t.responsable || '-'}</td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                </tr>
+                              )) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune tâche assignée...</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+
+                      </div>
+
+                      {/* SECTION 4 : ZONES TEXTES (Commandes & Risques) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
+                        <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                          <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
+                          <textarea 
+                            value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)}
+                            className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..."
+                          />
+                        </div>
+                        <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                          <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
+                          <textarea 
+                            value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)}
+                            className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..."
+                          />
+                        </div>
+                      </div>
+
+                      {/* SECTION 5 : SIGNATURES */}
+                      <div className="mt-8 pt-6 border-t-2 border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
+                        <div>
+                          <p className="uppercase mb-8">Chef d'équipe :</p>
+                          <div className="w-48 border-b border-dotted border-black"></div>
+                        </div>
+                        <div>
+                          <p className="uppercase mb-8">Date :</p>
+                          <div className="w-32 border-b border-dotted border-black"></div>
+                        </div>
+                        <div className="text-right">
+                          <p className="uppercase mb-4">Validation :</p>
+                          <div className="flex justify-end gap-6">
+                            <label className="flex items-center gap-2"><Square size={16}/> OK</label>
+                            <label className="flex items-center gap-2"><Square size={16}/> Réserve</label>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
 
-          {/* SIDEBAR DYNAMIQUE (Données réelles) */}
-          <div className="space-y-6">
+          {/* SIDEBAR DYNAMIQUE (Données réelles) - Cachée à l'impression */}
+          <div className="space-y-6 print-hidden">
             <div className="bg-[#1e272e] rounded-[35px] p-8 text-white shadow-xl relative overflow-hidden transition-all">
                <AlertTriangle size={150} className="absolute -right-10 -bottom-10 opacity-5" />
                <h3 className="text-xl font-black uppercase italic mb-6 flex items-center gap-2"><AlertCircle className="text-yellow-400" /> Indicateurs Clés</h3>
@@ -389,7 +630,6 @@ export default function Rapports() {
                        <div className="bg-red-500/20 p-2 rounded-lg"><Layers size={20} className="text-red-400" /></div>
                        <div>
                          <p className="text-xs font-black uppercase text-red-400">Budget Consommé</p>
-                         {/* Utilisation des données réelles du chantier si dispo, sinon 0 */}
                          <p className="text-lg font-bold">{chantierDetails.budget_conso || 0}% <span className="text-[10px] opacity-60 font-normal">du global</span></p>
                        </div>
                      </div>
