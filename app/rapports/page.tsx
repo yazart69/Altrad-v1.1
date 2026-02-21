@@ -148,8 +148,8 @@ export default function Rapports() {
   }, [taches, controleLe]);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] print-reset p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6 print-reset">
+    <div className="min-h-screen bg-[#f8f9fa] wrapper print:bg-white print:p-0 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6 container print:max-w-full print:w-full print:m-0 print:space-y-0">
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4 print-hidden">
           <div className="flex items-center gap-4">
             <div className="bg-black p-3 rounded-2xl text-white shadow-lg shadow-gray-200"><FileText size={28} /></div>
@@ -170,9 +170,9 @@ export default function Rapports() {
           </div>
         </div>
 
-        <div className="w-full print-reset">
-          <div className="w-full space-y-6 print-reset">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' ? 'print-reset' : ''}`}>
+        <div className="w-full main print:block print:w-full print:max-w-full">
+          <div className="w-full space-y-6 print:w-full print:max-w-full print:block print:space-y-0">
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:block print:w-full print:max-w-full' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -236,21 +236,21 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative w-full">
+                <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
                   <style>{`
                     @media print { 
-                      @page { size: ${printFormat}; margin: 15mm 10mm; } 
-                      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; min-height: auto !important; overflow: visible !important; } 
-                      aside, nav, header, footer:not(.print-footer), [class*="sidebar"], [class*="Sidebar"], [class*="menu"], [class*="Menu"], [class*="nav"] { display: none !important; } 
+                      @page { size: ${printFormat}; margin: 15mm; } 
+                      html, body { width: 100% !important; background: #fff !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; } 
+                      .wrapper, .container, .main { width: 100% !important; max-width: 100% !important; display: block !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; } 
+                      aside, nav, header, footer:not(.print-footer) { display: none !important; } 
                       .print-hidden { display: none !important; } 
                       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
-                      .print-reset, .print-reset * { overflow: visible !important; height: auto !important; min-height: auto !important; position: static !important; } 
-                      .print-reset { margin: 0 !important; padding: 0 !important; max-width: none !important; width: 100% !important; box-shadow: none !important; border: none !important; background: transparent !important; display: block !important; } 
-                      table { width: 100%; border-collapse: collapse; page-break-inside: auto; } 
+                      table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
+                      th, td { overflow: hidden; word-wrap: break-word; } 
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
                       tr { page-break-inside: avoid; page-break-after: auto; } 
                       thead { display: table-header-group; } 
                       tfoot { display: table-footer-group; } 
-                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
                     }
                   `}</style>
                   
@@ -264,7 +264,7 @@ export default function Rapports() {
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
                   
-                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
+                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm">
                     <thead className="print:table-header-group w-full">
                       <tr>
                         <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
@@ -296,7 +296,7 @@ export default function Rapports() {
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
-                                    <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1 text-center">Responsable</th><th className="py-2 px-1 text-center w-12">Effectif</th><th className="py-2 px-1 text-center w-12">Hrs Prév.</th><th className="py-2 px-1 text-center w-16">Hrs Réel.</th><th className="py-2 px-1 text-center w-16">% Avanc.</th><th className="py-2 px-1 text-center w-12">Fait</th>
+                                    <th className="py-2 px-1 w-[35%]">Tâche / Sous-tâche</th><th className="py-2 px-1 text-center w-[15%]">Responsable</th><th className="py-2 px-1 text-center w-[10%]">Effectif</th><th className="py-2 px-1 text-center w-[10%]">Hrs Prév.</th><th className="py-2 px-1 text-center w-[10%]">Hrs Réel.</th><th className="py-2 px-1 text-center w-[10%]">% Avanc.</th><th className="py-2 px-1 text-center w-[10%]">Fait</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -333,7 +333,7 @@ export default function Rapports() {
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
-                                    <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-20">Qté Prévue</th><th className="py-2 px-1 text-center w-24">Qté Utilisée</th><th className="py-2 px-1 text-center w-20">Dispo OK</th><th className="py-2 px-1 text-center w-24">Commandé</th>
+                                    <th className="py-2 px-1 w-[35%]">Désignation</th><th className="py-2 px-1 text-center w-[13%]">Qté Prévue</th><th className="py-2 px-1 text-center w-[13%]">Qté Utilisée</th><th className="py-2 px-1 text-center w-[13%]">Qté Dispo</th><th className="py-2 px-1 text-center w-[13%]">Dispo OK</th><th className="py-2 px-1 text-center w-[13%]">Commandé</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -347,7 +347,7 @@ export default function Rapports() {
                                         <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                       </tr>
                                     );
-                                  }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
+                                  }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
                                 </tbody>
                               </table>
                             </div>
@@ -358,7 +358,7 @@ export default function Rapports() {
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300">
-                                      <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-16">Présent</th><th className="py-2 px-1 text-center w-16">Manquant</th><th className="py-2 px-1 text-center w-16">En Panne</th>
+                                      <th className="py-2 px-1 w-[55%]">Désignation</th><th className="py-2 px-1 text-center w-[15%]">Présent</th><th className="py-2 px-1 text-center w-[15%]">Manquant</th><th className="py-2 px-1 text-center w-[15%]">En Panne</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -376,7 +376,7 @@ export default function Rapports() {
                                 <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
-                                    <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Machine</th><th className="py-2 px-1 text-center w-24">Fin prévue</th><th className="py-2 px-1 text-center w-16">Retour OK</th></tr>
+                                    <tr className="border-b-2 border-gray-300"><th className="py-2 px-1 w-[50%]">Machine</th><th className="py-2 px-1 text-center w-[25%]">Fin prévue</th><th className="py-2 px-1 text-center w-[25%]">Retour OK</th></tr>
                                   </thead>
                                   <tbody>
                                     {locations.length > 0 ? locations.map(l => {
