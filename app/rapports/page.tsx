@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil, Undo, Type, Minus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
@@ -26,23 +26,51 @@ const ScientificEngine = {
   }
 };
 
-const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+type Point = { x: number; y: number };
+type Stroke = 
+  | { type: 'pencil'; path: Point[]; color: string }
+  | { type: 'line'; start: Point; end: Point; color: string }
+  | { type: 'rect'; start: Point; end: Point; color: string }
+  | { type: 'text'; pos: Point; text: string; color: string };
+
+const SketchTool = forwardRef(({ type, dims }: { type: string, dims: any }, ref) => {
+  const canvasBaseRef = useRef<HTMLCanvasElement>(null);
+  const canvasDrawRef = useRef<HTMLCanvasElement>(null);
+  
   const [color, setColor] = useState('#d63031');
+  const [tool, setTool] = useState<'pencil'|'line'|'rect'|'text'>('pencil');
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  // Génération du SVG de base (Cotes et Forme auto)
+  useImperativeHandle(ref, () => ({
+    exportImage: () => {
+      const c = document.createElement('canvas');
+      c.width = 1000; c.height = 500;
+      const ctx = c.getContext('2d');
+      if (!ctx) return null;
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,1000,500);
+      if (canvasBaseRef.current) ctx.drawImage(canvasBaseRef.current, 0, 0);
+      if (canvasDrawRef.current) ctx.drawImage(canvasDrawRef.current, 0, 0);
+      return c.toDataURL('image/png');
+    },
+    clearStrokes: () => setStrokes([])
+  }));
+
   useEffect(() => {
     let isMounted = true;
-    const renderSketch = async () => {
-      if (!svgRef.current || typeof window === 'undefined') return;
+    const renderBase = async () => {
+      if (!canvasBaseRef.current || typeof window === 'undefined') return;
       try {
         const rough = (await import('roughjs')).default;
-        if (!isMounted || !svgRef.current) return;
-        const rc = rough.svg(svgRef.current), node = svgRef.current;
-        while (node.firstChild) node.removeChild(node.firstChild);
+        if (!isMounted || !canvasBaseRef.current) return;
         
+        const canvas = canvasBaseRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0,0, 1000, 500);
+        
+        const rc = rough.canvas(canvas);
         const VW = 1000; const VH = 500;
         
         if (type === 'rectangle') {
@@ -52,17 +80,13 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
           const w = L * scale; const h = l * scale;
           const x = (VW - w) / 2; const y = (VH - h) / 2;
 
-          node.appendChild(rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
+          rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' });
           
-          const tL = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tL.setAttribute("x", (x + w / 2).toString()); tL.setAttribute("y", (y - 20).toString()); 
-          tL.setAttribute("fill", "#0984e3"); tL.setAttribute("font-size", "24"); tL.setAttribute("text-anchor", "middle"); tL.setAttribute("font-weight", "bold");
-          tL.textContent = `${dims.L}m`; node.appendChild(tL);
+          ctx.font = 'bold 24px sans-serif'; ctx.fillStyle = '#0984e3'; ctx.textAlign = 'center';
+          ctx.fillText(`${dims.L}m`, x + w / 2, y - 20);
           
-          const tl = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tl.setAttribute("x", (x - 20).toString()); tl.setAttribute("y", (y + h / 2).toString()); 
-          tl.setAttribute("fill", "#d63031"); tl.setAttribute("font-size", "24"); tl.setAttribute("text-anchor", "end"); tl.setAttribute("alignment-baseline", "middle"); tl.setAttribute("font-weight", "bold");
-          tl.textContent = `${dims.l}m`; node.appendChild(tl);
+          ctx.fillStyle = '#d63031'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+          ctx.fillText(`${dims.l}m`, x - 20, y + h / 2);
 
         } else if (type === 'cylindre') {
           const D = Math.max(dims.D || 1, 1);
@@ -72,86 +96,128 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
           const ellipseH = w * 0.3;
           const x = VW / 2; const y = (VH - h) / 2;
 
-          node.appendChild(rc.ellipse(x, y, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
-          node.appendChild(rc.line(x - w/2, y, x - w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 }));
-          node.appendChild(rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 }));
-          node.appendChild(rc.ellipse(x, y + h, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
+          rc.ellipse(x, y, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' });
+          rc.line(x - w/2, y, x - w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 });
+          rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 });
+          rc.ellipse(x, y + h, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' });
           
-          const tD = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tD.setAttribute("x", x.toString()); tD.setAttribute("y", (y - ellipseH/2 - 20).toString()); 
-          tD.setAttribute("fill", "#0984e3"); tD.setAttribute("font-size", "24"); tD.setAttribute("text-anchor", "middle"); tD.setAttribute("font-weight", "bold");
-          tD.textContent = `Ø${dims.D}m`; node.appendChild(tD);
+          ctx.font = 'bold 24px sans-serif'; ctx.fillStyle = '#0984e3'; ctx.textAlign = 'center';
+          ctx.fillText(`Ø${dims.D}m`, x, y - ellipseH/2 - 20);
           
-          const tH = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tH.setAttribute("x", (x + w/2 + 30).toString()); tH.setAttribute("y", (y + h / 2).toString()); 
-          tH.setAttribute("fill", "#d63031"); tH.setAttribute("font-size", "24"); tH.setAttribute("alignment-baseline", "middle"); tH.setAttribute("font-weight", "bold");
-          tH.textContent = `${dims.H}m`; node.appendChild(tH);
+          ctx.fillStyle = '#d63031'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText(`${dims.H}m`, x + w/2 + 30, y + h / 2);
         }
       } catch (e) {}
     };
-    renderSketch();
+    renderBase();
     return () => { isMounted = false; };
   }, [type, dims]);
 
-  // Logique du tableau blanc (Canvas)
+  useEffect(() => {
+    const canvas = canvasDrawRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0,0, 1000, 500);
+    
+    const drawStroke = (s: Stroke) => {
+        ctx.strokeStyle = s.color; ctx.fillStyle = s.color;
+        ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if (s.type === 'pencil' && s.path.length > 0) {
+            ctx.beginPath(); ctx.moveTo(s.path[0].x, s.path[0].y);
+            s.path.forEach(p => ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+        } else if (s.type === 'line') {
+            ctx.beginPath(); ctx.moveTo(s.start.x, s.start.y); ctx.lineTo(s.end.x, s.end.y); ctx.stroke();
+        } else if (s.type === 'rect') {
+            ctx.strokeRect(s.start.x, s.start.y, s.end.x - s.start.x, s.end.y - s.start.y);
+        } else if (s.type === 'text') {
+            ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            ctx.fillText(s.text, s.pos.x, s.pos.y);
+        }
+    };
+    
+    strokes.forEach(drawStroke);
+    if (currentStroke) drawStroke(currentStroke);
+    
+  }, [strokes, currentStroke]);
+
   const getCoords = (e: any) => {
-    const canvas = canvasRef.current;
+    const canvas = canvasDrawRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+    return { x: (clientX - rect.left) * (1000 / rect.width), y: (clientY - rect.top) * (500 / rect.height) };
   };
 
-  const startDraw = (e: any) => {
-    setIsDrawing(true);
-    const coords = getCoords(e);
-    if (!coords) return;
-    const ctx = canvasRef.current?.getContext('2d');
-    if(ctx){ ctx.beginPath(); ctx.moveTo(coords.x, coords.y); }
-  };
-
-  const draw = (e: any) => {
-    if (!isDrawing) return;
-    const coords = getCoords(e);
-    if (!coords) return;
-    const ctx = canvasRef.current?.getContext('2d');
-    if(ctx){
-        ctx.lineTo(coords.x, coords.y);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
+  const handlePointerDown = (e: any) => {
+    const pos = getCoords(e);
+    if (!pos) return;
+    
+    if (tool === 'text') {
+        const txt = window.prompt("Texte à ajouter sur le plan :");
+        if (txt) setStrokes([...strokes, { type: 'text', pos, text: txt, color }]);
+        return;
     }
+    
+    setIsDrawing(true);
+    if (tool === 'pencil') setCurrentStroke({ type: 'pencil', path: [pos], color });
+    else if (tool === 'line') setCurrentStroke({ type: 'line', start: pos, end: pos, color });
+    else if (tool === 'rect') setCurrentStroke({ type: 'rect', start: pos, end: pos, color });
   };
 
-  const stopDraw = () => setIsDrawing(false);
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if(canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  const handlePointerMove = (e: any) => {
+    if (!isDrawing || !currentStroke) return;
+    const pos = getCoords(e);
+    if (!pos) return;
+    
+    if (currentStroke.type === 'pencil') setCurrentStroke({ ...currentStroke, path: [...currentStroke.path, pos] });
+    else if (currentStroke.type === 'line') setCurrentStroke({ ...currentStroke, end: pos });
+    else if (currentStroke.type === 'rect') setCurrentStroke({ ...currentStroke, end: pos });
   };
+
+  const handlePointerUp = () => {
+    if (isDrawing && currentStroke) {
+        setStrokes([...strokes, currentStroke]);
+        setCurrentStroke(null);
+    }
+    setIsDrawing(false);
+  };
+
+  const undo = () => setStrokes(strokes.slice(0, -1));
+  const clear = () => setStrokes([]);
 
   return (
     <div className="relative w-full aspect-[4/3] md:aspect-[21/9] bg-white rounded-3xl border-2 border-gray-100 shadow-sm overflow-hidden flex flex-col group print:border-black print:aspect-[16/9]">
-      <svg viewBox="0 0 1000 500" ref={svgRef} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
-      <canvas 
-        ref={canvasRef} width={1000} height={500} 
-        className="absolute inset-0 w-full h-full cursor-crosshair touch-none z-10" 
-        onPointerDown={startDraw} onPointerMove={draw} onPointerUp={stopDraw} onPointerOut={stopDraw}
-      />
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur p-2 rounded-2xl shadow-xl border border-gray-200 z-20 opacity-0 group-hover:opacity-100 transition-opacity print-hidden">
-        <div className="flex gap-1 border-r border-gray-200 pr-2 mr-1">
-            {['#d63031', '#0984e3', '#00b894', '#2d3436', '#f1c40f'].map(c => (
-                <button key={c} onClick={()=>setColor(c)} className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c ? 'scale-110 border-black' : 'border-transparent'}`} style={{backgroundColor: c}} />
+      <canvas ref={canvasBaseRef} width={1000} height={500} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
+      <canvas ref={canvasDrawRef} width={1000} height={500} className={`absolute inset-0 w-full h-full touch-none z-10 ${tool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerOut={handlePointerUp} />
+      
+      {/* Barre d'outils flottante */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur px-4 py-2 rounded-2xl shadow-xl border border-gray-200 z-20 transition-all opacity-20 hover:opacity-100 print-hidden">
+        <div className="flex gap-1 border-r border-gray-200 pr-3 mr-1">
+            <button onClick={()=>setTool('pencil')} className={`p-1.5 rounded-lg transition-all ${tool === 'pencil' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Pencil size={16}/></button>
+            <button onClick={()=>setTool('line')} className={`p-1.5 rounded-lg transition-all ${tool === 'line' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Minus size={16}/></button>
+            <button onClick={()=>setTool('rect')} className={`p-1.5 rounded-lg transition-all ${tool === 'rect' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Square size={16}/></button>
+            <button onClick={()=>setTool('text')} className={`p-1.5 rounded-lg transition-all ${tool === 'text' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Type size={16}/></button>
+        </div>
+        <div className="flex gap-1 border-r border-gray-200 pr-3 mr-1">
+            {['#d63031', '#0984e3', '#00b894', '#2d3436'].map(c => (
+                <button key={c} onClick={()=>setColor(c)} className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c ? 'scale-125 border-gray-400 shadow-sm' : 'border-transparent'}`} style={{backgroundColor: c}} />
             ))}
         </div>
-        <button onClick={clearCanvas} className="text-[10px] font-black uppercase text-gray-500 hover:text-red-500 px-2 flex items-center gap-1"><Trash2 size={12}/> Effacer dessins</button>
+        <div className="flex gap-1">
+            <button onClick={undo} disabled={strokes.length===0} className="p-1.5 rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 disabled:opacity-30"><Undo size={16}/></button>
+            <button onClick={clear} disabled={strokes.length===0} className="p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 disabled:opacity-30"><Trash2 size={16}/></button>
+        </div>
       </div>
-      <div className="absolute bottom-4 left-4 text-[10px] font-bold text-gray-400 uppercase bg-white/80 px-3 py-1 rounded-lg pointer-events-none print-hidden">Annotations libres activées</div>
+      <div className="absolute bottom-4 left-4 text-[10px] font-bold text-gray-400 uppercase bg-white/80 px-3 py-1 rounded-lg pointer-events-none print-hidden">Outils d'annotation interactifs</div>
     </div>
   );
-};
+});
+
+SketchTool.displayName = 'SketchTool';
 
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
@@ -168,6 +234,7 @@ export default function Rapports() {
   const [noteSeverity, setNoteSeverity] = useState("Info");
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
+
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
@@ -178,6 +245,7 @@ export default function Rapports() {
   const [showDewPoint, setShowDewPoint] = useState(true);
 
   // States Onglet Calculs
+  const sketchRef = useRef<any>(null);
   const [calcForm, setCalcForm] = useState({ type: 'rectangle', L: 10, l: 5, D: 2, H: 5, microns: 200, rendement: 5, degree: 'Sa2.5', pertes: 20, name: '' });
   const [dewPointForm, setDewPointForm] = useState({ T_amb: 20, RH: 65, T_acier: 18 });
   const [metreHistory, setMetreHistory] = useState<any[]>([]);
@@ -331,8 +399,18 @@ export default function Rapports() {
   }), { surface: 0, paint: 0, abrasive: 0 });
 
   const addToMetre = () => {
-      setMetreHistory([...metreHistory, { id: Date.now(), name: calcForm.name || `Calcul ${metreHistory.length + 1}`, type: calcForm.type, surface: surfaceCalculated, paint: paintNeeded, abrasive: showAbrasive ? sandNeeded : 0 }]);
+      const imgData = sketchRef.current?.exportImage();
+      setMetreHistory([...metreHistory, { 
+          id: Date.now(), 
+          name: calcForm.name || `Calcul ${metreHistory.length + 1}`, 
+          type: calcForm.type, 
+          surface: surfaceCalculated, 
+          paint: paintNeeded, 
+          abrasive: showAbrasive ? sandNeeded : 0,
+          image: imgData
+      }]);
       setCalcForm({...calcForm, name: ''});
+      sketchRef.current?.clearStrokes();
   };
   const removeMetre = (id: number) => setMetreHistory(metreHistory.filter(m => m.id !== id));
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
@@ -664,7 +742,7 @@ export default function Rapports() {
                             {/* ZONE DESSIN PLEINE LARGEUR */}
                             <div className="w-full mb-8 break-inside-avoid">
                                 <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2 mb-4"><PencilRuler size={18} className="text-blue-500 print:text-black"/> Outil de Métré & Dessin</h3>
-                                <SketchTool type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
+                                <SketchTool ref={sketchRef} type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
                             </div>
 
                             {/* ZONE SAISIE & RESULTATS */}
@@ -703,22 +781,29 @@ export default function Rapports() {
                                 <div className="space-y-4">
                                   <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2"><Calculator size={18} className="text-blue-500 print:text-black"/> Historique des Métrés</h3>
                                   {metreHistory.length > 0 ? (
-                                      <div className="space-y-2">
+                                      <div className="space-y-4">
                                           {metreHistory.map(m => (
-                                              <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm print:shadow-none print:border-gray-400">
-                                                  <div className="flex items-center gap-3">
-                                                      <div className="bg-blue-50 p-2 rounded-lg text-blue-600 print:text-black print:border"><Layers size={14}/></div>
-                                                      <div>
-                                                          <p className="font-bold text-sm text-gray-800 print:text-black">{m.name}</p>
-                                                          <p className="text-[9px] text-gray-400 print:text-gray-600 uppercase font-bold">{m.type}</p>
-                                                      </div>
+                                              <div key={m.id} className="flex flex-col bg-white p-3 rounded-xl border border-gray-200 shadow-sm print:shadow-none print:border-gray-400 break-inside-avoid">
+                                                  <div className="flex justify-between items-center mb-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="bg-blue-50 p-2 rounded-lg text-blue-600 print:text-black print:border"><Layers size={14}/></div>
+                                                        <div>
+                                                            <p className="font-bold text-sm text-gray-800 print:text-black">{m.name}</p>
+                                                            <p className="text-[9px] text-gray-400 print:text-gray-600 uppercase font-bold">{m.type}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Surface</p><p className="font-black text-xs text-gray-700 print:text-black">{m.surface.toFixed(2)} m²</p></div>
+                                                        <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Peinture</p><p className="font-black text-xs text-blue-600 print:text-black">{m.paint.toFixed(1)} L</p></div>
+                                                        {showAbrasive && <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Abrasif</p><p className="font-black text-xs text-orange-600 print:text-black">{m.abrasive.toFixed(2)} T</p></div>}
+                                                        <button onClick={()=>removeMetre(m.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-2 print-hidden"><Trash2 size={14}/></button>
+                                                    </div>
                                                   </div>
-                                                  <div className="flex items-center gap-4">
-                                                      <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Surface</p><p className="font-black text-xs text-gray-700 print:text-black">{m.surface.toFixed(2)} m²</p></div>
-                                                      <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Peinture</p><p className="font-black text-xs text-blue-600 print:text-black">{m.paint.toFixed(1)} L</p></div>
-                                                      {showAbrasive && <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Abrasif</p><p className="font-black text-xs text-orange-600 print:text-black">{m.abrasive.toFixed(2)} T</p></div>}
-                                                      <button onClick={()=>removeMetre(m.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-2 print-hidden"><Trash2 size={14}/></button>
-                                                  </div>
+                                                  {m.image && (
+                                                    <div className="mt-2 border-t border-gray-100 pt-2 print:border-black">
+                                                      <img src={m.image} alt="Croquis" className="w-full max-h-48 object-contain rounded-lg border border-gray-100 print:border-gray-300" />
+                                                    </div>
+                                                  )}
                                               </div>
                                           ))}
                                           <div className="flex justify-between items-center bg-black text-white print:bg-gray-100 print:border print:border-black print:text-black px-5 py-4 rounded-xl shadow-lg mt-4 break-inside-avoid">
