@@ -148,7 +148,7 @@ export default function Rapports() {
   }, [taches, controleLe]);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] wrapper print:bg-white print:p-0 p-4 md:p-8">
+    <div className="min-h-screen bg-[#f8f9fa] print-reset p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6 container print:max-w-full print:w-full print:m-0 print:space-y-0">
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4 print-hidden">
           <div className="flex items-center gap-4">
@@ -240,8 +240,17 @@ export default function Rapports() {
                   <style>{`
                     @media print { 
                       @page { size: ${printFormat}; margin: 15mm; } 
-                      html, body { width: 100% !important; background: #fff !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; } 
-                      .wrapper, .container, .main { width: 100% !important; max-width: 100% !important; display: block !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; } 
+                      html, body, #__next, #root, main, .layout, .dashboard, .content-wrapper, .scroll-container { 
+                        height: auto !important; min-height: auto !important; max-height: none !important; 
+                        overflow: visible !important; width: 100% !important; background: #fff !important; 
+                        margin: 0 !important; padding: 0 !important; display: block !important; position: static !important; 
+                      } 
+                      .wrapper, .container, .main, .print-reset { 
+                        height: auto !important; min-height: auto !important; max-height: none !important; 
+                        overflow: visible !important; width: 100% !important; max-width: 100% !important; 
+                        display: block !important; margin: 0 !important; padding: 0 !important; 
+                        border: none !important; box-shadow: none !important; 
+                      } 
                       aside, nav, header, footer:not(.print-footer) { display: none !important; } 
                       .print-hidden { display: none !important; } 
                       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
@@ -264,7 +273,7 @@ export default function Rapports() {
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
                   
-                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm">
+                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
                     <thead className="print:table-header-group w-full">
                       <tr>
                         <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
