@@ -64,7 +64,6 @@ export default function Rapports() {
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
 
-  // States pour les fonctionnalités d'édition et d'impression des notes
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
@@ -249,8 +248,49 @@ export default function Rapports() {
   }, [taches, controleLe]);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] print-reset p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6 container print:max-w-full print:w-full print:m-0 print:space-y-0">
+    <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8">
+      
+      {/* =======================================================================================
+          🚀 SILVER BULLET CSS : SÉPARATION APP WEB / IMPRESSION NATIVE
+      ======================================================================================== */}
+      <style>{`
+        @media print { 
+          @page { size: ${printFormat}; margin: 15mm; } 
+          
+          /* 1. DEVERROUILLAGE DES CAGES SCROLLABLES */
+          * { overflow: visible !important; }
+          html, body { height: auto !important; background: #fff !important; margin: 0 !important; padding: 0 !important; } 
+          .layout, .dashboard, .content-wrapper, .scroll-container, main, #__next, #root { 
+            height: auto !important; max-height: none !important; 
+            display: block !important; position: static !important; 
+          } 
+          
+          /* 2. ISOLATION TOTALE (Masquer tout sauf la fiche) */
+          body * { visibility: hidden; } 
+          .print-document, .print-document * { visibility: visible; } 
+          
+          /* 3. PLACEMENT DE LA FICHE AU POINT ZÉRO ABSOLU */
+          .print-document { 
+            position: absolute !important; 
+            left: 0 !important; top: 0 !important; 
+            width: 100% !important; max-width: 100% !important; 
+            margin: 0 !important; padding: 0 !important; 
+          } 
+          
+          /* 4. REGLAGES DES TABLEAUX ET PAGE-BREAKS */
+          table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
+          th, td { word-wrap: break-word; } 
+          .break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; display: block; margin-bottom: 24px; width: 100%; } 
+          tr { page-break-inside: avoid !important; break-inside: avoid !important; page-break-after: auto; } 
+          thead { display: table-header-group; } 
+          tfoot { display: table-footer-group; } 
+          aside, nav, header, footer:not(.print-footer) { display: none !important; } 
+          .print-hidden { display: none !important; } 
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+        }
+      `}</style>
+
+      <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4 print-hidden">
           <div className="flex items-center gap-4">
             <div className="bg-black p-3 rounded-2xl text-white shadow-lg shadow-gray-200"><FileText size={28} /></div>
@@ -271,9 +311,9 @@ export default function Rapports() {
           </div>
         </div>
 
-        <div className="w-full main print:block print:w-full print:max-w-full">
-          <div className="w-full space-y-6 print:w-full print:max-w-full print:block print:space-y-0">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' || meetingTab === 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:block print:w-full print:max-w-full' : ''}`}>
+        <div className="w-full">
+          <div className="w-full space-y-6">
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' || meetingTab === 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -286,34 +326,9 @@ export default function Rapports() {
               </div>
 
               {meetingTab === 'notes' && (
-                <div className="flex-1 flex flex-col animate-in fade-in relative w-full print:w-full print:max-w-full">
-                  
-                  {/* CSS D'IMPRESSION POUR LES NOTES */}
-                  <style>{`
-                    @media print { 
-                      @page { size: ${printFormat}; margin: 15mm; } 
-                      html, body, #__next, #root, main, .layout, .dashboard, .content-wrapper, .scroll-container { 
-                        height: auto !important; min-height: auto !important; max-height: none !important; 
-                        overflow: visible !important; width: 100% !important; background: #fff !important; 
-                        margin: 0 !important; padding: 0 !important; display: block !important; position: static !important; 
-                      } 
-                      .wrapper, .container, .main, .print-reset { 
-                        height: auto !important; min-height: auto !important; max-height: none !important; 
-                        overflow: visible !important; width: 100% !important; max-width: 100% !important; 
-                        display: block !important; margin: 0 !important; padding: 0 !important; 
-                        border: none !important; box-shadow: none !important; 
-                      } 
-                      aside, nav, header, footer:not(.print-footer) { display: none !important; } 
-                      .print-hidden { display: none !important; } 
-                      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
-                      table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
-                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
-                      tr { page-break-inside: avoid; page-break-after: auto; } 
-                      thead { display: table-header-group; } 
-                      tfoot { display: table-footer-group; } 
-                    }
-                  `}</style>
+                <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
 
+                  {/* VUE ÉCRAN - ZONE DE SAISIE */}
                   <div className="print-hidden w-full">
                       <div className="flex flex-col gap-4 mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                         <div className="flex items-center justify-between">
@@ -451,33 +466,33 @@ export default function Rapports() {
                       </div>
                   </div>
 
-                  {/* VUE IMPRESSION DES NOTES */}
-                  <table className="hidden print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
-                    <thead className="print:table-header-group w-full">
+                  {/* VUE IMPRESSION DES NOTES (SILVER BULLET) */}
+                  <table className="hidden print:table print-document">
+                    <thead className="print:table-header-group">
                       <tr>
-                        <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
-                          <div className="flex justify-between items-end w-full">
+                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
+                          <div className="flex justify-between items-end">
                             <div>
-                              <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Journal des Notes & Constats</h2>
+                              <h2 className="text-xl font-black uppercase tracking-tight">Rapport de Visite & Constats</h2>
                               <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
                                 <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
                                 <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
                               </div>
                             </div>
-                            <div className="text-right text-xs font-medium print:bg-transparent p-3 rounded-lg print:border-black">
-                              <p className="mb-1 uppercase font-bold print:text-black">Édité le :</p>
-                              <p className="font-bold print:text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
+                            <div className="text-right text-xs font-medium">
+                              <p className="mb-1 uppercase font-bold text-black">Édité le :</p>
+                              <p className="font-bold text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
                             </div>
                           </div>
                         </td>
                       </tr>
                     </thead>
-                    <tbody className="w-full">
+                    <tbody>
                       <tr>
-                        <td className="pt-6 w-full">
-                          <div className="grid grid-cols-1 gap-6 w-full">
+                        <td className="pt-6">
+                          <div className="grid grid-cols-1 gap-6">
                             {savedNotes.filter(n => selectedPrintNotes.includes(n.id)).map((n) => (
-                              <div key={n.id} className="break-inside-avoid w-full border border-gray-300 rounded-xl p-4">
+                              <div key={n.id} className="break-inside-avoid border border-gray-300 rounded-xl p-4">
                                 <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-3">
                                   <div className="flex items-center gap-2">
                                     <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${n.severity === 'BLOQUANT' ? 'border-red-500 text-red-600' : n.severity === 'À surveiller' ? 'border-orange-500 text-orange-600' : 'border-gray-500 text-gray-600'}`}>
@@ -491,8 +506,8 @@ export default function Rapports() {
                                 </div>
                                 <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-black font-black' : 'text-gray-800'}`}>{n.text}</p>
                                 {n.photo && (
-                                  <div className="mt-4 break-inside-avoid">
-                                    <img src={n.photo} alt="Photo Note" className="max-h-48 rounded-lg border border-gray-300 object-contain" />
+                                  <div className="mt-4 text-center">
+                                    <img src={n.photo} alt="Photo Note" className="max-h-64 mx-auto rounded-lg border border-gray-300 object-contain" />
                                   </div>
                                 )}
                               </div>
@@ -502,10 +517,10 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group w-full print-footer">
+                    <tfoot className="print:table-footer-group print-footer">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
-                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
                         </td>
                       </tr>
                     </tfoot>
@@ -538,33 +553,7 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
-                  <style>{`
-                    @media print { 
-                      @page { size: ${printFormat}; margin: 15mm; } 
-                      html, body, #__next, #root, main, .layout, .dashboard, .content-wrapper, .scroll-container { 
-                        height: auto !important; min-height: auto !important; max-height: none !important; 
-                        overflow: visible !important; width: 100% !important; background: #fff !important; 
-                        margin: 0 !important; padding: 0 !important; display: block !important; position: static !important; 
-                      } 
-                      .wrapper, .container, .main, .print-reset { 
-                        height: auto !important; min-height: auto !important; max-height: none !important; 
-                        overflow: visible !important; width: 100% !important; max-width: 100% !important; 
-                        display: block !important; margin: 0 !important; padding: 0 !important; 
-                        border: none !important; box-shadow: none !important; 
-                      } 
-                      aside, nav, header, footer:not(.print-footer) { display: none !important; } 
-                      .print-hidden { display: none !important; } 
-                      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
-                      table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
-                      th, td { overflow: hidden; word-wrap: break-word; } 
-                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
-                      tr { page-break-inside: avoid; page-break-after: auto; } 
-                      thead { display: table-header-group; } 
-                      tfoot { display: table-footer-group; } 
-                    }
-                  `}</style>
-                  
+                <div className="flex-1 animate-in fade-in relative w-full">
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
@@ -575,11 +564,11 @@ export default function Rapports() {
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
                   
-                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
-                    <thead className="print:table-header-group w-full">
+                  <table className="hidden print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document">
+                    <thead className="print:table-header-group">
                       <tr>
-                        <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
-                          <div className="flex justify-between items-end w-full">
+                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
+                          <div className="flex justify-between items-end">
                             <div>
                               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
                               <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
@@ -588,22 +577,22 @@ export default function Rapports() {
                                 {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
                               </div>
                             </div>
-                            <div className="text-right text-xs font-medium bg-gray-50 print:bg-transparent p-3 rounded-lg border border-gray-200 print:border-black">
-                              <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
+                            <div className="text-right text-xs font-medium print:bg-transparent p-3 rounded-lg print:border-black">
+                              <p className="mb-1 uppercase font-bold print:text-black">Contrôlé le :</p>
                               <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none print:text-black" />
-                              <p className="mt-2 font-black text-black text-[11px] bg-yellow-300 print:bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
+                              <p className="mt-2 font-black text-black text-[11px] bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
                             </div>
                           </div>
                         </td>
                       </tr>
                     </thead>
-                    <tbody className="w-full">
+                    <tbody>
                       <tr>
-                        <td className="pt-6 w-full">
-                          <div className="grid grid-cols-1 gap-6 w-full">
+                        <td className="pt-6">
+                          <div className="grid grid-cols-1 gap-6">
                             
-                            <div className="break-inside-avoid w-full">
-                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
+                            <div className="break-inside-avoid">
+                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -613,14 +602,14 @@ export default function Rapports() {
                                 <tbody>
                                   {filteredTaches.length > 0 ? filteredTaches.map((t: any) => (
                                     <React.Fragment key={t.id || Math.random()}>
-                                      <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
+                                      <tr className="border-b border-gray-300 bg-gray-100">
                                         <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.responsable ? t.responsable : <div className="w-20 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.effectif ? t.effectif : <div className="w-8 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                       {t.subtasks && t.subtasks.map((st: any) => (
                                         <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
@@ -630,7 +619,7 @@ export default function Rapports() {
                                           <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
-                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
+                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-black"/></td>
                                         </tr>
                                       ))}
                                     </React.Fragment>
@@ -639,8 +628,8 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="break-inside-avoid w-full">
-                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
+                            <div className="break-inside-avoid">
+                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -651,11 +640,11 @@ export default function Rapports() {
                                   {fournitures.length > 0 ? fournitures.map(f => {
                                     const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
                                     return (
-                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
-                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
+                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-white' : ''}`}>
+                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-black" />} {f.nom}</td>
                                         <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                     );
                                   }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
@@ -663,9 +652,9 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid w-full">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300">
@@ -676,15 +665,15 @@ export default function Rapports() {
                                     {materiels.length > 0 ? materiels.map(m => (
                                       <tr key={m.id} className="border-b border-gray-200">
                                         <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                     )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
                                   </tbody>
                                 </table>
                               </div>
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300"><th className="py-2 px-1 w-[50%]">Machine</th><th className="py-2 px-1 text-center w-[25%]">Fin prévue</th><th className="py-2 px-1 text-center w-[25%]">Retour OK</th></tr>
@@ -694,8 +683,8 @@ export default function Rapports() {
                                       const crit = isExpiringSoon(l.date_fin);
                                       return (
                                         <tr key={l.id} className="border-b border-gray-200">
-                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
-                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'font-bold text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                         </tr>
                                       );
                                     }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
@@ -704,20 +693,20 @@ export default function Rapports() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4 w-full">
-                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
+                              <div className="border print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
                                 <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
-                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
+                              <div className="border print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
                                 <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid w-full">
+                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
-                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed border-gray-300 print:border-gray-500 rounded-lg"></div></div>
+                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed print:border-gray-500 rounded-lg"></div></div>
                               <div className="text-right">
                                 <p className="uppercase mb-6">Validation :</p>
                                 <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
@@ -728,7 +717,7 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group w-full print-footer">
+                    <tfoot className="print:table-footer-group print-footer">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
                           Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
@@ -736,7 +725,6 @@ export default function Rapports() {
                       </tr>
                     </tfoot>
                   </table>
-
                 </div>
               )}
             </div>
