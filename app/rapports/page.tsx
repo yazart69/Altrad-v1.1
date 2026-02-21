@@ -28,6 +28,11 @@ const ScientificEngine = {
 
 const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [color, setColor] = useState('#d63031');
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // Génération du SVG de base (Cotes et Forme auto)
   useEffect(() => {
     let isMounted = true;
     const renderSketch = async () => {
@@ -38,34 +43,114 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
         const rc = rough.svg(svgRef.current), node = svgRef.current;
         while (node.firstChild) node.removeChild(node.firstChild);
         
+        const VW = 1000; const VH = 500;
+        
         if (type === 'rectangle') {
-          const w = Math.max((dims.L || 0) * 10, 50), h = Math.max((dims.l || 0) * 10, 30), x = 50, y = 50;
-          node.appendChild(rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
+          const L = Math.max(dims.L || 1, 1);
+          const l = Math.max(dims.l || 1, 1);
+          const scale = Math.min(600 / L, 300 / l);
+          const w = L * scale; const h = l * scale;
+          const x = (VW - w) / 2; const y = (VH - h) / 2;
+
+          node.appendChild(rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
+          
           const tL = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tL.setAttribute("x", (x + w / 2 - 10).toString()); tL.setAttribute("y", (y - 15).toString()); tL.setAttribute("fill", "#0984e3"); tL.textContent = `${dims.L}m`;
-          node.appendChild(tL);
+          tL.setAttribute("x", (x + w / 2).toString()); tL.setAttribute("y", (y - 20).toString()); 
+          tL.setAttribute("fill", "#0984e3"); tL.setAttribute("font-size", "24"); tL.setAttribute("text-anchor", "middle"); tL.setAttribute("font-weight", "bold");
+          tL.textContent = `${dims.L}m`; node.appendChild(tL);
+          
           const tl = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tl.setAttribute("x", (x - 30).toString()); tl.setAttribute("y", (y + h / 2).toString()); tl.setAttribute("fill", "#d63031"); tl.textContent = `${dims.l}m`;
-          node.appendChild(tl);
+          tl.setAttribute("x", (x - 20).toString()); tl.setAttribute("y", (y + h / 2).toString()); 
+          tl.setAttribute("fill", "#d63031"); tl.setAttribute("font-size", "24"); tl.setAttribute("text-anchor", "end"); tl.setAttribute("alignment-baseline", "middle"); tl.setAttribute("font-weight", "bold");
+          tl.textContent = `${dims.l}m`; node.appendChild(tl);
+
         } else if (type === 'cylindre') {
-          const w = Math.max((dims.D || 0) * 20, 40), h = Math.max((dims.H || 0) * 10, 60), x = 80, y = 40;
-          node.appendChild(rc.ellipse(x, y, w, 20, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
-          node.appendChild(rc.line(x - w/2, y, x - w/2, y + h, { stroke: '#2d3436', strokeWidth: 2 }));
-          node.appendChild(rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 2 }));
-          node.appendChild(rc.ellipse(x, y + h, w, 20, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
+          const D = Math.max(dims.D || 1, 1);
+          const H = Math.max(dims.H || 1, 1);
+          const scale = Math.min(300 / D, 300 / H);
+          const w = D * scale; const h = H * scale;
+          const ellipseH = w * 0.3;
+          const x = VW / 2; const y = (VH - h) / 2;
+
+          node.appendChild(rc.ellipse(x, y, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
+          node.appendChild(rc.line(x - w/2, y, x - w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 }));
+          node.appendChild(rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 }));
+          node.appendChild(rc.ellipse(x, y + h, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' }));
+          
           const tD = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tD.setAttribute("x", (x - 10).toString()); tD.setAttribute("y", (y - 15).toString()); tD.setAttribute("fill", "#0984e3"); tD.textContent = `Ø${dims.D}m`;
-          node.appendChild(tD);
+          tD.setAttribute("x", x.toString()); tD.setAttribute("y", (y - ellipseH/2 - 20).toString()); 
+          tD.setAttribute("fill", "#0984e3"); tD.setAttribute("font-size", "24"); tD.setAttribute("text-anchor", "middle"); tD.setAttribute("font-weight", "bold");
+          tD.textContent = `Ø${dims.D}m`; node.appendChild(tD);
+          
           const tH = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tH.setAttribute("x", (x + w/2 + 10).toString()); tH.setAttribute("y", (y + h / 2).toString()); tH.setAttribute("fill", "#d63031"); tH.textContent = `${dims.H}m`;
-          node.appendChild(tH);
+          tH.setAttribute("x", (x + w/2 + 30).toString()); tH.setAttribute("y", (y + h / 2).toString()); 
+          tH.setAttribute("fill", "#d63031"); tH.setAttribute("font-size", "24"); tH.setAttribute("alignment-baseline", "middle"); tH.setAttribute("font-weight", "bold");
+          tH.textContent = `${dims.H}m`; node.appendChild(tH);
         }
       } catch (e) {}
     };
     renderSketch();
     return () => { isMounted = false; };
   }, [type, dims]);
-  return <svg ref={svgRef} width="100%" height="250" className="bg-gray-50 rounded-xl border border-gray-100 shadow-inner" />;
+
+  // Logique du tableau blanc (Canvas)
+  const getCoords = (e: any) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+  };
+
+  const startDraw = (e: any) => {
+    setIsDrawing(true);
+    const coords = getCoords(e);
+    if (!coords) return;
+    const ctx = canvasRef.current?.getContext('2d');
+    if(ctx){ ctx.beginPath(); ctx.moveTo(coords.x, coords.y); }
+  };
+
+  const draw = (e: any) => {
+    if (!isDrawing) return;
+    const coords = getCoords(e);
+    if (!coords) return;
+    const ctx = canvasRef.current?.getContext('2d');
+    if(ctx){
+        ctx.lineTo(coords.x, coords.y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    }
+  };
+
+  const stopDraw = () => setIsDrawing(false);
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if(canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  return (
+    <div className="relative w-full aspect-[4/3] md:aspect-[21/9] bg-white rounded-3xl border-2 border-gray-100 shadow-sm overflow-hidden flex flex-col group print:border-black print:aspect-[16/9]">
+      <svg viewBox="0 0 1000 500" ref={svgRef} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
+      <canvas 
+        ref={canvasRef} width={1000} height={500} 
+        className="absolute inset-0 w-full h-full cursor-crosshair touch-none z-10" 
+        onPointerDown={startDraw} onPointerMove={draw} onPointerUp={stopDraw} onPointerOut={stopDraw}
+      />
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur p-2 rounded-2xl shadow-xl border border-gray-200 z-20 opacity-0 group-hover:opacity-100 transition-opacity print-hidden">
+        <div className="flex gap-1 border-r border-gray-200 pr-2 mr-1">
+            {['#d63031', '#0984e3', '#00b894', '#2d3436', '#f1c40f'].map(c => (
+                <button key={c} onClick={()=>setColor(c)} className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c ? 'scale-110 border-black' : 'border-transparent'}`} style={{backgroundColor: c}} />
+            ))}
+        </div>
+        <button onClick={clearCanvas} className="text-[10px] font-black uppercase text-gray-500 hover:text-red-500 px-2 flex items-center gap-1"><Trash2 size={12}/> Effacer dessins</button>
+      </div>
+      <div className="absolute bottom-4 left-4 text-[10px] font-bold text-gray-400 uppercase bg-white/80 px-3 py-1 rounded-lg pointer-events-none print-hidden">Annotations libres activées</div>
+    </div>
+  );
 };
 
 export default function Rapports() {
@@ -78,18 +163,19 @@ export default function Rapports() {
   const [notes, setNotes] = useState<any[]>([]);
   const [savedNotes, setSavedNotes] = useState<any[]>([]); 
   
-  const [calculs, setCalculs] = useState<any[]>([]);
   const [activeNote, setActiveNote] = useState("");
   const [noteCategory, setNoteCategory] = useState("Technique");
-  
   const [noteSeverity, setNoteSeverity] = useState("Info");
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
-
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const [selectedPrintNotes, setSelectedPrintNotes] = useState<number[]>([]);
+
+  // Toggles pour l'onglet Calculs
+  const [showAbrasive, setShowAbrasive] = useState(true);
+  const [showDewPoint, setShowDewPoint] = useState(true);
 
   // States Onglet Calculs
   const [calcForm, setCalcForm] = useState({ type: 'rectangle', L: 10, l: 5, D: 2, H: 5, microns: 200, rendement: 5, degree: 'Sa2.5', pertes: 20, name: '' });
@@ -167,25 +253,13 @@ export default function Rapports() {
 
   const addNote = () => {
     if (!activeNote && !notePhoto) return;
-    setNotes([{ 
-        id: Date.now(), 
-        category: noteCategory, 
-        severity: noteSeverity,
-        weather: noteWeather,
-        text: activeNote, 
-        photo: notePhoto,
-        type: 'observation', 
-        timestamp: new Date().toISOString() 
-    }, ...notes]);
-    setActiveNote("");
-    setNoteSeverity("Info");
-    setNoteWeather([]);
-    setNotePhoto(null);
+    setNotes([{ id: Date.now(), category: noteCategory, severity: noteSeverity, weather: noteWeather, text: activeNote, photo: notePhoto, type: 'observation', timestamp: new Date().toISOString() }, ...notes]);
+    setActiveNote(""); setNoteSeverity("Info"); setNoteWeather([]); setNotePhoto(null);
   };
 
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
-    const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs, metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, is_synced: false };
+    const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs: metreHistory, metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, is_synced: false };
     
     const reportToSave = { ...report };
     if (db) try { await db.reports.add(reportToSave); } catch (e) {}
@@ -216,16 +290,13 @@ export default function Rapports() {
             if (error) throw error;
             setSavedNotes(savedNotes.map(n => n.id === noteId ? { ...n, text: editNoteText } : n));
         }
-    } catch (e) {
-        console.error(e);
-        alert("Erreur lors de la mise à jour de la note.");
-    }
+    } catch (e) { alert("Erreur lors de la mise à jour de la note."); }
     setEditingNoteId(null);
   };
 
   const handleDeleteNote = async (reunionId: string, noteId: number) => {
     if (!reunionId) return alert("Erreur: ID Réunion manquant.");
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette note de l'historique ?")) return;
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette note ?")) return;
     try {
         const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
         if (data && data.notes) {
@@ -235,10 +306,7 @@ export default function Rapports() {
             setSavedNotes(savedNotes.filter(n => n.id !== noteId));
             setSelectedPrintNotes(selectedPrintNotes.filter(id => id !== noteId));
         }
-    } catch (e) {
-        console.error(e);
-        alert("Erreur lors de la suppression de la note.");
-    }
+    } catch (e) { alert("Erreur lors de la suppression de la note."); }
   };
 
   const togglePrintNote = (id: number) => {
@@ -259,27 +327,14 @@ export default function Rapports() {
   const isPaintSafe = dewPointForm.T_acier >= (dewPoint + 3);
 
   const totalMetre = metreHistory.reduce((acc, curr) => ({
-      surface: acc.surface + curr.surface,
-      paint: acc.paint + curr.paint,
-      abrasive: acc.abrasive + curr.abrasive
+      surface: acc.surface + curr.surface, paint: acc.paint + curr.paint, abrasive: acc.abrasive + curr.abrasive
   }), { surface: 0, paint: 0, abrasive: 0 });
 
   const addToMetre = () => {
-      setMetreHistory([...metreHistory, {
-          id: Date.now(),
-          name: calcForm.name || `Calcul ${metreHistory.length + 1}`,
-          type: calcForm.type,
-          surface: surfaceCalculated,
-          paint: paintNeeded,
-          abrasive: sandNeeded
-      }]);
+      setMetreHistory([...metreHistory, { id: Date.now(), name: calcForm.name || `Calcul ${metreHistory.length + 1}`, type: calcForm.type, surface: surfaceCalculated, paint: paintNeeded, abrasive: showAbrasive ? sandNeeded : 0 }]);
       setCalcForm({...calcForm, name: ''});
   };
-
-  const removeMetre = (id: number) => {
-      setMetreHistory(metreHistory.filter(m => m.id !== id));
-  };
-
+  const removeMetre = (id: number) => setMetreHistory(metreHistory.filter(m => m.id !== id));
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
   const { filteredTaches, periodStr } = useMemo(() => {
@@ -308,16 +363,13 @@ export default function Rapports() {
           * { overflow: visible !important; }
           html, body { height: auto !important; background: #fff !important; margin: 0 !important; padding: 0 !important; } 
           .layout, .dashboard, .content-wrapper, .scroll-container, main, #__next, #root { 
-            height: auto !important; max-height: none !important; 
-            display: block !important; position: static !important; 
+            height: auto !important; max-height: none !important; display: block !important; position: static !important; 
           } 
           body * { visibility: hidden; } 
           .print-document, .print-document * { visibility: visible; } 
           .print-document { 
-            position: absolute !important; 
-            left: 0 !important; top: 0 !important; 
-            width: 100% !important; max-width: 100% !important; 
-            margin: 0 !important; padding: 0 !important; 
+            position: absolute !important; left: 0 !important; top: 0 !important; 
+            width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; 
           } 
           table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
           th, td { word-wrap: break-word; } 
@@ -354,7 +406,7 @@ export default function Rapports() {
 
         <div className="w-full">
           <div className="w-full space-y-6">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' || meetingTab === 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab !== 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -505,7 +557,6 @@ export default function Rapports() {
                       </div>
                   </div>
 
-                  {/* VUE IMPRESSION DES NOTES (SILVER BULLET) */}
                   <table className="hidden print:table print-document">
                     <thead className="print:table-header-group">
                       <tr>
@@ -545,7 +596,7 @@ export default function Rapports() {
                                 </div>
                                 <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-black font-black' : 'text-gray-800'}`}>{n.text}</p>
                                 {n.photo && (
-                                  <div className="mt-4 text-center">
+                                  <div className="mt-4 text-center break-inside-avoid">
                                     <img src={n.photo} alt="Photo Note" className="max-h-64 mx-auto rounded-lg border border-gray-300 object-contain" />
                                   </div>
                                 )}
@@ -568,115 +619,171 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'calculs' && (
-                <div className="flex-1 animate-in fade-in print-hidden">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* Outil de Métré */}
-                      <div className="space-y-6">
-                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><PencilRuler size={18} className="text-blue-500"/> Outil de Métré</h3>
-                          <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-2">
-                                  <button onClick={()=>setCalcForm({...calcForm, type: 'rectangle'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='rectangle' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Rectangle</button>
-                                  <button onClick={()=>setCalcForm({...calcForm, type: 'cylindre'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='cylindre' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Cylindre</button>
-                              </div>
-                              
-                              <div className="grid grid-cols-2 gap-4">
-                                  {calcForm.type === 'rectangle' ? (
-                                      <>
-                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Longueur (m)</label><input type="number" value={calcForm.L} onChange={(e)=>setCalcForm({...calcForm, L: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
-                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Largeur (m)</label><input type="number" value={calcForm.l} onChange={(e)=>setCalcForm({...calcForm, l: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
-                                      </>
-                                  ) : (
-                                      <>
-                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Diamètre (m)</label><input type="number" value={calcForm.D} onChange={(e)=>setCalcForm({...calcForm, D: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
-                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Hauteur (m)</label><input type="number" value={calcForm.H} onChange={(e)=>setCalcForm({...calcForm, H: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
-                                      </>
-                                  )}
-                                  <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Épaisseur (µm)</label><input type="number" value={calcForm.microns} onChange={(e)=>setCalcForm({...calcForm, microns: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
-                                  <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Rendement (m²/L)</label><input type="number" value={calcForm.rendement} onChange={(e)=>setCalcForm({...calcForm, rendement: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-black text-gray-400 uppercase flex justify-between mb-1"><span>Pertes Estimées (%)</span><span className="text-blue-500 font-bold">{calcForm.pertes}%</span></label>
-                                  <input type="range" min="0" max="100" value={calcForm.pertes} onChange={(e)=>setCalcForm({...calcForm, pertes: parseFloat(e.target.value)})} className="w-full accent-blue-500" />
-                              </div>
-
-                              <div className="flex gap-2 pt-2">
-                                  <input type="text" placeholder="Nom (ex: Cuve A)" value={calcForm.name} onChange={(e)=>setCalcForm({...calcForm, name: e.target.value})} className="flex-1 bg-gray-50 rounded-xl p-3 font-bold outline-none text-sm border-2 border-transparent focus:border-black transition-all" />
-                                  <button onClick={addToMetre} disabled={!calcForm.name} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 disabled:opacity-50"><Plus size={16}/> Ajouter</button>
-                              </div>
-                          </div>
-                      </div>
-
-                      <div className="flex flex-col items-center justify-start space-y-6">
-                          <SketchTool type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
-                          <div className="w-full p-4 bg-blue-50 rounded-2xl border border-blue-100 grid grid-cols-3 gap-2 text-center text-blue-800">
-                              <div><p className="text-[9px] font-black uppercase opacity-50">Surface</p><p className="text-lg font-black">{surfaceCalculated.toFixed(2)}m²</p></div>
-                              <div><p className="text-[9px] font-black uppercase opacity-50">Peinture</p><p className="text-lg font-black">{paintNeeded.toFixed(1)}L</p></div>
-                              <div><p className="text-[9px] font-black uppercase opacity-50">Abrasif</p><p className="text-lg font-black">{sandNeeded.toFixed(2)}T</p></div>
-                          </div>
-                      </div>
+                <div className="flex-1 animate-in fade-in relative w-full">
+                  
+                  {/* Action Bar Impression Calculs */}
+                  <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer"><input type="checkbox" checked={showAbrasive} onChange={(e)=>setShowAbrasive(e.target.checked)} className="accent-black w-4 h-4" /> Besoin de sablage/abrasif</label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer"><input type="checkbox" checked={showDewPoint} onChange={(e)=>setShowDewPoint(e.target.checked)} className="accent-black w-4 h-4" /> Contrôle Météo / Pt. de Rosée</label>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                      </select>
+                      <button onClick={() => window.print()} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer Métré</button>
+                    </div>
+                  </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10 pt-8 border-t border-gray-100">
-                      {/* Carnet de métré */}
-                      <div className="space-y-4">
-                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><Calculator size={18} className="text-blue-500"/> Carnet de métré</h3>
-                          {metreHistory.length > 0 ? (
-                              <div className="space-y-2">
-                                  {metreHistory.map(m => (
-                                      <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 transition-all">
-                                          <div className="flex items-center gap-3">
-                                              <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Layers size={14}/></div>
-                                              <div>
-                                                  <p className="font-bold text-sm text-gray-800">{m.name}</p>
-                                                  <p className="text-[9px] text-gray-400 uppercase font-bold">{m.type}</p>
+                  <table className="print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document print-reset">
+                    <thead className="hidden print:table-header-group">
+                      <tr>
+                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <h2 className="text-xl font-black uppercase tracking-tight">Carnet de Métré & Devis</h2>
+                              <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
+                                <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
+                                <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs font-medium">
+                              <p className="mb-1 uppercase font-bold text-black">Édité le :</p>
+                              <p className="font-bold text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="pt-6 w-full">
+                          
+                          <div className="flex flex-col w-full print:block">
+                            
+                            {/* ZONE DESSIN PLEINE LARGEUR */}
+                            <div className="w-full mb-8 break-inside-avoid">
+                                <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2 mb-4"><PencilRuler size={18} className="text-blue-500 print:text-black"/> Outil de Métré & Dessin</h3>
+                                <SketchTool type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
+                            </div>
+
+                            {/* ZONE SAISIE & RESULTATS */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 break-inside-avoid print:grid-cols-2">
+                                
+                                <div className="space-y-4 print-hidden">
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <button onClick={()=>setCalcForm({...calcForm, type: 'rectangle'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='rectangle' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Rectangle</button>
+                                      <button onClick={()=>setCalcForm({...calcForm, type: 'cylindre'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='cylindre' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Cylindre</button>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                      {calcForm.type === 'rectangle' ? (
+                                          <>
+                                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Longueur (m)</label><input type="number" value={calcForm.L} onChange={(e)=>setCalcForm({...calcForm, L: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
+                                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Largeur (m)</label><input type="number" value={calcForm.l} onChange={(e)=>setCalcForm({...calcForm, l: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
+                                          </>
+                                      ) : (
+                                          <>
+                                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Diamètre (m)</label><input type="number" value={calcForm.D} onChange={(e)=>setCalcForm({...calcForm, D: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
+                                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Hauteur (m)</label><input type="number" value={calcForm.H} onChange={(e)=>setCalcForm({...calcForm, H: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
+                                          </>
+                                      )}
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Épaisseur (µm)</label><input type="number" value={calcForm.microns} onChange={(e)=>setCalcForm({...calcForm, microns: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Rendement (m²/L)</label><input type="number" value={calcForm.rendement} onChange={(e)=>setCalcForm({...calcForm, rendement: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
+                                  </div>
+                                  <div>
+                                      <label className="text-[10px] font-black text-gray-400 uppercase flex justify-between mb-1"><span>Pertes Estimées (%)</span><span className="text-blue-500 font-bold">{calcForm.pertes}%</span></label>
+                                      <input type="range" min="0" max="100" value={calcForm.pertes} onChange={(e)=>setCalcForm({...calcForm, pertes: parseFloat(e.target.value)})} className="w-full accent-blue-500" />
+                                  </div>
+                                  <div className="flex gap-2 pt-2">
+                                      <input type="text" placeholder="Nom de l'élément (ex: Cuve A)" value={calcForm.name} onChange={(e)=>setCalcForm({...calcForm, name: e.target.value})} className="flex-1 bg-gray-50 rounded-xl p-3 font-bold outline-none text-sm border-2 border-transparent focus:border-black transition-all" />
+                                      <button onClick={addToMetre} disabled={!calcForm.name} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 disabled:opacity-50"><Plus size={16}/> Ajouter</button>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                  <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2"><Calculator size={18} className="text-blue-500 print:text-black"/> Historique des Métrés</h3>
+                                  {metreHistory.length > 0 ? (
+                                      <div className="space-y-2">
+                                          {metreHistory.map(m => (
+                                              <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm print:shadow-none print:border-gray-400">
+                                                  <div className="flex items-center gap-3">
+                                                      <div className="bg-blue-50 p-2 rounded-lg text-blue-600 print:text-black print:border"><Layers size={14}/></div>
+                                                      <div>
+                                                          <p className="font-bold text-sm text-gray-800 print:text-black">{m.name}</p>
+                                                          <p className="text-[9px] text-gray-400 print:text-gray-600 uppercase font-bold">{m.type}</p>
+                                                      </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-4">
+                                                      <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Surface</p><p className="font-black text-xs text-gray-700 print:text-black">{m.surface.toFixed(2)} m²</p></div>
+                                                      <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Peinture</p><p className="font-black text-xs text-blue-600 print:text-black">{m.paint.toFixed(1)} L</p></div>
+                                                      {showAbrasive && <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase print:text-black">Abrasif</p><p className="font-black text-xs text-orange-600 print:text-black">{m.abrasive.toFixed(2)} T</p></div>}
+                                                      <button onClick={()=>removeMetre(m.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-2 print-hidden"><Trash2 size={14}/></button>
+                                                  </div>
+                                              </div>
+                                          ))}
+                                          <div className="flex justify-between items-center bg-black text-white print:bg-gray-100 print:border print:border-black print:text-black px-5 py-4 rounded-xl shadow-lg mt-4 break-inside-avoid">
+                                              <p className="font-black uppercase text-sm">Total Estimé</p>
+                                              <div className="flex gap-6">
+                                                  <div className="text-right"><p className="text-[9px] text-gray-400 print:text-black font-bold uppercase">Surface</p><p className="font-black text-sm">{totalMetre.surface.toFixed(2)} m²</p></div>
+                                                  <div className="text-right"><p className="text-[9px] text-blue-300 print:text-black font-bold uppercase">Peinture</p><p className="font-black text-sm">{totalMetre.paint.toFixed(1)} L</p></div>
+                                                  {showAbrasive && <div className="text-right"><p className="text-[9px] text-gray-400 print:text-black font-bold uppercase">Abrasif</p><p className="font-black text-sm">{totalMetre.abrasive.toFixed(2)} T</p></div>}
                                               </div>
                                           </div>
-                                          <div className="flex items-center gap-4">
-                                              <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Surface</p><p className="font-black text-xs text-gray-700">{m.surface.toFixed(2)} m²</p></div>
-                                              <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Peinture</p><p className="font-black text-xs text-blue-600">{m.paint.toFixed(1)} L</p></div>
-                                              <button onClick={()=>removeMetre(m.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={14}/></button>
-                                          </div>
                                       </div>
-                                  ))}
-                                  <div className="flex justify-between items-center bg-black text-white px-5 py-4 rounded-xl shadow-lg mt-4">
-                                      <p className="font-black uppercase text-sm">Total Estimé</p>
-                                      <div className="flex gap-6">
-                                          <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Surface</p><p className="font-black text-sm">{totalMetre.surface.toFixed(2)} m²</p></div>
-                                          <div className="text-right"><p className="text-[9px] text-blue-300 font-bold uppercase">Peinture</p><p className="font-black text-sm">{totalMetre.paint.toFixed(1)} L</p></div>
-                                          <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Abrasif</p><p className="font-black text-sm">{totalMetre.abrasive.toFixed(2)} T</p></div>
+                                  ) : (
+                                      <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                          <p className="text-xs font-bold text-gray-400 uppercase">Aucun métré ajouté</p>
                                       </div>
-                                  </div>
-                              </div>
-                          ) : (
-                              <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                  <p className="text-xs font-bold text-gray-400 uppercase">Aucun élément dans le carnet</p>
-                              </div>
-                          )}
-                      </div>
+                                  )}
+                                </div>
+                            </div>
 
-                      {/* Conditions Climatiques */}
-                      <div className="space-y-4">
-                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><CloudRain size={18} className="text-cyan-500"/> Conditions Climatiques</h3>
-                          <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 shadow-inner space-y-4">
-                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Temp. Ambiante (°C)</span><span className="text-blue-500">{dewPointForm.T_amb}°C</span></label><input type="range" min="-10" max="50" step="0.5" value={dewPointForm.T_amb} onChange={(e)=>setDewPointForm({...dewPointForm, T_amb: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
-                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Humidité Relative (%)</span><span className="text-blue-500">{dewPointForm.RH}%</span></label><input type="range" min="0" max="100" step="1" value={dewPointForm.RH} onChange={(e)=>setDewPointForm({...dewPointForm, RH: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
-                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Temp. Acier (°C)</span><span className="text-blue-500">{dewPointForm.T_acier}°C</span></label><input type="range" min="-10" max="60" step="0.5" value={dewPointForm.T_acier} onChange={(e)=>setDewPointForm({...dewPointForm, T_acier: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
-                              
-                              <div className={`mt-6 p-4 rounded-xl border ${isPaintSafe ? 'bg-emerald-50 border-emerald-200 shadow-sm shadow-emerald-100' : 'bg-red-50 border-red-200 shadow-sm shadow-red-100'}`}>
-                                  <div className="flex justify-between items-center mb-2">
-                                      <span className="text-[10px] font-black uppercase text-gray-600">Point de rosée</span>
-                                      <span className="font-black text-lg">{dewPoint.toFixed(1)}°C</span>
-                                  </div>
-                                  <div className="flex items-start gap-3 mt-3 border-t border-gray-200/50 pt-3">
-                                      {isPaintSafe ? <CheckCircle2 size={20} className="text-emerald-500 shrink-0"/> : <AlertTriangle size={20} className="text-red-500 shrink-0"/>}
-                                      <p className={`text-[11px] font-bold leading-tight ${isPaintSafe ? 'text-emerald-700' : 'text-red-700'}`}>
-                                          {isPaintSafe ? 'Risque de condensation faible. Application autorisée (T° Acier > Point de rosée + 3°C).' : 'DANGER : Risque élevé de condensation sur le support. Application de peinture interdite !'}
-                                      </p>
+                            {/* CONDITIONS CLIMATIQUES (Optionnel) */}
+                            {showDewPoint && (
+                              <div className="space-y-4 break-inside-avoid">
+                                  <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2"><CloudRain size={18} className="text-cyan-500 print:text-black"/> Contrôle des Conditions Climatiques</h3>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:grid-cols-2">
+                                    <div className="bg-gray-50 print:bg-white print:border print:border-gray-400 p-5 rounded-2xl border border-gray-200 shadow-inner space-y-4 print-hidden">
+                                        <div><label className="text-[10px] font-black text-gray-500 uppercase flex justify-between mb-1"><span>Temp. Ambiante (°C)</span><span className="text-blue-500">{dewPointForm.T_amb}°C</span></label><input type="range" min="-10" max="50" step="0.5" value={dewPointForm.T_amb} onChange={(e)=>setDewPointForm({...dewPointForm, T_amb: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                                        <div><label className="text-[10px] font-black text-gray-500 uppercase flex justify-between mb-1"><span>Humidité Relative (%)</span><span className="text-blue-500">{dewPointForm.RH}%</span></label><input type="range" min="0" max="100" step="1" value={dewPointForm.RH} onChange={(e)=>setDewPointForm({...dewPointForm, RH: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                                        <div><label className="text-[10px] font-black text-gray-500 uppercase flex justify-between mb-1"><span>Temp. Acier (°C)</span><span className="text-blue-500">{dewPointForm.T_acier}°C</span></label><input type="range" min="-10" max="60" step="0.5" value={dewPointForm.T_acier} onChange={(e)=>setDewPointForm({...dewPointForm, T_acier: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                                    </div>
+                                    <div className={`p-6 rounded-2xl border flex flex-col justify-center ${isPaintSafe ? 'bg-emerald-50 border-emerald-200 print:border-black print:bg-white' : 'bg-red-50 border-red-200 print:border-black print:bg-white'}`}>
+                                        <div className="flex justify-between items-center mb-4 border-b border-black/10 pb-4">
+                                            <div>
+                                              <span className="text-[10px] font-black uppercase text-gray-600 block print:text-black">Relevé Terrain</span>
+                                              <span className="text-xs font-bold text-gray-500 print:text-black">Tamb: {dewPointForm.T_amb}°C | HR: {dewPointForm.RH}% | Acier: {dewPointForm.T_acier}°C</span>
+                                            </div>
+                                            <div className="text-right">
+                                              <span className="text-[10px] font-black uppercase text-gray-600 block print:text-black">Point de rosée calculé</span>
+                                              <span className="font-black text-2xl print:text-black">{dewPoint.toFixed(1)}°C</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-start gap-4">
+                                            {isPaintSafe ? <CheckCircle2 size={32} className="text-emerald-500 print:text-black shrink-0"/> : <AlertTriangle size={32} className="text-red-500 print:text-black shrink-0"/>}
+                                            <p className={`text-sm font-bold leading-tight print:text-black ${isPaintSafe ? 'text-emerald-700' : 'text-red-700'}`}>
+                                                {isPaintSafe ? '✅ CONFORME : Risque de condensation faible. Application autorisée (T° Acier > Point de rosée + 3°C).' : '❌ NON CONFORME : Risque élevé de condensation sur le support. Application de peinture interdite (Règle des +3°C non respectée) !'}
+                                            </p>
+                                        </div>
+                                    </div>
                                   </div>
                               </div>
+                            )}
+
                           </div>
-                      </div>
-                    </div>
+
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot className="hidden print:table-footer-group w-full print-footer">
+                      <tr>
+                        <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
                 </div>
               )}
 
@@ -709,7 +816,7 @@ export default function Rapports() {
                             <div className="text-right text-xs font-medium bg-gray-50 print:bg-transparent p-3 rounded-lg border border-gray-200 print:border-black">
                               <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
                               <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none print:text-black" />
-                              <p className="mt-2 font-black text-black text-[11px] bg-yellow-300 print:bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
+                              <p className="mt-2 font-black text-black text-[11px] bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
                             </div>
                           </div>
                         </td>
@@ -721,7 +828,7 @@ export default function Rapports() {
                           <div className="grid grid-cols-1 gap-6 w-full">
                             
                             <div className="break-inside-avoid w-full">
-                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
+                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -731,14 +838,14 @@ export default function Rapports() {
                                 <tbody>
                                   {filteredTaches.length > 0 ? filteredTaches.map((t: any) => (
                                     <React.Fragment key={t.id || Math.random()}>
-                                      <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
+                                      <tr className="border-b border-gray-300 bg-gray-100">
                                         <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.responsable ? t.responsable : <div className="w-20 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.effectif ? t.effectif : <div className="w-8 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                       {t.subtasks && t.subtasks.map((st: any) => (
                                         <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
@@ -748,7 +855,7 @@ export default function Rapports() {
                                           <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
-                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
+                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-black"/></td>
                                         </tr>
                                       ))}
                                     </React.Fragment>
@@ -757,8 +864,8 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="break-inside-avoid w-full">
-                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
+                            <div className="break-inside-avoid">
+                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -769,11 +876,11 @@ export default function Rapports() {
                                   {fournitures.length > 0 ? fournitures.map(f => {
                                     const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
                                     return (
-                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
-                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
+                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-white' : ''}`}>
+                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-black" />} {f.nom}</td>
                                         <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                     );
                                   }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
@@ -781,9 +888,9 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid w-full">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300">
@@ -794,15 +901,15 @@ export default function Rapports() {
                                     {materiels.length > 0 ? materiels.map(m => (
                                       <tr key={m.id} className="border-b border-gray-200">
                                         <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                     )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
                                   </tbody>
                                 </table>
                               </div>
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300"><th className="py-2 px-1 w-[50%]">Machine</th><th className="py-2 px-1 text-center w-[25%]">Fin prévue</th><th className="py-2 px-1 text-center w-[25%]">Retour OK</th></tr>
@@ -812,8 +919,8 @@ export default function Rapports() {
                                       const crit = isExpiringSoon(l.date_fin);
                                       return (
                                         <tr key={l.id} className="border-b border-gray-200">
-                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
-                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'font-bold text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                         </tr>
                                       );
                                     }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
@@ -822,20 +929,20 @@ export default function Rapports() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4 w-full">
-                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
+                              <div className="border print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
                                 <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
-                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
+                              <div className="border print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
                                 <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid w-full">
+                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
-                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed border-gray-300 print:border-gray-500 rounded-lg"></div></div>
+                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed print:border-gray-500 rounded-lg"></div></div>
                               <div className="text-right">
                                 <p className="uppercase mb-6">Validation :</p>
                                 <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
@@ -846,7 +953,7 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group w-full print-footer">
+                    <tfoot className="print:table-footer-group print-footer">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
                           Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
@@ -854,7 +961,6 @@ export default function Rapports() {
                       </tr>
                     </tfoot>
                   </table>
-
                 </div>
               )}
             </div>
