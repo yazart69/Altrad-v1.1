@@ -158,7 +158,6 @@ export default function Rapports() {
   // 2. Fetch de la liste simple (ID + Nom)
   async function fetchChantiersList() {
     try {
-      // Correction : Suppression du filtre 'statut' qui causait probablement une erreur 400
       const { data, error } = await supabase
         .from('chantiers')
         .select('id, nom')
@@ -190,16 +189,57 @@ export default function Rapports() {
         if (error) throw error;
         setChantierDetails(data);
 
-        // Fetch des données réelles connectées (tolérance d'erreur si tables manquantes)
-        const fetchSafe = async (table: string) => {
-          const { data } = await supabase.from(table).select('*').eq('chantier_id', selectedChantier);
-          return data || [];
-        };
+        // --- FETCH FOURNITURES (table: chantier_fournitures) ---
+        const { data: fData } = await supabase.from('chantier_fournitures').select('*').eq('chantier_id', selectedChantier);
+        const formatFournitures = (fData || []).map((f: any) => ({
+          ...f,
+          quantite_prevue: f.qte_prevue,
+          quantite_dispo: f.qte_restante
+        }));
+        setFournitures(formatFournitures);
 
-        setMateriels(await fetchSafe('materiels'));
-        setFournitures(await fetchSafe('fournitures'));
-        setLocations(await fetchSafe('locations'));
-        setTaches(await fetchSafe('taches'));
+        // --- FETCH MATÉRIELS ET LOCATIONS (tables: chantier_materiel + materiel) ---
+        const { data: cmData } = await supabase.from('chantier_materiel').select('*').eq('chantier_id', selectedChantier);
+        
+        if (cmData && cmData.length > 0) {
+          const matIds = cmData.map((cm: any) => cm.materiel_id).filter(Boolean);
+          let mData: any[] = [];
+          
+          if (matIds.length > 0) {
+            const { data: matData } = await supabase.from('materiel').select('*').in('id', matIds);
+            mData = matData || [];
+          }
+
+          const merged = cmData.map((cm: any) => {
+            const mat = mData.find((m: any) => m.id === cm.materiel_id) || {};
+            return {
+              id: cm.id,
+              nom: mat.nom || 'Matériel inconnu',
+              etat: mat.etat || 'Opérationnel',
+              date_fin: cm.date_fin,
+              type_stock: mat.type_stock || 'Interne'
+            };
+          });
+
+          setMateriels(merged.filter((m: any) => m.type_stock !== 'Externe'));
+          setLocations(merged.filter((m: any) => m.type_stock === 'Externe'));
+        } else {
+          setMateriels([]);
+          setLocations([]);
+        }
+
+        // --- FETCH TÂCHES (colonne 'tasks' de chantiers ou table 'taches') ---
+        let parsedTasks: any[] = [];
+        if (data && data.tasks) {
+          try {
+            parsedTasks = typeof data.tasks === 'string' ? JSON.parse(data.tasks) : data.tasks;
+          } catch(e) {}
+        }
+        if (!parsedTasks || parsedTasks.length === 0) {
+          const { data: tData } = await supabase.from('taches').select('*').eq('chantier_id', selectedChantier);
+          parsedTasks = tData || [];
+        }
+        setTaches(parsedTasks);
 
       } catch (e) {
         console.error("Erreur détails chantier:", e);
@@ -560,8 +600,8 @@ export default function Rapports() {
                             </thead>
                             <tbody>
                               {taches.length > 0 ? taches.map(t => (
-                                <tr key={t.id} className="border-b border-gray-200">
-                                  <td className="py-2 px-1 font-bold">{t.nom}</td>
+                                <tr key={t.id || Math.random()} className="border-b border-gray-200">
+                                  <td className="py-2 px-1 font-bold">{t.nom || t.tache || t.name || '-'}</td>
                                   <td className="py-2 px-1">{t.responsable || '-'}</td>
                                   <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                 </tr>
