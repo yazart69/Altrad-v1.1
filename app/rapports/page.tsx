@@ -78,7 +78,7 @@ export default function Rapports() {
 
   useEffect(() => {
     async function getDetails() {
-      if (!selectedChantier) return setChantierDetails(null) || setMateriels([]) || setFournitures([]) || setLocations([]) || setTaches([]);
+      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); return; }
       try {
         const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
         setChantierDetails(data);
@@ -220,7 +220,7 @@ export default function Rapports() {
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
                       <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black">
-                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 portrait</option><option value="A3 landscape">A3 Paysage</option>
                       </select>
                     </div>
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
