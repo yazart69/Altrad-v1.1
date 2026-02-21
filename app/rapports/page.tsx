@@ -158,11 +158,10 @@ export default function Rapports() {
   // 2. Fetch de la liste simple (ID + Nom)
   async function fetchChantiersList() {
     try {
-      // On récupère uniquement les chantiers actifs
+      // Correction : Suppression du filtre 'statut' qui causait probablement une erreur 400
       const { data, error } = await supabase
         .from('chantiers')
         .select('id, nom')
-        .eq('statut', 'actif') // Filtre optionnel selon ta structure
         .order('nom', { ascending: true });
       
       if (error) throw error;
