@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock } from 'lucide-react';
+import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
@@ -56,6 +56,12 @@ export default function Rapports() {
   const [calculs, setCalculs] = useState<any[]>([]);
   const [activeNote, setActiveNote] = useState("");
   const [noteCategory, setNoteCategory] = useState("Technique");
+  
+  // Nouveaux states pour l'onglet Notes
+  const [noteSeverity, setNoteSeverity] = useState("Info");
+  const [noteWeather, setNoteWeather] = useState<string[]>([]);
+  const [notePhoto, setNotePhoto] = useState<string | null>(null);
+
   const [calcForm, setCalcForm] = useState({ L: 10, l: 5, microns: 200, rendement: 5, degree: 'Sa2.5' });
   const [materiels, setMateriels] = useState<any[]>([]);
   const [fournitures, setFournitures] = useState<any[]>([]);
@@ -106,10 +112,34 @@ export default function Rapports() {
     getDetails();
   }, [selectedChantier]);
 
+  const toggleWeather = (w: string) => {
+    if (noteWeather.includes(w)) setNoteWeather(noteWeather.filter(item => item !== w));
+    else setNoteWeather([...noteWeather, w]);
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const url = URL.createObjectURL(e.target.files[0]);
+      setNotePhoto(url);
+    }
+  };
+
   const addNote = () => {
-    if (!activeNote) return;
-    setNotes([{ id: Date.now(), category: noteCategory, text: activeNote, type: 'observation', timestamp: new Date().toISOString() }, ...notes]);
+    if (!activeNote && !notePhoto) return;
+    setNotes([{ 
+        id: Date.now(), 
+        category: noteCategory, 
+        severity: noteSeverity,
+        weather: noteWeather,
+        text: activeNote, 
+        photo: notePhoto,
+        type: 'observation', 
+        timestamp: new Date().toISOString() 
+    }, ...notes]);
     setActiveNote("");
+    setNoteSeverity("Info");
+    setNoteWeather([]);
+    setNotePhoto(null);
   };
 
   const saveReport = async () => {
@@ -186,22 +216,64 @@ export default function Rapports() {
 
               {meetingTab === 'notes' && (
                 <div className="flex-1 flex flex-col animate-in fade-in print-hidden">
-                  <div className="flex gap-4 mb-8">
-                    <div className="flex-1 relative">
-                      <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Prendre une note..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-gray-50 border-2 border-transparent focus:border-black rounded-2xl p-4 font-medium text-gray-700 outline-none transition-all h-32 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
-                      <div className="absolute bottom-3 right-3 flex gap-2">
-                        <select value={noteCategory} onChange={(e) => setNoteCategory(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-[10px] font-black uppercase text-gray-500 outline-none"><option>Technique</option><option>Planning</option><option>Budget</option><option>Sécurité</option></select>
-                        <button onClick={addNote} disabled={!selectedChantier} className="bg-black text-white p-2 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50"><Plus size={20} /></button>
-                      </div>
+                  <div className="flex flex-col gap-4 mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <select value={noteCategory} onChange={(e) => setNoteCategory(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase text-gray-600 outline-none">
+                                <option>Technique</option><option>Planning</option><option>Budget</option><option>Sécurité</option><option>Matériel</option>
+                            </select>
+                            <select value={noteSeverity} onChange={(e) => setNoteSeverity(e.target.value)} className={`border rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none ${noteSeverity === 'BLOQUANT' ? 'bg-red-50 border-red-200 text-red-600' : noteSeverity === 'À surveiller' ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                <option>Info</option><option>À surveiller</option><option>BLOQUANT</option>
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200">
+                            <button onClick={()=>toggleWeather('Pluie')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Pluie') ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-50'}`}><CloudRain size={14}/></button>
+                            <button onClick={()=>toggleWeather('Vent')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Vent') ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:bg-gray-50'}`}><Wind size={14}/></button>
+                            <button onClick={()=>toggleWeather('Gel')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Gel') ? 'bg-cyan-100 text-cyan-600' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSnowflake size={14}/></button>
+                            <button onClick={()=>toggleWeather('Canicule')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Canicule') ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSun size={14}/></button>
+                        </div>
+                    </div>
+                    
+                    <div className="relative">
+                      <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Constat terrain, alerte ou observation..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-4 font-medium text-gray-700 outline-none transition-all h-24 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <label className="cursor-pointer bg-white border border-gray-200 p-2 rounded-lg text-gray-500 hover:text-black hover:border-gray-400 transition-all flex items-center gap-2 text-[10px] font-bold uppercase">
+                                <Camera size={14} /> {notePhoto ? 'Photo ajoutée' : 'Ajouter Photo'}
+                                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                            </label>
+                            {notePhoto && <img src={notePhoto} alt="preview" className="h-8 w-8 object-cover rounded-md border border-gray-200" />}
+                        </div>
+                        <button onClick={addNote} disabled={!selectedChantier || (!activeNote && !notePhoto)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"><Plus size={16} /> Créer Note</button>
                     </div>
                   </div>
+
                   <div className="space-y-4">
                     {notes.map((n) => (
-                      <div key={n.id} className="group bg-white border border-gray-100 p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4">
-                        <div className={`w-1 h-10 rounded-full ${n.category === 'Sécurité' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                      <div key={n.id} className={`group bg-white border p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/30' : 'border-gray-100'}`}>
+                        <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
                         <div className="flex-1">
-                          <div className="flex justify-between items-center mb-1"><span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{n.category}</span><span className="text-[9px] font-bold text-gray-300">{new Date(n.timestamp).toLocaleTimeString()}</span></div>
-                          <p className="text-gray-700 font-medium leading-relaxed">{n.text}</p>
+                          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                    {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                    {n.severity}
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
+                                {n.weather && n.weather.length > 0 && (
+                                    <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
+                                )}
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
+                          </div>
+                          <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
+                          {n.photo && (
+                              <div className="mt-3">
+                                  <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover" />
+                              </div>
+                          )}
                         </div>
                         <button onClick={() => setNotes(notes.filter(item => item.id !== n.id))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
                       </div>
