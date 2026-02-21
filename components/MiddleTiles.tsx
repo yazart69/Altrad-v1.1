@@ -120,7 +120,7 @@ export default function MiddleTiles({ alertsCount = 0 }: MiddleTilesProps) {
                   {/* Durée Restante */}
                   {loc.date_fin && (
                       <span className="text-[8px] font-bold opacity-90 flex items-center gap-1 bg-black/20 px-1.5 rounded">
-                          <Clock size={8}/> {formatDuration(loc.date_debut, loc.date_fin)}
+                        <Clock size={8}/> {formatDuration(loc.date_debut, loc.date_fin)}
                       </span>
                   )}
                 </div>
@@ -131,8 +131,8 @@ export default function MiddleTiles({ alertsCount = 0 }: MiddleTilesProps) {
         </div>
       </Link>
 
-      {/* TUILE 3 : CONFORMITÉ (Inchangée) */}
-      <Link href="/hse" className="block h-full">
+      {/* TUILE 3 : CONFORMITÉ (Lien corrigé vers /chantier) */}
+      <Link href="/chantier" className="block h-full">
         <div className={`rounded-[25px] p-5 text-white flex flex-col transition-all duration-500 shadow-lg border border-white/10 h-full hover:scale-[1.02] group relative overflow-hidden ${totalConformite > 0 ? 'bg-[#d63031]' : 'bg-gray-800'}`}>
           <div className="flex justify-between items-start mb-4 z-10">
             <div>
