@@ -109,10 +109,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🧱 GRILLE FLATTENED ADAPTATIVE
-        Mobile : Flex-col avec gestion d'ordre (order-x) pour afficher l'urgence en haut
-        Desktop (xl) : CSS Grid 12 colonnes avec placement ultra précis 
-      */}
+      {/* 🧱 GRILLE FLATTENED ADAPTATIVE */}
       <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6 xl:auto-rows-min">
 
         {/* 1. ALERTES LOGISTIQUES & CHANTIERS (Priorité 1 Mobile) */}
@@ -120,8 +117,8 @@ export default function Home() {
           <MiddleTiles alertsCount={stats.alerts} /> 
         </div>
 
-        {/* 2. TÂCHES PRIORITAIRES (Priorité 2 Mobile) */}
-        <div className="order-2 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-2 min-h-[400px] xl:min-h-full tile-print"> 
+        {/* 2. TÂCHES PRIORITAIRES (Passé en GRAND au centre) */}
+        <div className="order-2 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-2 min-h-[350px] tile-print"> 
           <TasksTile />
         </div>
 
@@ -135,8 +132,8 @@ export default function Home() {
           <HSETile />
         </div>
 
-        {/* 5. BUDGET HEURES (Priorité 5 Mobile) */}
-        <div className="order-5 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-2 min-h-[350px] tile-print">
+        {/* 5. BUDGET HEURES / CHANTIERS EN COURS (Passé sur la LONGUEUR à droite) */}
+        <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-2 min-h-[400px] xl:min-h-full tile-print">
           <BudgetHeuresTile />
         </div>
 
