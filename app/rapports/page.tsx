@@ -101,11 +101,15 @@ const SketchTool = forwardRef(({ type, dims }: { type: string, dims: any }, ref)
           rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 3 });
           rc.ellipse(x, y + h, w, ellipseH, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 3, fill: 'rgba(9, 132, 227, 0.05)' });
           
-          ctx.font = 'bold 24px sans-serif'; ctx.fillStyle = '#0984e3'; ctx.textAlign = 'center';
-          ctx.fillText(`Ø${dims.D}m`, x, y - ellipseH/2 - 20);
+          const tD = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          tD.setAttribute("x", x.toString()); tD.setAttribute("y", (y - ellipseH/2 - 20).toString()); 
+          tD.setAttribute("fill", "#0984e3"); tD.setAttribute("font-size", "24"); tD.setAttribute("text-anchor", "middle"); tD.setAttribute("font-weight", "bold");
+          tD.textContent = `Ø${dims.D}m`; node.appendChild(tD);
           
-          ctx.fillStyle = '#d63031'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-          ctx.fillText(`${dims.H}m`, x + w/2 + 30, y + h / 2);
+          const tH = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          tH.setAttribute("x", (x + w/2 + 30).toString()); tH.setAttribute("y", (y + h / 2).toString()); 
+          tH.setAttribute("fill", "#d63031"); tH.setAttribute("font-size", "24"); tH.setAttribute("alignment-baseline", "middle"); tH.setAttribute("font-weight", "bold");
+          tH.textContent = `${dims.H}m`; node.appendChild(tH);
         }
       } catch (e) {}
     };
@@ -234,7 +238,6 @@ export default function Rapports() {
   const [noteSeverity, setNoteSeverity] = useState("Info");
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
-
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
@@ -873,8 +876,7 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
-                  
+                <div className="flex-1 animate-in fade-in relative w-full">
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
@@ -885,7 +887,7 @@ export default function Rapports() {
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
                   
-                  <table className="hidden print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document">
+                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document">
                     <thead className="print:table-header-group w-full">
                       <tr>
                         <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
@@ -949,7 +951,7 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="break-inside-avoid">
+                            <div className="break-inside-avoid w-full">
                               <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
