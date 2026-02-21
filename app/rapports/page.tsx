@@ -199,6 +199,7 @@ const SketchTool = forwardRef(({ type, dims }: { type: string, dims: any }, ref)
       <canvas ref={canvasBaseRef} width={1000} height={500} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
       <canvas ref={canvasDrawRef} width={1000} height={500} className={`absolute inset-0 w-full h-full touch-none z-10 ${tool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerOut={handlePointerUp} />
       
+      {/* Barre d'outils flottante */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur px-4 py-2 rounded-2xl shadow-xl border border-gray-200 z-20 transition-all opacity-20 hover:opacity-100 print-hidden">
         <div className="flex gap-1 border-r border-gray-200 pr-3 mr-1">
             <button onClick={()=>setTool('pencil')} className={`p-1.5 rounded-lg transition-all ${tool === 'pencil' ? 'bg-black text-white' : 'text-gray-400 hover:text-black hover:bg-gray-100'}`}><Pencil size={16}/></button>
@@ -369,7 +370,6 @@ export default function Rapports() {
       }));
   };
 
-  // ARCHITECTURE LOCAL FIRST + SUPABASE STORAGE SYNC
   const syncPendingReports = async () => {
     if (!isOnline) return alert("Vous êtes hors-ligne. Impossible de synchroniser.");
     setIsSyncing(true);
@@ -378,7 +378,6 @@ export default function Rapports() {
       if (pending.length === 0) { setIsSyncing(false); return; }
 
       for (const report of pending) {
-        // 1. Upload Base64 Photos -> Supabase Storage
         const updatedNotes = await Promise.all((report.notes || []).map(async (n: any) => {
           if (n.photo && n.photo.startsWith('data:image')) {
             const res = await fetch(n.photo);
@@ -393,7 +392,6 @@ export default function Rapports() {
           return n;
         }));
 
-        // 2. Upload Base64 Sketches -> Supabase Storage
         const updatedCalculs = await Promise.all((report.calculs || []).map(async (m: any) => {
           if (m.image && m.image.startsWith('data:image')) {
             const res = await fetch(m.image);
@@ -408,7 +406,6 @@ export default function Rapports() {
           return m;
         }));
 
-        // 3. Insert Final Report to Supabase
         const payload = {
           chantier_id: report.chantier_id,
           date: report.date,
@@ -424,7 +421,7 @@ export default function Rapports() {
       
       alert("Synchronisation Cloud terminée avec succès !");
       await updatePendingCount();
-      getDetails(); // Refresh view
+      getDetails();
     } catch (e: any) {
       alert("Erreur lors de la synchronisation : " + e.message);
     }
@@ -445,13 +442,11 @@ export default function Rapports() {
         metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }
     };
     
-    // On sauvegarde toujours en LOCAL en priorité
     if (db) {
         await db.reports.add({ ...report, is_synced: false });
         await updatePendingCount();
     }
     
-    // On met à jour l'UI locale pour que l'utilisateur voit son ajout instantanément (même hors-ligne)
     const localNotes = notes.map(n => ({...n, reunion_id: 'local'}));
     setSavedNotes([...localNotes, ...savedNotes]);
     setNotes([]);
@@ -460,7 +455,6 @@ export default function Rapports() {
     setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
 
     if (isOnline) {
-      // Maj des actions pré-existantes modifiées
       const modifiedActions = actionsList.filter(a => a.isModified && a.reunion_id);
       for(const modAction of modifiedActions) {
           const { data: rData } = await supabase.from('reunions').select('actions').eq('id', modAction.reunion_id).single();
@@ -469,7 +463,7 @@ export default function Rapports() {
               await supabase.from('reunions').update({ actions: updatedArray }).eq('id', modAction.reunion_id);
           }
       }
-      syncPendingReports(); // Lancement de la synchro des nouveaux éléments
+      syncPendingReports();
     } else {
       alert("Rapport enregistré localement. Il sera envoyé automatiquement au retour de la connexion.");
     }
@@ -525,6 +519,21 @@ export default function Rapports() {
       surface: acc.surface + curr.surface, paint: acc.paint + curr.paint, abrasive: acc.abrasive + curr.abrasive
   }), { surface: 0, paint: 0, abrasive: 0 });
 
+  const addToMetre = () => {
+      const imgData = sketchRef.current?.exportImage();
+      setMetreHistory([...metreHistory, { 
+          id: Date.now(), 
+          name: calcForm.name || `Calcul ${metreHistory.length + 1}`, 
+          type: calcForm.type, 
+          surface: surfaceCalculated, 
+          paint: paintNeeded, 
+          abrasive: showAbrasive ? sandNeeded : 0,
+          image: imgData
+      }]);
+      setCalcForm({...calcForm, name: ''});
+      sketchRef.current?.clearStrokes();
+  };
+  const removeMetre = (id: number) => setMetreHistory(metreHistory.filter(m => m.id !== id));
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
   const { filteredTaches, periodStr } = useMemo(() => {
@@ -601,17 +610,20 @@ export default function Rapports() {
         <div className="w-full">
           <div className="w-full space-y-6">
             <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab !== 'notes' && meetingTab !== 'actions' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:bg-transparent' : ''}`}>
+              
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
                 </div>
               )}
+              
               <div className="flex items-center gap-2 mb-8 bg-gray-50 p-2 rounded-2xl self-start print-hidden">
                 {['notes', 'calculs', 'actions', 'recap_hebdo'].map((t: any) => (
                   <button key={t} onClick={() => setMeetingTab(t)} className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${meetingTab === t ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>{t === 'recap_hebdo' ? 'Récap Hebdo' : t}</button>
                 ))}
               </div>
 
+              {/* ======================= ONGLET ACTIONS ======================= */}
               {meetingTab === 'actions' && (
                 <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
                   <div className="print-hidden w-full mb-8">
@@ -668,7 +680,6 @@ export default function Rapports() {
                     </div>
                   )}
 
-                  {/* VUE IMPRESSION DES ACTIONS */}
                   <table className="hidden print:table print-document">
                     <thead className="print:table-header-group">
                       <tr>
@@ -743,6 +754,7 @@ export default function Rapports() {
                 </div>
               )}
 
+              {/* ======================= ONGLET NOTES ======================= */}
               {meetingTab === 'notes' && (
                 <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
                   <div className="print-hidden w-full">
@@ -822,7 +834,7 @@ export default function Rapports() {
                                 <button onClick={toggleSelectAllPrint} className="text-xs font-bold text-gray-500 hover:text-black transition-colors">{selectedPrintNotes.length === savedNotes.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
                                 <div className="flex items-center gap-2">
                                   <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
-                                    <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 portrait</option><option value="A3 landscape">A3 Paysage</option>
+                                    <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option>
                                   </select>
                                   <button onClick={() => { if(selectedPrintNotes.length===0) alert("Sélectionnez au moins une note."); else window.print(); }} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer ({selectedPrintNotes.length})</button>
                                 </div>
@@ -943,6 +955,7 @@ export default function Rapports() {
                 </div>
               )}
 
+              {/* ======================= ONGLET CALCULS ======================= */}
               {meetingTab === 'calculs' && (
                 <div className="flex-1 animate-in fade-in relative w-full">
                   
@@ -954,7 +967,7 @@ export default function Rapports() {
                     </div>
                     <div className="flex items-center gap-2">
                       <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
-                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option>
                       </select>
                       <button onClick={() => window.print()} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer Métré</button>
                     </div>
@@ -1119,6 +1132,7 @@ export default function Rapports() {
                 </div>
               )}
 
+              {/* ======================= ONGLET RECAP HEBDO ======================= */}
               {meetingTab === 'recap_hebdo' && (
                 <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
                   
@@ -1126,7 +1140,7 @@ export default function Rapports() {
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
                       <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black">
-                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option>
                       </select>
                     </div>
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
@@ -1295,6 +1309,7 @@ export default function Rapports() {
                   </table>
                 </div>
               )}
+
             </div>
           </div>
         </div>
