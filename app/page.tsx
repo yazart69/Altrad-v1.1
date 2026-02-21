@@ -109,47 +109,51 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🧱 GRILLE FLATTENED ADAPTATIVE */}
+      {/* 🧱 GRILLE FLATTENED ADAPTATIVE SANS TROUS */}
       <div className="flex flex-col xl:grid xl:grid-cols-12 gap-6 xl:auto-rows-min">
 
-        {/* 1. ALERTES LOGISTIQUES & CHANTIERS (Ajout de h-fit pour éviter l'étirement) */}
-        <div className="order-1 xl:order-none xl:col-span-5 xl:col-start-5 xl:row-start-1 min-h-[280px] h-fit tile-print">
-          <MiddleTiles alertsCount={stats.alerts} /> 
-        </div>
-
-        {/* 2. TÂCHES PRIORITAIRES */}
-        <div className="order-2 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-2 min-h-[350px] tile-print"> 
-          <TasksTile />
-        </div>
-
-        {/* 3. STAFFING DU JOUR */}
-        <div className="order-3 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-3 min-h-[300px] h-fit tile-print">
-          <StaffingTile staffCount={stats.staff} />
-        </div>
-
-        {/* 4. HSE & SÉCURITÉ */}
-        <div className="order-4 xl:order-none xl:col-span-6 xl:col-start-7 xl:row-start-3 min-h-[300px] h-fit tile-print">
-          <HSETile />
-        </div>
-
-        {/* 5. BUDGET HEURES / CHANTIERS EN COURS */}
-        <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-2 min-h-[400px] xl:min-h-full tile-print">
-          <BudgetHeuresTile />
-        </div>
-
-        {/* 6. CONGÉS */}
+        {/* LIGNE 1 */}
+        {/* CONGÉS */}
         <div className="order-6 xl:order-none xl:col-span-4 xl:col-start-1 xl:row-start-1 min-h-[280px] h-fit tile-print">
           <LeavesTile />
         </div>
 
-        {/* 7. POINTAGE & ÉQUIPE COMPACTE */}
-        <div className="order-7 xl:order-none xl:col-span-2 xl:col-start-5 xl:row-start-3 flex flex-col gap-4 min-h-[300px] h-fit tile-print">
+        {/* ALERTES LOGISTIQUES & MATÉRIEL */}
+        <div className="order-1 xl:order-none xl:col-span-5 xl:col-start-5 xl:row-start-1 min-h-[280px] h-fit tile-print">
+          <MiddleTiles alertsCount={stats.alerts} /> 
+        </div>
+
+        {/* LIGNE 2 (Comble le trou blanc) */}
+        {/* STAFFING DU JOUR */}
+        <div className="order-3 xl:order-none xl:col-span-3 xl:col-start-1 xl:row-start-2 min-h-[300px] h-fit tile-print">
+          <StaffingTile staffCount={stats.staff} />
+        </div>
+
+        {/* POINTAGE & ÉQUIPE COMPACTE */}
+        <div className="order-7 xl:order-none xl:col-span-2 xl:col-start-4 xl:row-start-2 flex flex-col gap-4 min-h-[300px] h-fit tile-print">
           <div className="flex-1 min-h-[140px]">
               <TeamTile isCompact={true} />
           </div>
           <div className="flex-1 min-h-[140px]">
               <PointageTile />
           </div>
+        </div>
+
+        {/* HSE & SÉCURITÉ */}
+        <div className="order-4 xl:order-none xl:col-span-4 xl:col-start-6 xl:row-start-2 min-h-[300px] h-fit tile-print">
+          <HSETile />
+        </div>
+
+        {/* LIGNE 3 */}
+        {/* TÂCHES PRIORITAIRES (En bas à gauche, s'étire sur toute la largeur de gauche) */}
+        <div className="order-2 xl:order-none xl:col-span-9 xl:col-start-1 xl:row-start-3 min-h-[350px] tile-print"> 
+          <TasksTile />
+        </div>
+
+        {/* COLONNE DROITE (S'étire sur toute la hauteur) */}
+        {/* BUDGET HEURES / CHANTIERS EN COURS */}
+        <div className="order-5 xl:order-none xl:col-span-3 xl:col-start-10 xl:row-start-1 xl:row-span-3 min-h-[400px] xl:max-h-[1200px] tile-print">
+          <BudgetHeuresTile />
         </div>
 
       </div>
