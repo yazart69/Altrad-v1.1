@@ -244,7 +244,10 @@ export default function Rapports() {
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  
+  // États de sélection groupée
   const [selectedPrintNotes, setSelectedPrintNotes] = useState<number[]>([]);
+  const [selectedActions, setSelectedActions] = useState<number[]>([]);
 
   const [showAbrasive, setShowAbrasive] = useState(true);
   const [showDewPoint, setShowDewPoint] = useState(true);
@@ -286,7 +289,7 @@ export default function Rapports() {
   }, []);
 
   const getDetails = async () => {
-    if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); setActionsList([]); return; }
+    if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); setActionsList([]); setSelectedActions([]); return; }
     try {
       const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
       setChantierDetails(data);
@@ -314,7 +317,6 @@ export default function Rapports() {
       if (rData) {
         const allSaved = rData.flatMap((r: any) => (r.notes || []).map((n: any) => ({ ...n, reunion_id: r.id })));
         setSavedNotes(allSaved);
-        
         const allActions = rData.flatMap((r: any) => (r.actions || []).map((a: any) => ({ ...a, reunion_id: r.id })));
         setActionsList(allActions);
       } else {
@@ -357,6 +359,7 @@ export default function Rapports() {
 
   const removeAction = (id: number) => {
       setActionsList(actionsList.filter(a => a.id !== id));
+      setSelectedActions(selectedActions.filter(aid => aid !== id));
   };
 
   const toggleActionStatus = (id: number) => {
@@ -391,6 +394,72 @@ export default function Rapports() {
 
   const removeMetre = (id: number) => {
     setMetreHistory(metreHistory.filter(m => m.id !== id));
+  };
+
+  // Logique de suppression groupée Notes
+  const handleBulkDeleteNotes = async () => {
+    if (selectedPrintNotes.length === 0) return;
+    if (!window.confirm(`Supprimer les ${selectedPrintNotes.length} notes sélectionnées ?`)) return;
+
+    try {
+        const notesToProcess = savedNotes.filter(n => selectedPrintNotes.includes(n.id));
+        const reunionGroups = notesToProcess.reduce((acc: any, n) => {
+            if (!n.reunion_id || n.reunion_id === 'local') return acc;
+            if (!acc[n.reunion_id]) acc[n.reunion_id] = [];
+            acc[n.reunion_id].push(n.id);
+            return acc;
+        }, {});
+
+        for (const rId in reunionGroups) {
+            const { data } = await supabase.from('reunions').select('notes').eq('id', rId).single();
+            if (data?.notes) {
+                const updatedNotes = data.notes.filter((n: any) => !reunionGroups[rId].includes(n.id));
+                await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', rId);
+            }
+        }
+
+        setSavedNotes(savedNotes.filter(n => !selectedPrintNotes.includes(n.id)));
+        setSelectedPrintNotes([]);
+        alert("Suppression réussie.");
+    } catch (e) { alert("Erreur lors de la suppression groupée."); }
+  };
+
+  // Logique de suppression groupée Actions
+  const handleBulkDeleteActions = async () => {
+    if (selectedActions.length === 0) return;
+    if (!window.confirm(`Supprimer les ${selectedActions.length} actions sélectionnées ?`)) return;
+
+    try {
+        const actionsToProcess = actionsList.filter(a => selectedActions.includes(a.id));
+        const reunionGroups = actionsToProcess.reduce((acc: any, a) => {
+            if (!a.reunion_id) return acc;
+            if (!acc[a.reunion_id]) acc[a.reunion_id] = [];
+            acc[a.reunion_id].push(a.id);
+            return acc;
+        }, {});
+
+        for (const rId in reunionGroups) {
+            const { data } = await supabase.from('reunions').select('actions').eq('id', rId).single();
+            if (data?.actions) {
+                const updatedActions = data.actions.filter((a: any) => !reunionGroups[rId].includes(a.id));
+                await supabase.from('reunions').update({ actions: updatedActions }).eq('id', rId);
+            }
+        }
+
+        setActionsList(actionsList.filter(a => !selectedActions.includes(a.id)));
+        setSelectedActions([]);
+        alert("Actions supprimées.");
+    } catch (e) { alert("Erreur lors de la suppression groupée des actions."); }
+  };
+
+  const toggleSelectAction = (id: number) => {
+    if (selectedActions.includes(id)) setSelectedActions(selectedActions.filter(aid => aid !== id));
+    else setSelectedActions([...selectedActions, id]);
+  };
+
+  const toggleSelectAllActions = () => {
+    if (selectedActions.length === actionsList.length) setSelectedActions([]);
+    else setSelectedActions(actionsList.map(a => a.id));
   };
 
   const syncPendingReports = async () => {
@@ -453,9 +522,7 @@ export default function Rapports() {
 
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
-    
     const newActions = actionsList.filter(a => a.isNew).map(({ isNew, isModified, ...rest }) => rest);
-    
     const report = { 
         chantier_id: selectedChantier, 
         date: new Date().toISOString(), 
@@ -464,19 +531,16 @@ export default function Rapports() {
         actions: newActions,
         metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }
     };
-    
     if (db) {
         await db.reports.add({ ...report, is_synced: false });
         await updatePendingCount();
     }
-    
     const localNotes = notes.map(n => ({...n, reunion_id: 'local'}));
     setSavedNotes([...localNotes, ...savedNotes]);
     setNotes([]);
     setMetreHistory([]);
     setCalcForm({...calcForm, name: ''});
     setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
-
     if (isOnline) {
       const modifiedActions = actionsList.filter(a => a.isModified && a.reunion_id);
       for(const modAction of modifiedActions) {
@@ -488,37 +552,35 @@ export default function Rapports() {
       }
       syncPendingReports();
     } else {
-      alert("Rapport enregistré localement. Il sera envoyé automatiquement au retour de la connexion.");
+      alert("Rapport enregistré localement.");
     }
   };
 
   const handleUpdateNote = async (reunionId: string, noteId: number) => {
-    if (!reunionId || reunionId === 'local') return alert("Impossible de modifier une note en attente de synchronisation.");
+    if (!reunionId || reunionId === 'local') return alert("Impossible de modifier une note locale.");
     try {
         const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
-        if (data && data.notes) {
+        if (data?.notes) {
             const updatedNotes = data.notes.map((n: any) => n.id === noteId ? { ...n, text: editNoteText } : n);
-            const { error } = await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
-            if (error) throw error;
+            await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
             setSavedNotes(savedNotes.map(n => n.id === noteId ? { ...n, text: editNoteText } : n));
         }
-    } catch (e) { alert("Erreur lors de la mise à jour de la note."); }
+    } catch (e) { alert("Erreur de mise à jour."); }
     setEditingNoteId(null);
   };
 
   const handleDeleteNote = async (reunionId: string, noteId: number) => {
-    if (!reunionId || reunionId === 'local') return alert("Impossible de supprimer une note en attente de synchronisation.");
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette note ?")) return;
+    if (!reunionId || reunionId === 'local') return alert("Impossible de supprimer une note locale.");
+    if (!window.confirm("Supprimer cette note ?")) return;
     try {
         const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
-        if (data && data.notes) {
+        if (data?.notes) {
             const updatedNotes = data.notes.filter((n: any) => n.id !== noteId);
-            const { error } = await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
-            if (error) throw error;
+            await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
             setSavedNotes(savedNotes.filter(n => n.id !== noteId));
             setSelectedPrintNotes(selectedPrintNotes.filter(id => id !== noteId));
         }
-    } catch (e) { alert("Erreur lors de la suppression de la note."); }
+    } catch (e) { alert("Erreur de suppression."); }
   };
 
   const togglePrintNote = (id: number) => {
@@ -534,14 +596,11 @@ export default function Rapports() {
   const surfaceCalculated = ScientificEngine.calculateSurface(calcForm.type, { L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H });
   const paintNeeded = ScientificEngine.calculatePaint(surfaceCalculated, calcForm.microns, calcForm.rendement, calcForm.pertes);
   const sandNeeded = ScientificEngine.calculateAbrasive(surfaceCalculated, calcForm.degree, calcForm.pertes);
-
   const dewPoint = ScientificEngine.calculateDewPoint(dewPointForm.T_amb, dewPointForm.RH);
   const isPaintSafe = dewPointForm.T_acier >= (dewPoint + 3);
-
   const totalMetre = metreHistory.reduce((acc, curr) => ({
       surface: acc.surface + curr.surface, paint: acc.paint + curr.paint, abrasive: acc.abrasive + curr.abrasive
   }), { surface: 0, paint: 0, abrasive: 0 });
-
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
   const { filteredTaches, periodStr } = useMemo(() => {
@@ -649,10 +708,16 @@ export default function Rapports() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mb-4 border-b pb-2 print-hidden">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b pb-2 gap-4 print-hidden">
                     <h3 className="text-xs font-black uppercase text-gray-400 flex items-center gap-2"><Target size={16} className="text-blue-500" /> Plan d'Actions / To-Do List</h3>
-                    <div className="flex items-center gap-2">
-                      <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {actionsList.length > 0 && (
+                        <div className="flex items-center gap-2 border-r pr-2 mr-2">
+                          <button onClick={toggleSelectAllActions} className="text-[10px] font-bold text-gray-500 hover:text-black transition-colors">{selectedActions.length === actionsList.length ? 'Décocher tout' : 'Cocher tout'}</button>
+                          <button onClick={handleBulkDeleteActions} disabled={selectedActions.length === 0} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-100 transition-all disabled:opacity-30"><Trash2 size={12}/> Supprimer ({selectedActions.length})</button>
+                        </div>
+                      )}
+                      <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
                         <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option>
                       </select>
                       <button onClick={() => window.print()} className="bg-white border border-gray-200 text-black px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm"><Printer size={12} /> Imprimer Plan d'Actions</button>
@@ -662,12 +727,17 @@ export default function Rapports() {
                   {actionsList.length > 0 ? (
                     <div className="space-y-3 print-hidden">
                       {actionsList.map((a) => (
-                        <div key={a.id} className={`flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-xl border transition-all ${a.statut === 'Fait' ? 'bg-emerald-50/50 border-emerald-200 opacity-60' : a.statut === 'En cours' ? 'bg-orange-50/30 border-orange-200' : 'bg-white border-gray-200 shadow-sm'}`}>
-                          <div className="flex-1 pr-4">
-                            <p className={`font-bold text-sm ${a.statut === 'Fait' ? 'line-through text-gray-500' : 'text-gray-800'}`}>{a.titre}</p>
-                            <div className="flex items-center gap-4 mt-2">
-                              <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><User size={12}/> {a.responsable}</span>
-                              <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 border-l pl-4"><Clock size={12}/> {a.delai}</span>
+                        <div key={a.id} className={`flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-xl border transition-all ${selectedActions.includes(a.id) ? 'ring-2 ring-black border-transparent' : 'border-gray-200 shadow-sm'} ${a.statut === 'Fait' ? 'bg-emerald-50/50 border-emerald-200 opacity-60' : a.statut === 'En cours' ? 'bg-orange-50/30 border-orange-200' : 'bg-white'}`}>
+                          <div className="flex items-start gap-4 flex-1">
+                            <div onClick={() => toggleSelectAction(a.id)} className="cursor-pointer mt-1">
+                                {selectedActions.includes(a.id) ? <CheckSquare size={18} className="text-black" /> : <Square size={18} className="text-gray-300" />}
+                            </div>
+                            <div className="flex-1 pr-4">
+                                <p className={`font-bold text-sm ${a.statut === 'Fait' ? 'line-through text-gray-500' : 'text-gray-800'}`}>{a.titre}</p>
+                                <div className="flex items-center gap-4 mt-2">
+                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><User size={12}/> {a.responsable}</span>
+                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 border-l pl-4"><Clock size={12}/> {a.delai}</span>
+                                </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-4 mt-4 md:mt-0 w-full md:w-auto justify-between md:justify-end">
@@ -725,13 +795,7 @@ export default function Rapports() {
                                     <td className="py-3 px-2 text-center text-gray-700 border-l border-gray-300">{a.responsable}</td>
                                     <td className="py-3 px-2 text-center text-gray-700 border-l border-gray-300">{a.delai}</td>
                                     <td className="py-3 px-2 text-center border-l border-gray-300">
-                                      {a.statut === 'Fait' ? (
-                                        <span className="text-[10px] font-black uppercase text-emerald-600 flex items-center justify-center gap-1"><CheckCircle size={12}/> Fait</span>
-                                      ) : a.statut === 'En cours' ? (
-                                        <span className="text-[10px] font-black uppercase text-orange-600 flex items-center justify-center gap-1"><Clock size={12}/> En cours</span>
-                                      ) : (
-                                        <span className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1"><Square size={12}/> À faire</span>
-                                      )}
+                                      <span className="text-[10px] font-black uppercase text-gray-600">{a.statut}</span>
                                     </td>
                                   </tr>
                                 ))}
@@ -827,10 +891,13 @@ export default function Rapports() {
                         )}
                         {(savedNotes.length > 0) && (
                           <div className="space-y-4">
-                            <div className="flex items-center justify-between border-b pb-2 mt-8 mb-4">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-2 mt-8 mb-4 gap-4">
                               <h3 className="text-xs font-black uppercase text-gray-400">Historique des notes</h3>
-                              <div className="flex items-center gap-4">
-                                <button onClick={toggleSelectAllPrint} className="text-xs font-bold text-gray-500 hover:text-black transition-colors">{selectedPrintNotes.length === savedNotes.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
+                              <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center gap-2 border-r pr-4">
+                                    <button onClick={toggleSelectAllPrint} className="text-[10px] font-bold text-gray-500 hover:text-black transition-colors">{selectedPrintNotes.length === savedNotes.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
+                                    <button onClick={handleBulkDeleteNotes} disabled={selectedPrintNotes.length === 0} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-100 transition-all disabled:opacity-30"><Trash2 size={12} /> Supprimer ({selectedPrintNotes.length})</button>
+                                </div>
                                 <div className="flex items-center gap-2">
                                   <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
                                     <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 portrait</option><option value="A3 landscape">A3 Paysage</option>
@@ -839,6 +906,7 @@ export default function Rapports() {
                                 </div>
                               </div>
                             </div>
+                            
                             {savedNotes.map((n, i) => (
                               <div key={n.id || i} className={`bg-white border p-5 rounded-2xl flex items-start gap-4 transition-all ${selectedPrintNotes.includes(n.id) ? 'ring-2 ring-black border-transparent' : 'border-gray-100'} ${n.severity === 'BLOQUANT' ? 'bg-red-50/20' : ''}`}>
                                 <div onClick={() => togglePrintNote(n.id)} className="cursor-pointer mt-1">
@@ -886,73 +954,14 @@ export default function Rapports() {
                             ))}
                           </div>
                         )}
-                        {notes.length === 0 && savedNotes.length === 0 && <p className="text-center text-gray-300 text-sm italic mt-10">Aucune note pour le moment.</p>}
                       </div>
                   </div>
-                  <table className="hidden print:table print-document">
-                    <thead className="print:table-header-group">
-                      <tr>
-                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
-                          <div className="flex justify-between items-end">
-                            <div>
-                              <h2 className="text-xl font-black uppercase tracking-tight">Rapport de Visite & Constats</h2>
-                              <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
-                                <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
-                                <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
-                              </div>
-                            </div>
-                            <div className="text-right text-xs font-medium">
-                              <p className="mb-1 uppercase font-bold text-black">Édité le :</p>
-                              <p className="font-bold text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td className="pt-6">
-                          <div className="grid grid-cols-1 gap-6">
-                            {savedNotes.filter(n => selectedPrintNotes.includes(n.id)).map((n) => (
-                              <div key={n.id} className="break-inside-avoid border border-gray-300 rounded-xl p-4">
-                                <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-3">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${n.severity === 'BLOQUANT' ? 'border-red-500 text-red-600' : n.severity === 'À surveiller' ? 'border-orange-500 text-orange-600' : 'border-gray-500 text-gray-600'}`}>
-                                      {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
-                                      {n.severity || 'INFO'}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-gray-500 border-l border-gray-300 pl-2">{n.category}</span>
-                                    {n.weather && n.weather.length > 0 && <span className="text-[10px] font-bold text-gray-500 border-l border-gray-300 pl-2 flex items-center gap-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>}
-                                  </div>
-                                  <span className="text-[10px] font-bold text-gray-500">{new Date(n.timestamp).toLocaleDateString('fr-FR')} {new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
-                                </div>
-                                <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-black font-black' : 'text-gray-800'}`}>{n.text}</p>
-                                {n.photo && (
-                                  <div className="mt-4 text-center break-inside-avoid">
-                                    <img src={n.photo} alt="Photo Note" className="max-h-64 mx-auto rounded-lg border border-gray-300 object-contain" />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            {selectedPrintNotes.length === 0 && <p className="text-center text-gray-400 italic py-10">Aucune note sélectionnée pour l'impression.</p>}
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                    <tfoot className="print:table-footer-group print-footer">
-                      <tr>
-                        <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
-                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
                 </div>
               )}
 
               {meetingTab === 'calculs' && (
                 <div className="flex-1 animate-in fade-in relative w-full">
-                  <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
+                  <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100 print-hidden">
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer"><input type="checkbox" checked={showAbrasive} onChange={(e)=>setShowAbrasive(e.target.checked)} className="accent-black w-4 h-4" /> Besoin de sablage/abrasif</label>
                       <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer"><input type="checkbox" checked={showDewPoint} onChange={(e)=>setShowDewPoint(e.target.checked)} className="accent-black w-4 h-4" /> Contrôle Météo / Pt. de Rosée</label>
@@ -1089,7 +1098,7 @@ export default function Rapports() {
                                         <div className="flex items-start gap-4">
                                             {isPaintSafe ? <CheckCircle2 size={32} className="text-emerald-500 print:text-black shrink-0"/> : <AlertTriangle size={32} className="text-red-500 print:text-black shrink-0"/>}
                                             <p className={`text-sm font-bold leading-tight print:text-black ${isPaintSafe ? 'text-emerald-700' : 'text-red-700'}`}>
-                                                {isPaintSafe ? '✅ CONFORME : Risque de condensation faible. Application autorisée (T° Acier > Point de rosée + 3°C).' : '❌ NON CONFORME : Risque élevé de condensation sur le support. Application de peinture interdite (Règle des +3°C non respectée) !'}
+                                                {isPaintSafe ? '✅ CONFORME' : '❌ NON CONFORME'}
                                             </p>
                                         </div>
                                     </div>
@@ -1180,7 +1189,7 @@ export default function Rapports() {
                                         </tr>
                                       ))}
                                     </React.Fragment>
-                                  )) : <tr><td colSpan={7} className="py-4 text-center text-gray-400 italic">Aucune tâche prévue pour cette semaine...</td></tr>}
+                                  )) : <tr><td colSpan={7} className="py-4 text-center text-gray-400 italic">Aucune tâche prévue...</td></tr>}
                                 </tbody>
                               </table>
                             </div>
@@ -1199,63 +1208,12 @@ export default function Rapports() {
                                       <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-white' : ''}`}>
                                         <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-black" />} {f.nom}</td>
                                         <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
-                                        <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
                                         <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
                                       </tr>
                                     );
                                   }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
                                 </tbody>
                               </table>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
-                              <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
-                                <table className="w-full text-left text-xs border-collapse">
-                                  <thead>
-                                    <tr className="border-b-2 border-gray-300">
-                                      <th className="py-2 px-1 w-[55%]">Désignation</th><th className="py-2 px-1 text-center w-[15%]">Présent</th><th className="py-2 px-1 text-center w-[15%]">Manquant</th><th className="py-2 px-1 text-center w-[15%]">En Panne</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {materiels.length > 0 ? materiels.map(m => (
-                                      <tr key={m.id} className="border-b border-gray-200">
-                                        <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
-                                      </tr>
-                                    )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
-                                  </tbody>
-                                </table>
-                              </div>
-                              <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
-                                <table className="w-full text-left text-xs border-collapse">
-                                  <thead>
-                                    <tr className="border-b-2 border-gray-300"><th className="py-2 px-1 w-[50%]">Machine</th><th className="py-2 px-1 text-center w-[25%]">Fin prévue</th><th className="py-2 px-1 text-center w-[25%]">Retour OK</th></tr>
-                                  </thead>
-                                  <tbody>
-                                    {locations.length > 0 ? locations.map(l => {
-                                      const crit = isExpiringSoon(l.date_fin);
-                                      return (
-                                        <tr key={l.id} className="border-b border-gray-200">
-                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'font-bold text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
-                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
-                                        </tr>
-                                      );
-                                    }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
-                              <div className="border print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
-                                <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
-                              </div>
-                              <div className="border print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
-                                <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
-                              </div>
                             </div>
                             <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
