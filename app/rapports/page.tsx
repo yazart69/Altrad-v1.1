@@ -95,7 +95,12 @@ export default function Rapports() {
           setMateriels(merged.filter((m: any) => m.type_stock !== 'Externe')); setLocations(merged.filter((m: any) => m.type_stock === 'Externe'));
         } else { setMateriels([]); setLocations([]); }
         const { data: tData } = await supabase.from('chantier_tasks').select('*').eq('chantier_id', selectedChantier);
-        setTaches((tData || []).map((t: any) => ({ ...t, nom: t.label, responsable: t.responsable_id || '-', heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, avancement: t.done ? 100 : 0, statut: t.done ? 'Terminé' : 'En cours' })));
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        setTaches((tData || []).map((t: any) => {
+          let sub = [];
+          try { sub = typeof t.subtasks === 'string' ? JSON.parse(t.subtasks) : (t.subtasks || []); } catch(e) {}
+          return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
+        }));
       } catch (e) {}
     }
     getDetails();
@@ -215,12 +220,12 @@ export default function Rapports() {
 
               {meetingTab === 'recap_hebdo' && (
                 <div className="flex-1 animate-in fade-in relative">
-                  <style>{`@media print { body * { visibility: hidden; } #print-recap-area, #print-recap-area * { visibility: visible; } #print-recap-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; } @page { size: ${printFormat}; margin: 10mm; } .print-hidden { display: none !important; } .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; } }`}</style>
+                  <style>{`@media print { body * { visibility: hidden; } #print-recap-area, #print-recap-area * { visibility: visible; } #print-recap-area { position: absolute; left: 0; right: 0; top: 0; margin: auto; width: 100%; padding: 0; } @page { size: ${printFormat}; margin: 10mm; } .print-hidden { display: none !important; } .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; } }`}</style>
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
                       <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black">
-                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 portrait</option><option value="A3 landscape">A3 Paysage</option>
+                        <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
                       </select>
                     </div>
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
@@ -229,9 +234,10 @@ export default function Rapports() {
                     <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-end break-inside-avoid">
                       <div>
                         <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
-                        <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex items-center gap-4">
-                          <span>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></span>
-                          {chantierDetails?.ville && <span>| Ville : <span className="text-black">{chantierDetails.ville}</span></span>}
+                        <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
+                          <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
+                          <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
+                          {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
                         </div>
                       </div>
                       <div className="text-right text-xs font-medium bg-gray-50 p-3 rounded-lg border border-gray-200 print:border-black print:bg-white">
@@ -240,32 +246,48 @@ export default function Rapports() {
                       </div>
                     </div>
                     <div className="grid grid-cols-1 gap-6">
-                      <div className="break-inside-avoid">
-                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Matériels sur Chantier</h3>
+                      
+                      <div className="break-inside-avoid w-full">
+                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches de la Semaine (Avancement & Heures)</h3>
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="border-b-2 border-gray-300">
-                              <th className="py-2 px-1">Désignation</th><th className="py-2 px-1">État Maintenance</th><th className="py-2 px-1 text-center">Opérationnel</th><th className="py-2 px-1 text-center w-20">Présent</th><th className="py-2 px-1 text-center w-20">Manquant</th>
+                              <th className="py-2 px-1">Tâche / Sous-tâche</th><th className="py-2 px-1">Responsable</th><th className="py-2 px-1 text-center w-16">Hrs Prév.</th><th className="py-2 px-1 text-center w-24">Hrs Réel.</th><th className="py-2 px-1 text-center w-24">% Avanc.</th><th className="py-2 px-1 text-center w-16">Fait</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {materiels.length > 0 ? materiels.map(m => (
-                              <tr key={m.id} className="border-b border-gray-200">
-                                <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                <td className={`py-2 px-1 font-medium ${m.etat === 'En panne' ? 'text-red-500 print:text-black print:font-black' : ''}`}>{m.etat === 'En panne' && <AlertTriangle size={12} className="inline mr-1 text-red-500 print-hidden" />} {m.etat || 'Opérationnel'}</td>
-                                <td className="py-2 px-1 text-center font-bold">{m.etat === 'En panne' ? 'Non' : 'Oui'}</td>
-                                <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
-                              </tr>
-                            )) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
+                            {taches.length > 0 ? taches.map(t => (
+                              <React.Fragment key={t.id || Math.random()}>
+                                <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
+                                  <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
+                                  <td className="py-2 px-1 font-bold">{t.responsable ? t.responsable : <div className="w-24 border-b border-dotted border-gray-400"></div>}</td>
+                                  <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
+                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
+                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
+                                </tr>
+                                {t.subtasks && t.subtasks.map((st: any) => (
+                                  <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
+                                    <td className="py-1.5 px-1 pl-6 flex items-center gap-2 text-gray-700"><ChevronRight size={10}/> {st.label || st.nom}</td>
+                                    <td className="py-1.5 px-1 text-gray-500 italic">Chef d'équipe</td>
+                                    <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
+                                    <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
+                                    <td className="py-1.5 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
+                                    <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche assignée...</td></tr>}
                           </tbody>
                         </table>
                       </div>
+
                       <div className="break-inside-avoid">
-                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables</h3>
+                        <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="border-b-2 border-gray-300">
-                              <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center">Qté Prévue</th><th className="py-2 px-1 text-center">Qté Utilisée</th><th className="py-2 px-1 text-center">Qté Dispo</th><th className="py-2 px-1 text-center w-20">Dispo OK</th><th className="py-2 px-1 text-center w-24">Commandé</th>
+                              <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-20">Qté Prévue</th><th className="py-2 px-1 text-center w-24">Qté Utilisée</th><th className="py-2 px-1 text-center w-20">Dispo OK</th><th className="py-2 px-1 text-center w-24">Commandé</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -274,28 +296,48 @@ export default function Rapports() {
                               return (
                                 <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
                                   <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
-                                  <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td><td className="py-2 px-1 text-center font-bold text-gray-600 print:text-black">{f.quantite_consommee || 0}</td>
-                                  <td className={`py-2 px-1 text-center font-bold ${alertQty ? 'text-red-600 print:text-black' : ''}`}>{f.quantite_dispo || 0}</td>
+                                  <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
+                                  <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
                                   <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                 </tr>
                               );
-                            }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
+                            }) : <tr><td colSpan={5} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
                           </tbody>
                         </table>
                       </div>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
                         <div>
-                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> Locations en cours</h3>
+                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
                           <table className="w-full text-left text-xs border-collapse">
                             <thead>
-                              <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Machine</th><th className="py-2 px-1">Fin prévue</th><th className="py-2 px-1 text-center w-16">Retour</th></tr>
+                              <tr className="border-b-2 border-gray-300">
+                                <th className="py-2 px-1">Désignation</th><th className="py-2 px-1 text-center w-16">Présent</th><th className="py-2 px-1 text-center w-16">Manquant</th><th className="py-2 px-1 text-center w-16">En Panne</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {materiels.length > 0 ? materiels.map(m => (
+                                <tr key={m.id} className="border-b border-gray-200">
+                                  <td className="py-2 px-1 font-bold">{m.nom}</td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                  <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                </tr>
+                              )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Machine</th><th className="py-2 px-1 text-center w-24">Fin prévue</th><th className="py-2 px-1 text-center w-16">Retour OK</th></tr>
                             </thead>
                             <tbody>
                               {locations.length > 0 ? locations.map(l => {
                                 const crit = isExpiringSoon(l.date_fin);
                                 return (
                                   <tr key={l.id} className="border-b border-gray-200">
-                                    <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                    <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
                                     <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                   </tr>
                                 );
@@ -303,24 +345,8 @@ export default function Rapports() {
                             </tbody>
                           </table>
                         </div>
-                        <div>
-                          <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">Tâches Semaine</h3>
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b-2 border-gray-300"><th className="py-2 px-1">Tâche</th><th className="py-2 px-1">Responsable</th><th className="py-2 px-1 text-center">Hrs Prév.</th><th className="py-2 px-1 text-center">Hrs Réel.</th><th className="py-2 px-1 text-center">Avancement</th><th className="py-2 px-1 text-center">Statut</th></tr>
-                            </thead>
-                            <tbody>
-                              {taches.length > 0 ? taches.map(t => (
-                                <tr key={t.id || Math.random()} className="border-b border-gray-200">
-                                  <td className="py-2 px-1 font-bold">{t.nom || t.tache || t.name || '-'}</td><td className="py-2 px-1">{t.responsable || '-'}</td>
-                                  <td className="py-2 px-1 text-center">{t.heures_prevues || t.hrs_prevu || '-'}</td><td className="py-2 px-1 text-center">{t.heures_reelles || t.heures_consommees || t.hrs_reel || '-'}</td>
-                                  <td className="py-2 px-1 text-center font-bold text-blue-600 print:text-black">{t.avancement != null ? `${t.avancement}%` : '-'}</td><td className="py-2 px-1 text-center uppercase text-[10px] font-black">{t.statut || 'En attente'}</td>
-                                </tr>
-                              )) : <tr><td colSpan={6} className="py-2 text-gray-400 italic">Aucune tâche assignée...</td></tr>}
-                            </tbody>
-                          </table>
-                        </div>
                       </div>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
                         <div className="border border-gray-300 print:border-black rounded-lg p-3">
                           <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
@@ -331,6 +357,7 @@ export default function Rapports() {
                           <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                         </div>
                       </div>
+
                       <div className="mt-8 pt-6 border-t-2 border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
                         <div><p className="uppercase mb-8">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
                         <div><p className="uppercase mb-8">Date :</p><div className="w-32 border-b border-dotted border-black"></div></div>
