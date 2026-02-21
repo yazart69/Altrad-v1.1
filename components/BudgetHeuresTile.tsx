@@ -162,13 +162,15 @@ export default function BudgetHeuresTile() {
                       {chantier.nom}
                     </h3>
                     <div className="flex items-center gap-3 mt-1.5">
-                      <div className="flex items-center gap-1 text-emerald-100 opacity-70">
+                      {/* Couleur changée ici en text-emerald-900 */}
+                      <div className="flex items-center gap-1 text-emerald-900 opacity-80">
                         <MapPin size={10} />
-                        <span className="text-[10px] font-bold truncate max-w-[120px]">{chantier.adresse || "Site web"}</span>
+                        <span className="text-[11px] font-bold truncate max-w-[120px]">{chantier.adresse || "Site web"}</span>
                       </div>
-                      <div className="flex items-center gap-1 text-[#ff9f43]">
+                      {/* Taille augmentée et couleur changée ici en text-emerald-900 */}
+                      <div className="flex items-center gap-1 text-emerald-900">
                         <CheckSquare size={12} />
-                        <span className="text-[12px] font-black">{chantier.doneTasks}/{chantier.totalTasks} <span className="opacity-80">tâches</span></span>
+                        <span className="text-[14px] font-black">{chantier.doneTasks}/{chantier.totalTasks} <span className="opacity-80">tâches</span></span>
                       </div>
                     </div>
                   </div>
@@ -176,9 +178,11 @@ export default function BudgetHeuresTile() {
                   <div className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {alertIcon}
-                      <span className="text-[16px] font-black text-[#ff9f43]">{percentage}%</span>
+                      {/* Taille augmentée et couleur changée ici */}
+                      <span className="text-[20px] font-black text-emerald-900">{percentage}%</span>
                     </div>
-                    <p className="text-[11px] font-black text-[#ff9f43] uppercase mt-0.5 opacity-90">
+                    {/* Taille augmentée et couleur changée ici */}
+                    <p className="text-[12px] font-black text-emerald-900 uppercase mt-0.5 opacity-90">
                       {pointage}H sur {budget}H
                     </p>
                   </div>
@@ -192,8 +196,8 @@ export default function BudgetHeuresTile() {
                   ></div>
                 </div>
                 
-                {/* INDICATEUR D'AVANCEMENT TÂCHES (Agrandis & en Orange) */}
-                <div className="mt-2 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-[#ff9f43] opacity-90">
+                {/* INDICATEUR D'AVANCEMENT TÂCHES (Agrandis & en Vert foncé) */}
+                <div className="mt-2 flex justify-between items-center text-[11px] font-black uppercase tracking-widest text-emerald-900 opacity-90">
                   <span>Avancement Tâches</span>
                   <span>{chantier.totalTasks > 0 ? Math.round((chantier.doneTasks/chantier.totalTasks)*100) : 0}%</span>
                 </div>
