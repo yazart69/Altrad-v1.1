@@ -52,12 +52,14 @@ export default function Rapports() {
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantier, setSelectedChantier] = useState<string>("");
   const [chantierDetails, setChantierDetails] = useState<any>(null);
+  
   const [notes, setNotes] = useState<any[]>([]);
+  const [savedNotes, setSavedNotes] = useState<any[]>([]); // Historique des notes sauvegardées
+  
   const [calculs, setCalculs] = useState<any[]>([]);
   const [activeNote, setActiveNote] = useState("");
   const [noteCategory, setNoteCategory] = useState("Technique");
   
-  // Nouveaux states pour l'onglet Notes
   const [noteSeverity, setNoteSeverity] = useState("Info");
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function Rapports() {
 
   useEffect(() => {
     async function getDetails() {
-      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); return; }
+      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); return; }
       try {
         const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
         setChantierDetails(data);
@@ -107,6 +109,15 @@ export default function Rapports() {
           try { sub = typeof t.subtasks === 'string' ? JSON.parse(t.subtasks) : (t.subtasks || []); } catch(e) {}
           return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
         }));
+
+        // --- FETCH HISTORIQUE DES NOTES ---
+        const { data: rData } = await supabase.from('reunions').select('notes').eq('chantier_id', selectedChantier).order('date', { ascending: false });
+        if (rData) {
+          const allSaved = rData.flatMap((r: any) => r.notes || []);
+          setSavedNotes(allSaved);
+        } else {
+          setSavedNotes([]);
+        }
       } catch (e) {}
     }
     getDetails();
@@ -146,7 +157,6 @@ export default function Rapports() {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
     const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs, metriques_techniques: { surface: surfaceCalculated, peinture: paintNeeded, abrasif: sandNeeded }, is_synced: false };
     
-    // CORRECTION : On clone l'objet pour Dexie pour éviter qu'il n'injecte un ID numérique dans notre objet
     const reportToSave = { ...report };
     if (db) try { await db.reports.add(reportToSave); } catch (e) {}
     
@@ -154,9 +164,15 @@ export default function Rapports() {
       try {
         const { error } = await supabase.from('reunions').insert([report]);
         if (error) throw error;
-        alert("Rapport synchronisé avec la base de données centrale !"); setNotes([]);
+        alert("Rapport synchronisé avec la base de données centrale !");
+        setSavedNotes([...notes, ...savedNotes]); // Ajout immédiat à l'historique local
+        setNotes([]);
       } catch (e: any) { alert("Erreur Sync Supabase: " + e.message); }
-    } else alert("Rapport enregistré localement (En attente de connexion).");
+    } else {
+      alert("Rapport enregistré localement (En attente de connexion).");
+      setSavedNotes([...notes, ...savedNotes]); // Ajout immédiat à l'historique local
+      setNotes([]);
+    }
   };
 
   const surfaceCalculated = ScientificEngine.calculateSurface('rectangle', { L: calcForm.L, l: calcForm.l });
@@ -254,35 +270,73 @@ export default function Rapports() {
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {notes.map((n) => (
-                      <div key={n.id} className={`group bg-white border p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/30' : 'border-gray-100'}`}>
-                        <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
-                        <div className="flex-1">
-                          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
-                                    {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
-                                    {n.severity}
-                                </span>
-                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
-                                {n.weather && n.weather.length > 0 && (
-                                    <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
-                                )}
-                            </div>
-                            <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
-                          </div>
-                          <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
-                          {n.photo && (
-                              <div className="mt-3">
-                                  <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover" />
+                  <div className="space-y-6">
+                    {notes.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-xs font-black uppercase text-gray-400 mb-2 border-b pb-2">Brouillon (Non enregistré)</h3>
+                        {notes.map((n) => (
+                          <div key={n.id} className={`group bg-white border p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/30' : 'border-gray-100'}`}>
+                            <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
+                            <div className="flex-1">
+                              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                        {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                        {n.severity}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
+                                    {n.weather && n.weather.length > 0 && (
+                                        <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
+                                    )}
+                                </div>
+                                <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
                               </div>
-                          )}
-                        </div>
-                        <button onClick={() => setNotes(notes.filter(item => item.id !== n.id))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
+                              <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
+                              {n.photo && (
+                                  <div className="mt-3">
+                                      <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover" />
+                                  </div>
+                              )}
+                            </div>
+                            <button onClick={() => setNotes(notes.filter(item => item.id !== n.id))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {notes.length === 0 && <p className="text-center text-gray-300 text-sm italic mt-10">Aucune note pour le moment.</p>}
+                    )}
+
+                    {(savedNotes.length > 0 || notes.length === 0) && (
+                      <div className="space-y-4">
+                        {savedNotes.length > 0 && <h3 className="text-xs font-black uppercase text-gray-400 mb-2 border-b pb-2 mt-6">Historique des notes</h3>}
+                        {savedNotes.map((n, i) => (
+                          <div key={n.id || i} className={`bg-white border p-5 rounded-2xl flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/10' : 'border-gray-100 opacity-80'}`}>
+                            <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
+                            <div className="flex-1">
+                              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                        {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                        {n.severity || 'INFO'}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
+                                    {n.weather && n.weather.length > 0 && (
+                                        <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
+                                    )}
+                                </div>
+                                <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})} - {new Date(n.timestamp).toLocaleDateString('fr-FR')}</span>
+                              </div>
+                              <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
+                              {n.photo && (
+                                  <div className="mt-3">
+                                      <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover opacity-80" />
+                                  </div>
+                              )}
+                            </div>
+                            <CheckCircle2 size={16} className="text-emerald-500 opacity-50" />
+                          </div>
+                        ))}
+                        {notes.length === 0 && savedNotes.length === 0 && <p className="text-center text-gray-300 text-sm italic mt-10">Aucune note pour le moment.</p>}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
