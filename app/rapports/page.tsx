@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
@@ -130,9 +130,26 @@ export default function Rapports() {
   const sandNeeded = ScientificEngine.calculateAbrasive(surfaceCalculated, calcForm.degree);
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
+  const { filteredTaches, periodStr } = useMemo(() => {
+    const d = new Date(controleLe);
+    const day = d.getDay() || 7;
+    const monday = new Date(d); monday.setDate(d.getDate() - day + 1); monday.setHours(0,0,0,0);
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
+    const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
+    const getWk = (dt: Date) => { const d2 = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate())); const dn = d2.getUTCDay() || 7; d2.setUTCDate(d2.getUTCDate() + 4 - dn); const ys = new Date(Date.UTC(d2.getUTCFullYear(),0,1)); return Math.ceil((((d2.getTime() - ys.getTime()) / 86400000) + 1)/7); };
+    const wN = getWk(monday);
+    const pStr = `Semaine ${wN < 10 ? '0'+wN : wN} du ${monday.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'})} au ${friday.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'})}`;
+    const fT = taches.reduce((acc: any[], t) => {
+      const sub = (t.subtasks || []).filter((st: any) => { if(!st.date) return false; const stD = new Date(st.date); return stD >= monday && stD <= sunday; });
+      if (sub.length > 0) acc.push({ ...t, subtasks: sub });
+      return acc;
+    }, []);
+    return { filteredTaches: fT, periodStr: pStr };
+  }, [taches, controleLe]);
+
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8 font-sans text-slate-800">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#f8f9fa] print-reset p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6 print-reset">
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 gap-4 print-hidden">
           <div className="flex items-center gap-4">
             <div className="bg-black p-3 rounded-2xl text-white shadow-lg shadow-gray-200"><FileText size={28} /></div>
@@ -153,11 +170,11 @@ export default function Rapports() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col ${meetingTab === 'recap_hebdo' ? 'print-container-wrapper' : ''}`}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print-reset">
+          <div className="lg:col-span-2 space-y-6 print-reset">
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col ${meetingTab === 'recap_hebdo' ? 'print-reset' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
-                <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
                 </div>
               )}
@@ -168,7 +185,7 @@ export default function Rapports() {
               </div>
 
               {meetingTab === 'notes' && (
-                <div className="flex-1 flex flex-col animate-in fade-in">
+                <div className="flex-1 flex flex-col animate-in fade-in print-hidden">
                   <div className="flex gap-4 mb-8">
                     <div className="flex-1 relative">
                       <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Prendre une note..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-gray-50 border-2 border-transparent focus:border-black rounded-2xl p-4 font-medium text-gray-700 outline-none transition-all h-32 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
@@ -195,7 +212,7 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'calculs' && (
-                <div className="flex-1 animate-in fade-in">
+                <div className="flex-1 animate-in fade-in print-hidden">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="space-y-6">
                         <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><Settings size={18} className="text-blue-500"/> Paramètres</h3>
@@ -219,20 +236,19 @@ export default function Rapports() {
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative">
+                <div className="flex-1 animate-in fade-in relative w-full">
                   <style>{`
                     @media print { 
-                      body * { visibility: hidden; } 
-                      #print-recap-area, #print-recap-area * { visibility: visible; } 
-                      #print-recap-area { position: absolute; left: 0; right: 0; top: 0; margin: auto; width: 100%; max-width: 100%; padding: 0; background: #fff; color: #000; } 
-                      @page { size: ${printFormat}; margin: 12mm 10mm; } 
+                      @page { size: ${printFormat}; margin: 15mm 10mm; } 
+                      body, html { background: #fff !important; margin: 0 !important; padding: 0 !important; } 
                       .print-hidden { display: none !important; } 
-                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 20px; } 
-                      table { page-break-inside: auto; border-collapse: collapse; } 
+                      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+                      .print-reset { margin: 0 !important; padding: 0 !important; max-width: none !important; box-shadow: none !important; border: none !important; background: transparent !important; display: block !important; } 
+                      table { width: 100%; border-collapse: collapse; page-break-inside: auto; } 
                       tr { page-break-inside: avoid; page-break-after: auto; } 
                       thead { display: table-header-group; } 
                       tfoot { display: table-footer-group; } 
-                      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; } 
                     }
                   `}</style>
                   
@@ -246,12 +262,11 @@ export default function Rapports() {
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
                   
-                  {/* DOCUMENT RÉCAPITULATIF POUR IMPRESSION */}
-                  <table id="print-recap-area" className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm">
-                    <thead className="print:table-header-group">
+                  <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
+                    <thead className="print:table-header-group w-full">
                       <tr>
-                        <td className="pb-4 border-b-[3px] border-black mb-6">
-                          <div className="flex justify-between items-end">
+                        <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
+                          <div className="flex justify-between items-end w-full">
                             <div>
                               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
                               <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
@@ -260,21 +275,22 @@ export default function Rapports() {
                                 {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
                               </div>
                             </div>
-                            <div className="text-right text-xs font-medium bg-gray-50 p-3 rounded-lg border border-gray-200 print:border-black print:bg-white">
+                            <div className="text-right text-xs font-medium bg-gray-50 print:bg-transparent p-3 rounded-lg border border-gray-200 print:border-black">
                               <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
                               <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none print:text-black" />
+                              <p className="mt-2 font-black text-black text-[11px] bg-yellow-300 print:bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
                             </div>
                           </div>
                         </td>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="w-full">
                       <tr>
-                        <td className="pt-6">
-                          <div className="grid grid-cols-1 gap-6">
+                        <td className="pt-6 w-full">
+                          <div className="grid grid-cols-1 gap-6 w-full">
                             
                             <div className="break-inside-avoid w-full">
-                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches de la Semaine (Avancement & Heures)</h3>
+                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -282,7 +298,7 @@ export default function Rapports() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {taches.length > 0 ? taches.map(t => (
+                                  {filteredTaches.length > 0 ? filteredTaches.map((t: any) => (
                                     <React.Fragment key={t.id || Math.random()}>
                                       <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
                                         <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
@@ -303,12 +319,12 @@ export default function Rapports() {
                                         </tr>
                                       ))}
                                     </React.Fragment>
-                                  )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche assignée...</td></tr>}
+                                  )) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune tâche prévue pour cette semaine...</td></tr>}
                                 </tbody>
                               </table>
                             </div>
 
-                            <div className="break-inside-avoid">
+                            <div className="break-inside-avoid w-full">
                               <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
@@ -332,7 +348,7 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid w-full">
                               <div>
                                 <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
                                 <table className="w-full text-left text-xs border-collapse">
@@ -373,7 +389,7 @@ export default function Rapports() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4 w-full">
                               <div className="border border-gray-300 print:border-black rounded-lg p-3">
                                 <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
                                 <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
@@ -384,8 +400,7 @@ export default function Rapports() {
                               </div>
                             </div>
 
-                            {/* SECTION 5 : SIGNATURES */}
-                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
+                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid w-full">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
                               <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed border-gray-300 print:border-gray-500 rounded-lg"></div></div>
                               <div className="text-right">
@@ -398,10 +413,10 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group">
+                    <tfoot className="print:table-footer-group w-full">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
-                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
                         </td>
                       </tr>
                     </tfoot>
