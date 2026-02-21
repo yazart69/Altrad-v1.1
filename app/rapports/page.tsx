@@ -145,7 +145,11 @@ export default function Rapports() {
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
     const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs, metriques_techniques: { surface: surfaceCalculated, peinture: paintNeeded, abrasif: sandNeeded }, is_synced: false };
-    if (db) try { await db.reports.add(report); } catch (e) {}
+    
+    // CORRECTION : On clone l'objet pour Dexie pour éviter qu'il n'injecte un ID numérique dans notre objet
+    const reportToSave = { ...report };
+    if (db) try { await db.reports.add(reportToSave); } catch (e) {}
+    
     if (isOnline) {
       try {
         const { error } = await supabase.from('reunions').insert([report]);
