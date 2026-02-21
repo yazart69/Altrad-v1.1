@@ -13,8 +13,17 @@ const db = typeof window !== 'undefined' ? new OfflineDB() : null;
 
 const ScientificEngine = {
   calculateSurface: (t: string, d: any) => t === 'rectangle' ? d.L * d.l : t === 'cylindre' ? Math.PI * d.D * d.H : 0,
-  calculatePaint: (s: number, m: number, r: number) => r ? (s * m) / (r * 10) : 0,
-  calculateAbrasive: (s: number, d: string) => (s * ({ 'Sa1': 15, 'Sa2': 25, 'Sa2.5': 40, 'Sa3': 55 }[d] || 0)) / 1000
+  calculatePaint: (s: number, m: number, r: number, loss: number = 0) => {
+    const base = r ? (s * m) / (r * 10) : 0;
+    return base * (1 + loss / 100);
+  },
+  calculateAbrasive: (s: number, d: string, loss: number = 0) => {
+    const base = (s * ({ 'Sa1': 15, 'Sa2': 25, 'Sa2.5': 40, 'Sa3': 55 }[d] || 0)) / 1000;
+    return base * (1 + loss / 100);
+  },
+  calculateDewPoint: (T: number, RH: number) => {
+    return T - ((100 - RH) / 5);
+  }
 };
 
 const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
@@ -28,8 +37,9 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
         if (!isMounted || !svgRef.current) return;
         const rc = rough.svg(svgRef.current), node = svgRef.current;
         while (node.firstChild) node.removeChild(node.firstChild);
+        
         if (type === 'rectangle') {
-          const w = Math.max(dims.L * 10, 50), h = Math.max(dims.l * 10, 30), x = 50, y = 50;
+          const w = Math.max((dims.L || 0) * 10, 50), h = Math.max((dims.l || 0) * 10, 30), x = 50, y = 50;
           node.appendChild(rc.rectangle(x, y, w, h, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
           const tL = document.createElementNS("http://www.w3.org/2000/svg", "text");
           tL.setAttribute("x", (x + w / 2 - 10).toString()); tL.setAttribute("y", (y - 15).toString()); tL.setAttribute("fill", "#0984e3"); tL.textContent = `${dims.L}m`;
@@ -37,6 +47,18 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
           const tl = document.createElementNS("http://www.w3.org/2000/svg", "text");
           tl.setAttribute("x", (x - 30).toString()); tl.setAttribute("y", (y + h / 2).toString()); tl.setAttribute("fill", "#d63031"); tl.textContent = `${dims.l}m`;
           node.appendChild(tl);
+        } else if (type === 'cylindre') {
+          const w = Math.max((dims.D || 0) * 20, 40), h = Math.max((dims.H || 0) * 10, 60), x = 80, y = 40;
+          node.appendChild(rc.ellipse(x, y, w, 20, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
+          node.appendChild(rc.line(x - w/2, y, x - w/2, y + h, { stroke: '#2d3436', strokeWidth: 2 }));
+          node.appendChild(rc.line(x + w/2, y, x + w/2, y + h, { stroke: '#2d3436', strokeWidth: 2 }));
+          node.appendChild(rc.ellipse(x, y + h, w, 20, { roughness: 1.5, stroke: '#2d3436', strokeWidth: 2 }));
+          const tD = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          tD.setAttribute("x", (x - 10).toString()); tD.setAttribute("y", (y - 15).toString()); tD.setAttribute("fill", "#0984e3"); tD.textContent = `Ø${dims.D}m`;
+          node.appendChild(tD);
+          const tH = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          tH.setAttribute("x", (x + w/2 + 10).toString()); tH.setAttribute("y", (y + h / 2).toString()); tH.setAttribute("fill", "#d63031"); tH.textContent = `${dims.H}m`;
+          node.appendChild(tH);
         }
       } catch (e) {}
     };
@@ -48,7 +70,7 @@ const SketchTool = ({ type, dims }: { type: string, dims: any }) => {
 
 export default function Rapports() {
   const [isOnline, setIsOnline] = useState(true);
-  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('notes');
+  const [meetingTab, setMeetingTab] = useState<'notes' | 'calculs' | 'actions' | 'recap_hebdo'>('calculs');
   const [chantiers, setChantiers] = useState<any[]>([]);
   const [selectedChantier, setSelectedChantier] = useState<string>("");
   const [chantierDetails, setChantierDetails] = useState<any>(null);
@@ -69,7 +91,11 @@ export default function Rapports() {
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const [selectedPrintNotes, setSelectedPrintNotes] = useState<number[]>([]);
 
-  const [calcForm, setCalcForm] = useState({ L: 10, l: 5, microns: 200, rendement: 5, degree: 'Sa2.5' });
+  // States Onglet Calculs
+  const [calcForm, setCalcForm] = useState({ type: 'rectangle', L: 10, l: 5, D: 2, H: 5, microns: 200, rendement: 5, degree: 'Sa2.5', pertes: 20, name: '' });
+  const [dewPointForm, setDewPointForm] = useState({ T_amb: 20, RH: 65, T_acier: 18 });
+  const [metreHistory, setMetreHistory] = useState<any[]>([]);
+
   const [materiels, setMateriels] = useState<any[]>([]);
   const [fournitures, setFournitures] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -159,7 +185,7 @@ export default function Rapports() {
 
   const saveReport = async () => {
     if (!selectedChantier) return alert("Veuillez sélectionner un chantier réel avant d'enregistrer.");
-    const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs, metriques_techniques: { surface: surfaceCalculated, peinture: paintNeeded, abrasif: sandNeeded }, is_synced: false };
+    const report = { chantier_id: selectedChantier, date: new Date().toISOString(), notes, calculs, metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }, is_synced: false };
     
     const reportToSave = { ...report };
     if (db) try { await db.reports.add(reportToSave); } catch (e) {}
@@ -225,9 +251,35 @@ export default function Rapports() {
     else setSelectedPrintNotes(savedNotes.map(n => n.id));
   };
 
-  const surfaceCalculated = ScientificEngine.calculateSurface('rectangle', { L: calcForm.L, l: calcForm.l });
-  const paintNeeded = ScientificEngine.calculatePaint(surfaceCalculated, calcForm.microns, calcForm.rendement);
-  const sandNeeded = ScientificEngine.calculateAbrasive(surfaceCalculated, calcForm.degree);
+  const surfaceCalculated = ScientificEngine.calculateSurface(calcForm.type, { L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H });
+  const paintNeeded = ScientificEngine.calculatePaint(surfaceCalculated, calcForm.microns, calcForm.rendement, calcForm.pertes);
+  const sandNeeded = ScientificEngine.calculateAbrasive(surfaceCalculated, calcForm.degree, calcForm.pertes);
+
+  const dewPoint = ScientificEngine.calculateDewPoint(dewPointForm.T_amb, dewPointForm.RH);
+  const isPaintSafe = dewPointForm.T_acier >= (dewPoint + 3);
+
+  const totalMetre = metreHistory.reduce((acc, curr) => ({
+      surface: acc.surface + curr.surface,
+      paint: acc.paint + curr.paint,
+      abrasive: acc.abrasive + curr.abrasive
+  }), { surface: 0, paint: 0, abrasive: 0 });
+
+  const addToMetre = () => {
+      setMetreHistory([...metreHistory, {
+          id: Date.now(),
+          name: calcForm.name || `Calcul ${metreHistory.length + 1}`,
+          type: calcForm.type,
+          surface: surfaceCalculated,
+          paint: paintNeeded,
+          abrasive: sandNeeded
+      }]);
+      setCalcForm({...calcForm, name: ''});
+  };
+
+  const removeMetre = (id: number) => {
+      setMetreHistory(metreHistory.filter(m => m.id !== id));
+  };
+
   const isExpiringSoon = (d: string) => { if (!d) return false; const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return diff <= 3 && diff >= 0; };
 
   const { filteredTaches, periodStr } = useMemo(() => {
@@ -250,34 +302,23 @@ export default function Rapports() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8">
       
-      {/* =======================================================================================
-          🚀 SILVER BULLET CSS : SÉPARATION APP WEB / IMPRESSION NATIVE
-      ======================================================================================== */}
       <style>{`
         @media print { 
           @page { size: ${printFormat}; margin: 15mm; } 
-          
-          /* 1. DEVERROUILLAGE DES CAGES SCROLLABLES */
           * { overflow: visible !important; }
           html, body { height: auto !important; background: #fff !important; margin: 0 !important; padding: 0 !important; } 
           .layout, .dashboard, .content-wrapper, .scroll-container, main, #__next, #root { 
             height: auto !important; max-height: none !important; 
             display: block !important; position: static !important; 
           } 
-          
-          /* 2. ISOLATION TOTALE (Masquer tout sauf la fiche) */
           body * { visibility: hidden; } 
           .print-document, .print-document * { visibility: visible; } 
-          
-          /* 3. PLACEMENT DE LA FICHE AU POINT ZÉRO ABSOLU */
           .print-document { 
             position: absolute !important; 
             left: 0 !important; top: 0 !important; 
             width: 100% !important; max-width: 100% !important; 
             margin: 0 !important; padding: 0 !important; 
           } 
-          
-          /* 4. REGLAGES DES TABLEAUX ET PAGE-BREAKS */
           table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
           th, td { word-wrap: break-word; } 
           .break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; display: block; margin-bottom: 24px; width: 100%; } 
@@ -327,8 +368,6 @@ export default function Rapports() {
 
               {meetingTab === 'notes' && (
                 <div className="flex-1 flex flex-col animate-in fade-in relative w-full">
-
-                  {/* VUE ÉCRAN - ZONE DE SAISIE */}
                   <div className="print-hidden w-full">
                       <div className="flex flex-col gap-4 mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                         <div className="flex items-center justify-between">
@@ -531,29 +570,119 @@ export default function Rapports() {
               {meetingTab === 'calculs' && (
                 <div className="flex-1 animate-in fade-in print-hidden">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Outil de Métré */}
                       <div className="space-y-6">
-                        <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><Settings size={18} className="text-blue-500"/> Paramètres</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Longueur (m)</label><input type="number" value={calcForm.L} onChange={(e)=>setCalcForm({...calcForm, L: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400" /></div>
-                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Largeur (m)</label><input type="number" value={calcForm.l} onChange={(e)=>setCalcForm({...calcForm, l: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400" /></div>
-                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Épaisseur (µm)</label><input type="number" value={calcForm.microns} onChange={(e)=>setCalcForm({...calcForm, microns: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none" /></div>
-                          <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Rendement (m²/L)</label><input type="number" value={calcForm.rendement} onChange={(e)=>setCalcForm({...calcForm, rendement: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none" /></div>
-                        </div>
+                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><PencilRuler size={18} className="text-blue-500"/> Outil de Métré</h3>
+                          <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-2">
+                                  <button onClick={()=>setCalcForm({...calcForm, type: 'rectangle'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='rectangle' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Rectangle</button>
+                                  <button onClick={()=>setCalcForm({...calcForm, type: 'cylindre'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='cylindre' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Cylindre</button>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-4">
+                                  {calcForm.type === 'rectangle' ? (
+                                      <>
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Longueur (m)</label><input type="number" value={calcForm.L} onChange={(e)=>setCalcForm({...calcForm, L: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Largeur (m)</label><input type="number" value={calcForm.l} onChange={(e)=>setCalcForm({...calcForm, l: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
+                                      </>
+                                  ) : (
+                                      <>
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Diamètre (m)</label><input type="number" value={calcForm.D} onChange={(e)=>setCalcForm({...calcForm, D: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-blue-400 transition-all" /></div>
+                                      <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Hauteur (m)</label><input type="number" value={calcForm.H} onChange={(e)=>setCalcForm({...calcForm, H: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-red-400 transition-all" /></div>
+                                      </>
+                                  )}
+                                  <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Épaisseur (µm)</label><input type="number" value={calcForm.microns} onChange={(e)=>setCalcForm({...calcForm, microns: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
+                                  <div><label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Rendement (m²/L)</label><input type="number" value={calcForm.rendement} onChange={(e)=>setCalcForm({...calcForm, rendement: parseFloat(e.target.value)})} className="w-full bg-gray-50 rounded-xl p-3 font-bold outline-none border-2 border-transparent focus:border-gray-300 transition-all" /></div>
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-black text-gray-400 uppercase flex justify-between mb-1"><span>Pertes Estimées (%)</span><span className="text-blue-500 font-bold">{calcForm.pertes}%</span></label>
+                                  <input type="range" min="0" max="100" value={calcForm.pertes} onChange={(e)=>setCalcForm({...calcForm, pertes: parseFloat(e.target.value)})} className="w-full accent-blue-500" />
+                              </div>
+
+                              <div className="flex gap-2 pt-2">
+                                  <input type="text" placeholder="Nom (ex: Cuve A)" value={calcForm.name} onChange={(e)=>setCalcForm({...calcForm, name: e.target.value})} className="flex-1 bg-gray-50 rounded-xl p-3 font-bold outline-none text-sm border-2 border-transparent focus:border-black transition-all" />
+                                  <button onClick={addToMetre} disabled={!calcForm.name} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 disabled:opacity-50"><Plus size={16}/> Ajouter</button>
+                              </div>
+                          </div>
                       </div>
-                      <div className="flex flex-col items-center justify-center">
-                        <SketchTool type="rectangle" dims={{ L: calcForm.L, l: calcForm.l }} />
-                        <div className="w-full mt-4 p-4 bg-blue-50 rounded-2xl border border-blue-100 grid grid-cols-3 gap-2 text-center text-blue-800">
-                          <div><p className="text-[9px] font-black uppercase opacity-50">Surface</p><p className="text-lg font-black">{surfaceCalculated.toFixed(2)}m²</p></div>
-                          <div><p className="text-[9px] font-black uppercase opacity-50">Peinture</p><p className="text-lg font-black">{paintNeeded.toFixed(1)}L</p></div>
-                          <div><p className="text-[9px] font-black uppercase opacity-50">Abrasif</p><p className="text-lg font-black">{sandNeeded.toFixed(2)}T</p></div>
-                        </div>
+
+                      <div className="flex flex-col items-center justify-start space-y-6">
+                          <SketchTool type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
+                          <div className="w-full p-4 bg-blue-50 rounded-2xl border border-blue-100 grid grid-cols-3 gap-2 text-center text-blue-800">
+                              <div><p className="text-[9px] font-black uppercase opacity-50">Surface</p><p className="text-lg font-black">{surfaceCalculated.toFixed(2)}m²</p></div>
+                              <div><p className="text-[9px] font-black uppercase opacity-50">Peinture</p><p className="text-lg font-black">{paintNeeded.toFixed(1)}L</p></div>
+                              <div><p className="text-[9px] font-black uppercase opacity-50">Abrasif</p><p className="text-lg font-black">{sandNeeded.toFixed(2)}T</p></div>
+                          </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10 pt-8 border-t border-gray-100">
+                      {/* Carnet de métré */}
+                      <div className="space-y-4">
+                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><Calculator size={18} className="text-blue-500"/> Carnet de métré</h3>
+                          {metreHistory.length > 0 ? (
+                              <div className="space-y-2">
+                                  {metreHistory.map(m => (
+                                      <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 transition-all">
+                                          <div className="flex items-center gap-3">
+                                              <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Layers size={14}/></div>
+                                              <div>
+                                                  <p className="font-bold text-sm text-gray-800">{m.name}</p>
+                                                  <p className="text-[9px] text-gray-400 uppercase font-bold">{m.type}</p>
+                                              </div>
+                                          </div>
+                                          <div className="flex items-center gap-4">
+                                              <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Surface</p><p className="font-black text-xs text-gray-700">{m.surface.toFixed(2)} m²</p></div>
+                                              <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Peinture</p><p className="font-black text-xs text-blue-600">{m.paint.toFixed(1)} L</p></div>
+                                              <button onClick={()=>removeMetre(m.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={14}/></button>
+                                          </div>
+                                      </div>
+                                  ))}
+                                  <div className="flex justify-between items-center bg-black text-white px-5 py-4 rounded-xl shadow-lg mt-4">
+                                      <p className="font-black uppercase text-sm">Total Estimé</p>
+                                      <div className="flex gap-6">
+                                          <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Surface</p><p className="font-black text-sm">{totalMetre.surface.toFixed(2)} m²</p></div>
+                                          <div className="text-right"><p className="text-[9px] text-blue-300 font-bold uppercase">Peinture</p><p className="font-black text-sm">{totalMetre.paint.toFixed(1)} L</p></div>
+                                          <div className="text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Abrasif</p><p className="font-black text-sm">{totalMetre.abrasive.toFixed(2)} T</p></div>
+                                      </div>
+                                  </div>
+                              </div>
+                          ) : (
+                              <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                  <p className="text-xs font-bold text-gray-400 uppercase">Aucun élément dans le carnet</p>
+                              </div>
+                          )}
+                      </div>
+
+                      {/* Conditions Climatiques */}
+                      <div className="space-y-4">
+                          <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 pb-2"><CloudRain size={18} className="text-cyan-500"/> Conditions Climatiques</h3>
+                          <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 shadow-inner space-y-4">
+                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Temp. Ambiante (°C)</span><span className="text-blue-500">{dewPointForm.T_amb}°C</span></label><input type="range" min="-10" max="50" step="0.5" value={dewPointForm.T_amb} onChange={(e)=>setDewPointForm({...dewPointForm, T_amb: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Humidité Relative (%)</span><span className="text-blue-500">{dewPointForm.RH}%</span></label><input type="range" min="0" max="100" step="1" value={dewPointForm.RH} onChange={(e)=>setDewPointForm({...dewPointForm, RH: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                              <div><label className="text-[10px] font-black text-gray-500 uppercase block mb-1 flex justify-between"><span>Temp. Acier (°C)</span><span className="text-blue-500">{dewPointForm.T_acier}°C</span></label><input type="range" min="-10" max="60" step="0.5" value={dewPointForm.T_acier} onChange={(e)=>setDewPointForm({...dewPointForm, T_acier: parseFloat(e.target.value)})} className="w-full accent-blue-500" /></div>
+                              
+                              <div className={`mt-6 p-4 rounded-xl border ${isPaintSafe ? 'bg-emerald-50 border-emerald-200 shadow-sm shadow-emerald-100' : 'bg-red-50 border-red-200 shadow-sm shadow-red-100'}`}>
+                                  <div className="flex justify-between items-center mb-2">
+                                      <span className="text-[10px] font-black uppercase text-gray-600">Point de rosée</span>
+                                      <span className="font-black text-lg">{dewPoint.toFixed(1)}°C</span>
+                                  </div>
+                                  <div className="flex items-start gap-3 mt-3 border-t border-gray-200/50 pt-3">
+                                      {isPaintSafe ? <CheckCircle2 size={20} className="text-emerald-500 shrink-0"/> : <AlertTriangle size={20} className="text-red-500 shrink-0"/>}
+                                      <p className={`text-[11px] font-bold leading-tight ${isPaintSafe ? 'text-emerald-700' : 'text-red-700'}`}>
+                                          {isPaintSafe ? 'Risque de condensation faible. Application autorisée (T° Acier > Point de rosée + 3°C).' : 'DANGER : Risque élevé de condensation sur le support. Application de peinture interdite !'}
+                                      </p>
+                                  </div>
+                              </div>
+                          </div>
                       </div>
                     </div>
                 </div>
               )}
 
               {meetingTab === 'recap_hebdo' && (
-                <div className="flex-1 animate-in fade-in relative w-full">
+                <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
+                  
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
@@ -565,10 +694,10 @@ export default function Rapports() {
                   </div>
                   
                   <table className="hidden print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document">
-                    <thead className="print:table-header-group">
+                    <thead className="print:table-header-group w-full">
                       <tr>
-                        <td className="pb-4 border-b-[3px] border-black mb-6 align-bottom">
-                          <div className="flex justify-between items-end">
+                        <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
+                          <div className="flex justify-between items-end w-full">
                             <div>
                               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Fiche Récapitulative Hebdomadaire</h2>
                               <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
@@ -577,22 +706,22 @@ export default function Rapports() {
                                 {chantierDetails?.ville && <div>Ville : <span className="text-black">{chantierDetails.ville}</span></div>}
                               </div>
                             </div>
-                            <div className="text-right text-xs font-medium print:bg-transparent p-3 rounded-lg print:border-black">
-                              <p className="mb-1 uppercase font-bold print:text-black">Contrôlé le :</p>
+                            <div className="text-right text-xs font-medium bg-gray-50 print:bg-transparent p-3 rounded-lg border border-gray-200 print:border-black">
+                              <p className="mb-1 uppercase font-bold text-gray-500 print:text-black">Contrôlé le :</p>
                               <input type="date" value={controleLe} onChange={e => setControleLe(e.target.value)} className="bg-transparent font-bold outline-none border-b border-gray-300 print:border-none print:text-black" />
-                              <p className="mt-2 font-black text-black text-[11px] bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
+                              <p className="mt-2 font-black text-black text-[11px] bg-yellow-300 print:bg-gray-200 px-2 py-1 rounded">{periodStr}</p>
                             </div>
                           </div>
                         </td>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="w-full">
                       <tr>
-                        <td className="pt-6">
-                          <div className="grid grid-cols-1 gap-6">
+                        <td className="pt-6 w-full">
+                          <div className="grid grid-cols-1 gap-6 w-full">
                             
-                            <div className="break-inside-avoid">
-                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
+                            <div className="break-inside-avoid w-full">
+                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -602,14 +731,14 @@ export default function Rapports() {
                                 <tbody>
                                   {filteredTaches.length > 0 ? filteredTaches.map((t: any) => (
                                     <React.Fragment key={t.id || Math.random()}>
-                                      <tr className="border-b border-gray-300 bg-gray-100">
+                                      <tr className="border-b border-gray-300 bg-gray-50 print:bg-gray-100">
                                         <td className="py-2 px-1 font-black">{t.nom || '-'}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.responsable ? t.responsable : <div className="w-20 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.effectif ? t.effectif : <div className="w-8 mx-auto border-b border-dotted border-gray-400 h-4"></div>}</td>
                                         <td className="py-2 px-1 text-center font-bold">{t.heures_prevues || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
                                         <td className="py-2 px-1"><div className="w-12 mx-auto border-b border-dotted border-gray-400 h-4 relative"><span className="absolute right-0 bottom-0 text-[9px] text-gray-500">%</span></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-400 print:text-black"/></td>
                                       </tr>
                                       {t.subtasks && t.subtasks.map((st: any) => (
                                         <tr key={st.id || Math.random()} className="border-b border-gray-200 text-[10px]">
@@ -619,7 +748,7 @@ export default function Rapports() {
                                           <td className="py-1.5 px-1 text-center text-gray-500">{st.heures || '-'}</td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3"></div></td>
                                           <td className="py-1.5 px-1"><div className="w-10 mx-auto border-b border-dotted border-gray-300 h-3 relative"><span className="absolute right-0 bottom-0 text-[8px] text-gray-400">%</span></div></td>
-                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-black"/></td>
+                                          <td className="py-1.5 px-1 text-center"><Square size={12} className="mx-auto text-gray-300 print:text-black"/></td>
                                         </tr>
                                       ))}
                                     </React.Fragment>
@@ -628,8 +757,8 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="break-inside-avoid">
-                              <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
+                            <div className="break-inside-avoid w-full">
+                              <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                   <tr className="border-b-2 border-gray-300">
@@ -640,11 +769,11 @@ export default function Rapports() {
                                   {fournitures.length > 0 ? fournitures.map(f => {
                                     const alertQty = f.quantite_dispo < (f.seuil_alerte || f.quantite_prevue);
                                     return (
-                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-white' : ''}`}>
-                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-black" />} {f.nom}</td>
+                                      <tr key={f.id} className={`border-b border-gray-200 ${alertQty ? 'bg-red-50 print:bg-white' : ''}`}>
+                                        <td className="py-2 px-1 font-bold flex items-center gap-2">{alertQty && <AlertTriangle size={14} className="text-red-500 print:text-black" />} {f.nom}</td>
                                         <td className="py-2 px-1 text-center">{f.quantite_prevue || '-'}</td>
                                         <td className="py-2 px-1"><div className="w-16 mx-auto border-b border-dotted border-gray-400 h-4"></div></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                       </tr>
                                     );
                                   }) : <tr><td colSpan={6} className="py-4 text-center text-gray-400 italic">Aucune fourniture listée...</td></tr>}
@@ -652,9 +781,9 @@ export default function Rapports() {
                               </table>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid w-full">
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300">
@@ -665,15 +794,15 @@ export default function Rapports() {
                                     {materiels.length > 0 ? materiels.map(m => (
                                       <tr key={m.id} className="border-b border-gray-200">
                                         <td className="py-2 px-1 font-bold">{m.nom}</td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
-                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td><td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
+                                        <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                       </tr>
                                     )) : <tr><td colSpan={4} className="py-4 text-center text-gray-400 italic">Aucun matériel listé...</td></tr>}
                                   </tbody>
                                 </table>
                               </div>
                               <div>
-                                <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
+                                <h3 className="text-xs font-black uppercase bg-gray-100 print:bg-gray-200 p-2 mb-3 border-l-4 border-black flex items-center gap-2"><Clock size={14} /> 4. Locations en cours</h3>
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b-2 border-gray-300"><th className="py-2 px-1 w-[50%]">Machine</th><th className="py-2 px-1 text-center w-[25%]">Fin prévue</th><th className="py-2 px-1 text-center w-[25%]">Retour OK</th></tr>
@@ -683,8 +812,8 @@ export default function Rapports() {
                                       const crit = isExpiringSoon(l.date_fin);
                                       return (
                                         <tr key={l.id} className="border-b border-gray-200">
-                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'font-bold text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
-                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-black"/></td>
+                                          <td className="py-2 px-1 font-bold">{l.nom}</td><td className={`py-2 px-1 text-center ${crit ? 'text-orange-500 font-bold print:text-black' : ''}`}>{l.date_fin || 'N/A'}</td>
+                                          <td className="py-2 px-1 text-center"><Square size={16} className="mx-auto text-gray-300 print:text-black"/></td>
                                         </tr>
                                       );
                                     }) : <tr><td colSpan={3} className="py-2 text-gray-400 italic">Aucune location...</td></tr>}
@@ -693,20 +822,20 @@ export default function Rapports() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
-                              <div className="border print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4 w-full">
+                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
                                 <textarea value={commandeApasser} onChange={e => setCommandeApasser(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
-                              <div className="border print:border-black rounded-lg p-3">
-                                <label className="text-[10px] font-black uppercase print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
+                              <div className="border border-gray-300 print:border-black rounded-lg p-3">
+                                <label className="text-[10px] font-black uppercase text-gray-500 print:text-black mb-2 block flex items-center gap-1"><AlertTriangle size={12}/> Risques Identifiés (Météo, Blocage...)</label>
                                 <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
+                            <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid w-full">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
-                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed print:border-gray-500 rounded-lg"></div></div>
+                              <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed border-gray-300 print:border-gray-500 rounded-lg"></div></div>
                               <div className="text-right">
                                 <p className="uppercase mb-6">Validation :</p>
                                 <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
@@ -717,7 +846,7 @@ export default function Rapports() {
                         </td>
                       </tr>
                     </tbody>
-                    <tfoot className="print:table-footer-group print-footer">
+                    <tfoot className="print:table-footer-group w-full print-footer">
                       <tr>
                         <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
                           Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
@@ -725,6 +854,7 @@ export default function Rapports() {
                       </tr>
                     </tfoot>
                   </table>
+
                 </div>
               )}
             </div>
@@ -732,7 +862,6 @@ export default function Rapports() {
         </div>
       </div>
       
-      {/* Lightbox / Modal pour agrandir la photo */}
       {expandedPhoto && (
         <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 print-hidden" onClick={() => setExpandedPhoto(null)}>
             <img src={expandedPhoto} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
