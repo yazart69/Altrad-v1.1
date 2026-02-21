@@ -51,8 +51,13 @@ export default function BudgetHeuresTile() {
       const tasks = c.chantier_tasks || [];
       const totalTasks = tasks.length;
       const doneTasks = tasks.filter((t: any) => t.done).length;
-      return { ...c, totalTasks, doneTasks };
+      // On détecte s'il y a de l'activité (pour le tri)
+      const hasActivity = totalTasks > 0 || c.heures_consommees > 0;
+      return { ...c, totalTasks, doneTasks, hasActivity };
     });
+
+    // Tri : Chantiers avec activité/personnel en premier
+    enriched.sort((a, b) => (b.hasActivity ? 1 : 0) - (a.hasActivity ? 1 : 0));
     setChantiers(enriched);
   };
 
@@ -93,7 +98,7 @@ export default function BudgetHeuresTile() {
       
       {/* HEADER DE LA TUILE */}
       <div className="flex justify-between items-center mb-6 z-10">
-        <Link href="/chantiers" className="group/title flex items-center gap-2">
+        <Link href="/chantier" className="group/title flex items-center gap-2">
           <div>
             <h2 className="text-[24px] font-black uppercase tracking-tight leading-none text-white">
               Chantiers <span className="text-emerald-900 opacity-60">en cours</span>
@@ -161,9 +166,9 @@ export default function BudgetHeuresTile() {
                         <MapPin size={10} />
                         <span className="text-[10px] font-bold truncate max-w-[120px]">{chantier.adresse || "Site web"}</span>
                       </div>
-                      <div className="flex items-center gap-1 text-emerald-50">
-                        <CheckSquare size={10} />
-                        <span className="text-[10px] font-bold">{chantier.doneTasks}/{chantier.totalTasks} <span className="opacity-50">tâches</span></span>
+                      <div className="flex items-center gap-1 text-[#ff9f43]">
+                        <CheckSquare size={12} />
+                        <span className="text-[12px] font-black">{chantier.doneTasks}/{chantier.totalTasks} <span className="opacity-80">tâches</span></span>
                       </div>
                     </div>
                   </div>
@@ -171,9 +176,9 @@ export default function BudgetHeuresTile() {
                   <div className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {alertIcon}
-                      <span className="text-[13px] font-black">{percentage}%</span>
+                      <span className="text-[16px] font-black text-[#ff9f43]">{percentage}%</span>
                     </div>
-                    <p className="text-[9px] font-bold text-emerald-100 uppercase mt-0.5 opacity-60">
+                    <p className="text-[11px] font-black text-[#ff9f43] uppercase mt-0.5 opacity-90">
                       {pointage}H sur {budget}H
                     </p>
                   </div>
@@ -187,8 +192,8 @@ export default function BudgetHeuresTile() {
                   ></div>
                 </div>
                 
-                {/* INDICATEUR D'AVANCEMENT TÂCHES (Ligne discrète) */}
-                <div className="mt-2 flex justify-between items-center text-[8px] font-black uppercase tracking-widest opacity-40">
+                {/* INDICATEUR D'AVANCEMENT TÂCHES (Agrandis & en Orange) */}
+                <div className="mt-2 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-[#ff9f43] opacity-90">
                   <span>Avancement Tâches</span>
                   <span>{chantier.totalTasks > 0 ? Math.round((chantier.doneTasks/chantier.totalTasks)*100) : 0}%</span>
                 </div>
