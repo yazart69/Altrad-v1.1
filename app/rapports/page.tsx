@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun } from 'lucide-react';
+import { FileText, Plus, Calculator, PencilRuler, Save, Trash2, ChevronRight, CheckCircle2, AlertTriangle, Settings, Layers, Pipette, Share2, Wifi, WifiOff, User, Calendar, Briefcase, Ruler, X, AlertCircle, MapPin, Printer, Square, CheckSquare, Clock, Camera, CloudRain, Wind, ThermometerSnowflake, ThermometerSun, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Dexie, { Table } from 'dexie';
 
@@ -54,7 +54,7 @@ export default function Rapports() {
   const [chantierDetails, setChantierDetails] = useState<any>(null);
   
   const [notes, setNotes] = useState<any[]>([]);
-  const [savedNotes, setSavedNotes] = useState<any[]>([]); // Historique des notes sauvegardées
+  const [savedNotes, setSavedNotes] = useState<any[]>([]); 
   
   const [calculs, setCalculs] = useState<any[]>([]);
   const [activeNote, setActiveNote] = useState("");
@@ -63,6 +63,12 @@ export default function Rapports() {
   const [noteSeverity, setNoteSeverity] = useState("Info");
   const [noteWeather, setNoteWeather] = useState<string[]>([]);
   const [notePhoto, setNotePhoto] = useState<string | null>(null);
+
+  // States pour les fonctionnalités d'édition et d'impression des notes
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  const [selectedPrintNotes, setSelectedPrintNotes] = useState<number[]>([]);
 
   const [calcForm, setCalcForm] = useState({ L: 10, l: 5, microns: 200, rendement: 5, degree: 'Sa2.5' });
   const [materiels, setMateriels] = useState<any[]>([]);
@@ -86,7 +92,7 @@ export default function Rapports() {
 
   useEffect(() => {
     async function getDetails() {
-      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); return; }
+      if (!selectedChantier) { setChantierDetails(null); setMateriels([]); setFournitures([]); setLocations([]); setTaches([]); setSavedNotes([]); setSelectedPrintNotes([]); return; }
       try {
         const { data } = await supabase.from('chantiers').select('*').eq('id', selectedChantier).single();
         setChantierDetails(data);
@@ -110,10 +116,9 @@ export default function Rapports() {
           return { ...t, nom: t.label, responsable: t.responsable_id && isUUID(t.responsable_id) ? '' : (t.responsable_id || ''), effectif: t.effectif, heures_prevues: t.objectif_heures || 0, heures_reelles: t.heures_reelles || 0, subtasks: sub };
         }));
 
-        // --- FETCH HISTORIQUE DES NOTES ---
-        const { data: rData } = await supabase.from('reunions').select('notes').eq('chantier_id', selectedChantier).order('date', { ascending: false });
+        const { data: rData } = await supabase.from('reunions').select('id, notes').eq('chantier_id', selectedChantier).order('date', { ascending: false });
         if (rData) {
-          const allSaved = rData.flatMap((r: any) => r.notes || []);
+          const allSaved = rData.flatMap((r: any) => (r.notes || []).map((n: any) => ({ ...n, reunion_id: r.id })));
           setSavedNotes(allSaved);
         } else {
           setSavedNotes([]);
@@ -162,17 +167,63 @@ export default function Rapports() {
     
     if (isOnline) {
       try {
-        const { error } = await supabase.from('reunions').insert([report]);
+        const { data, error } = await supabase.from('reunions').insert([report]).select('id').single();
         if (error) throw error;
         alert("Rapport synchronisé avec la base de données centrale !");
-        setSavedNotes([...notes, ...savedNotes]); // Ajout immédiat à l'historique local
+        const savedWithReunionId = notes.map(n => ({...n, reunion_id: data.id}));
+        setSavedNotes([...savedWithReunionId, ...savedNotes]);
         setNotes([]);
       } catch (e: any) { alert("Erreur Sync Supabase: " + e.message); }
     } else {
       alert("Rapport enregistré localement (En attente de connexion).");
-      setSavedNotes([...notes, ...savedNotes]); // Ajout immédiat à l'historique local
+      setSavedNotes([...notes, ...savedNotes]);
       setNotes([]);
     }
+  };
+
+  const handleUpdateNote = async (reunionId: string, noteId: number) => {
+    if (!reunionId) return alert("Erreur: ID Réunion manquant.");
+    try {
+        const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
+        if (data && data.notes) {
+            const updatedNotes = data.notes.map((n: any) => n.id === noteId ? { ...n, text: editNoteText } : n);
+            const { error } = await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
+            if (error) throw error;
+            setSavedNotes(savedNotes.map(n => n.id === noteId ? { ...n, text: editNoteText } : n));
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erreur lors de la mise à jour de la note.");
+    }
+    setEditingNoteId(null);
+  };
+
+  const handleDeleteNote = async (reunionId: string, noteId: number) => {
+    if (!reunionId) return alert("Erreur: ID Réunion manquant.");
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette note de l'historique ?")) return;
+    try {
+        const { data } = await supabase.from('reunions').select('notes').eq('id', reunionId).single();
+        if (data && data.notes) {
+            const updatedNotes = data.notes.filter((n: any) => n.id !== noteId);
+            const { error } = await supabase.from('reunions').update({ notes: updatedNotes }).eq('id', reunionId);
+            if (error) throw error;
+            setSavedNotes(savedNotes.filter(n => n.id !== noteId));
+            setSelectedPrintNotes(selectedPrintNotes.filter(id => id !== noteId));
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erreur lors de la suppression de la note.");
+    }
+  };
+
+  const togglePrintNote = (id: number) => {
+    if (selectedPrintNotes.includes(id)) setSelectedPrintNotes(selectedPrintNotes.filter(nId => nId !== id));
+    else setSelectedPrintNotes([...selectedPrintNotes, id]);
+  };
+
+  const toggleSelectAllPrint = () => {
+    if (selectedPrintNotes.length === savedNotes.length) setSelectedPrintNotes([]);
+    else setSelectedPrintNotes(savedNotes.map(n => n.id));
   };
 
   const surfaceCalculated = ScientificEngine.calculateSurface('rectangle', { L: calcForm.L, l: calcForm.l });
@@ -222,7 +273,7 @@ export default function Rapports() {
 
         <div className="w-full main print:block print:w-full print:max-w-full">
           <div className="w-full space-y-6 print:w-full print:max-w-full print:block print:space-y-0">
-            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:block print:w-full print:max-w-full' : ''}`}>
+            <div className={`bg-white rounded-[35px] p-8 shadow-sm border border-gray-100 min-h-[600px] flex flex-col w-full ${meetingTab === 'recap_hebdo' || meetingTab === 'notes' ? 'print:border-none print:shadow-none print:p-0 print:m-0 print:block print:w-full print:max-w-full' : ''}`}>
               {chantierDetails && meetingTab !== 'recap_hebdo' && (
                 <div className="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-100 print-hidden">
                   <div className="flex items-center gap-1"><MapPin size={14}/> {chantierDetails.ville || 'Localisation inconnue'}</div><div className="w-px h-4 bg-gray-300"></div><div className="flex items-center gap-1"><User size={14}/> Client: {chantierDetails.client || 'N/A'}</div>
@@ -235,109 +286,230 @@ export default function Rapports() {
               </div>
 
               {meetingTab === 'notes' && (
-                <div className="flex-1 flex flex-col animate-in fade-in print-hidden">
-                  <div className="flex flex-col gap-4 mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <select value={noteCategory} onChange={(e) => setNoteCategory(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase text-gray-600 outline-none">
-                                <option>Technique</option><option>Planning</option><option>Budget</option><option>Sécurité</option><option>Matériel</option>
-                            </select>
-                            <select value={noteSeverity} onChange={(e) => setNoteSeverity(e.target.value)} className={`border rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none ${noteSeverity === 'BLOQUANT' ? 'bg-red-50 border-red-200 text-red-600' : noteSeverity === 'À surveiller' ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-600'}`}>
-                                <option>Info</option><option>À surveiller</option><option>BLOQUANT</option>
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200">
-                            <button onClick={()=>toggleWeather('Pluie')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Pluie') ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-50'}`}><CloudRain size={14}/></button>
-                            <button onClick={()=>toggleWeather('Vent')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Vent') ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:bg-gray-50'}`}><Wind size={14}/></button>
-                            <button onClick={()=>toggleWeather('Gel')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Gel') ? 'bg-cyan-100 text-cyan-600' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSnowflake size={14}/></button>
-                            <button onClick={()=>toggleWeather('Canicule')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Canicule') ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSun size={14}/></button>
-                        </div>
-                    </div>
-                    
-                    <div className="relative">
-                      <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Constat terrain, alerte ou observation..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-4 font-medium text-gray-700 outline-none transition-all h-24 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
-                    </div>
+                <div className="flex-1 flex flex-col animate-in fade-in relative w-full print:w-full print:max-w-full">
+                  
+                  {/* CSS D'IMPRESSION POUR LES NOTES */}
+                  <style>{`
+                    @media print { 
+                      @page { size: ${printFormat}; margin: 15mm; } 
+                      html, body, #__next, #root, main, .layout, .dashboard, .content-wrapper, .scroll-container { 
+                        height: auto !important; min-height: auto !important; max-height: none !important; 
+                        overflow: visible !important; width: 100% !important; background: #fff !important; 
+                        margin: 0 !important; padding: 0 !important; display: block !important; position: static !important; 
+                      } 
+                      .wrapper, .container, .main, .print-reset { 
+                        height: auto !important; min-height: auto !important; max-height: none !important; 
+                        overflow: visible !important; width: 100% !important; max-width: 100% !important; 
+                        display: block !important; margin: 0 !important; padding: 0 !important; 
+                        border: none !important; box-shadow: none !important; 
+                      } 
+                      aside, nav, header, footer:not(.print-footer) { display: none !important; } 
+                      .print-hidden { display: none !important; } 
+                      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+                      table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; } 
+                      .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; margin-bottom: 24px; width: 100%; display: block; } 
+                      tr { page-break-inside: avoid; page-break-after: auto; } 
+                      thead { display: table-header-group; } 
+                      tfoot { display: table-footer-group; } 
+                    }
+                  `}</style>
 
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <label className="cursor-pointer bg-white border border-gray-200 p-2 rounded-lg text-gray-500 hover:text-black hover:border-gray-400 transition-all flex items-center gap-2 text-[10px] font-bold uppercase">
-                                <Camera size={14} /> {notePhoto ? 'Photo ajoutée' : 'Ajouter Photo'}
-                                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                            </label>
-                            {notePhoto && <img src={notePhoto} alt="preview" className="h-8 w-8 object-cover rounded-md border border-gray-200" />}
-                        </div>
-                        <button onClick={addNote} disabled={!selectedChantier || (!activeNote && !notePhoto)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"><Plus size={16} /> Créer Note</button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    {notes.length > 0 && (
-                      <div className="space-y-4">
-                        <h3 className="text-xs font-black uppercase text-gray-400 mb-2 border-b pb-2">Brouillon (Non enregistré)</h3>
-                        {notes.map((n) => (
-                          <div key={n.id} className={`group bg-white border p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/30' : 'border-gray-100'}`}>
-                            <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
-                            <div className="flex-1">
-                              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
-                                        {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
-                                        {n.severity}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
-                                    {n.weather && n.weather.length > 0 && (
-                                        <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
-                                    )}
-                                </div>
-                                <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
-                              </div>
-                              <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
-                              {n.photo && (
-                                  <div className="mt-3">
-                                      <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover" />
-                                  </div>
-                              )}
+                  <div className="print-hidden w-full">
+                      <div className="flex flex-col gap-4 mb-8 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <select value={noteCategory} onChange={(e) => setNoteCategory(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-[10px] font-black uppercase text-gray-600 outline-none">
+                                    <option>Technique</option><option>Planning</option><option>Budget</option><option>Sécurité</option><option>Matériel</option>
+                                </select>
+                                <select value={noteSeverity} onChange={(e) => setNoteSeverity(e.target.value)} className={`border rounded-lg px-3 py-2 text-[10px] font-black uppercase outline-none ${noteSeverity === 'BLOQUANT' ? 'bg-red-50 border-red-200 text-red-600' : noteSeverity === 'À surveiller' ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                    <option>Info</option><option>À surveiller</option><option>BLOQUANT</option>
+                                </select>
                             </div>
-                            <button onClick={() => setNotes(notes.filter(item => item.id !== n.id))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
-                          </div>
-                        ))}
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200">
+                                <button onClick={()=>toggleWeather('Pluie')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Pluie') ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-50'}`}><CloudRain size={14}/></button>
+                                <button onClick={()=>toggleWeather('Vent')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Vent') ? 'bg-gray-200 text-gray-700' : 'text-gray-400 hover:bg-gray-50'}`}><Wind size={14}/></button>
+                                <button onClick={()=>toggleWeather('Gel')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Gel') ? 'bg-cyan-100 text-cyan-600' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSnowflake size={14}/></button>
+                                <button onClick={()=>toggleWeather('Canicule')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Canicule') ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSun size={14}/></button>
+                            </div>
+                        </div>
+                        
+                        <div className="relative">
+                          <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Constat terrain, alerte ou observation..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-4 font-medium text-gray-700 outline-none transition-all h-24 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <label className="cursor-pointer bg-white border border-gray-200 p-2 rounded-lg text-gray-500 hover:text-black hover:border-gray-400 transition-all flex items-center gap-2 text-[10px] font-bold uppercase">
+                                    <Camera size={14} /> {notePhoto ? 'Photo ajoutée' : 'Ajouter Photo'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                                </label>
+                                {notePhoto && <img src={notePhoto} onClick={() => setExpandedPhoto(notePhoto)} alt="preview" className="h-8 w-8 object-cover rounded-md border border-gray-200 cursor-zoom-in" />}
+                            </div>
+                            <button onClick={addNote} disabled={!selectedChantier || (!activeNote && !notePhoto)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"><Plus size={16} /> Créer Note</button>
+                        </div>
                       </div>
-                    )}
 
-                    {(savedNotes.length > 0 || notes.length === 0) && (
-                      <div className="space-y-4">
-                        {savedNotes.length > 0 && <h3 className="text-xs font-black uppercase text-gray-400 mb-2 border-b pb-2 mt-6">Historique des notes</h3>}
-                        {savedNotes.map((n, i) => (
-                          <div key={n.id || i} className={`bg-white border p-5 rounded-2xl flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/10' : 'border-gray-100 opacity-80'}`}>
-                            <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
-                            <div className="flex-1">
-                              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
-                                        {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
-                                        {n.severity || 'INFO'}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
-                                    {n.weather && n.weather.length > 0 && (
-                                        <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
-                                    )}
-                                </div>
-                                <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})} - {new Date(n.timestamp).toLocaleDateString('fr-FR')}</span>
-                              </div>
-                              <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
-                              {n.photo && (
-                                  <div className="mt-3">
-                                      <img src={n.photo} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover opacity-80" />
+                      <div className="space-y-6">
+                        {notes.length > 0 && (
+                          <div className="space-y-4">
+                            <h3 className="text-xs font-black uppercase text-gray-400 mb-2 border-b pb-2">Brouillon (Non enregistré)</h3>
+                            {notes.map((n) => (
+                              <div key={n.id} className={`group bg-white border p-5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4 ${n.severity === 'BLOQUANT' ? 'border-red-200 bg-red-50/30' : 'border-gray-100'}`}>
+                                <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
+                                <div className="flex-1">
+                                  <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                            {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                            {n.severity}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
+                                        {n.weather && n.weather.length > 0 && (
+                                            <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
+                                        )}
+                                    </div>
+                                    <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
                                   </div>
-                              )}
-                            </div>
-                            <CheckCircle2 size={16} className="text-emerald-500 opacity-50" />
+                                  <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
+                                  {n.photo && (
+                                      <div className="mt-3">
+                                          <img src={n.photo} onClick={() => setExpandedPhoto(n.photo)} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover cursor-zoom-in" />
+                                      </div>
+                                  )}
+                                </div>
+                                <button onClick={() => setNotes(notes.filter(item => item.id !== n.id))} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16} /></button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+
+                        {(savedNotes.length > 0) && (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between border-b pb-2 mt-8 mb-4">
+                              <h3 className="text-xs font-black uppercase text-gray-400">Historique des notes</h3>
+                              <div className="flex items-center gap-4">
+                                <button onClick={toggleSelectAllPrint} className="text-xs font-bold text-gray-500 hover:text-black transition-colors">{selectedPrintNotes.length === savedNotes.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button>
+                                <div className="flex items-center gap-2">
+                                  <select value={printFormat} onChange={e => setPrintFormat(e.target.value)} className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[10px] font-bold outline-none">
+                                    <option value="A4 portrait">A4 Portrait</option><option value="A4 landscape">A4 Paysage</option><option value="A3 portrait">A3 Portrait</option><option value="A3 landscape">A3 Paysage</option>
+                                  </select>
+                                  <button onClick={() => { if(selectedPrintNotes.length===0) alert("Sélectionnez au moins une note."); else window.print(); }} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer ({selectedPrintNotes.length})</button>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {savedNotes.map((n, i) => (
+                              <div key={n.id || i} className={`bg-white border p-5 rounded-2xl flex items-start gap-4 transition-all ${selectedPrintNotes.includes(n.id) ? 'ring-2 ring-black border-transparent' : 'border-gray-100'} ${n.severity === 'BLOQUANT' ? 'bg-red-50/20' : ''}`}>
+                                <div onClick={() => togglePrintNote(n.id)} className="cursor-pointer mt-1">
+                                  {selectedPrintNotes.includes(n.id) ? <CheckSquare size={18} className="text-black" /> : <Square size={18} className="text-gray-300" />}
+                                </div>
+                                <div className={`w-1 h-full min-h-[40px] rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-500' : n.severity === 'À surveiller' ? 'bg-orange-400' : 'bg-blue-500'}`} />
+                                <div className="flex-1">
+                                  <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${n.severity === 'BLOQUANT' ? 'bg-red-100 text-red-600' : n.severity === 'À surveiller' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}>
+                                            {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                            {n.severity || 'INFO'}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Layers size={10}/> {n.category}</span>
+                                        {n.weather && n.weather.length > 0 && (
+                                            <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1 border-l pl-2 ml-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-[9px] font-bold text-gray-400">{new Date(n.timestamp).toLocaleDateString('fr-FR')} {new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
+                                      <div className="flex gap-2">
+                                        <button onClick={() => { setEditingNoteId(n.id); setEditNoteText(n.text); }} className="text-gray-300 hover:text-blue-500 transition-colors"><Pencil size={14}/></button>
+                                        <button onClick={() => handleDeleteNote(n.reunion_id, n.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {editingNoteId === n.id ? (
+                                    <div className="mt-2 flex flex-col gap-2">
+                                      <textarea value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} className="w-full bg-gray-50 border border-gray-200 focus:border-blue-400 rounded-lg p-3 text-sm text-gray-700 outline-none h-20 resize-none" />
+                                      <div className="flex justify-end gap-2">
+                                        <button onClick={() => setEditingNoteId(null)} className="px-3 py-1.5 rounded-md text-[10px] font-bold text-gray-500 hover:bg-gray-100 uppercase">Annuler</button>
+                                        <button onClick={() => handleUpdateNote(n.reunion_id, n.id)} className="px-3 py-1.5 rounded-md text-[10px] font-bold bg-black text-white hover:bg-gray-800 uppercase">Enregistrer</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
+                                  )}
+
+                                  {n.photo && (
+                                      <div className="mt-3">
+                                          <img src={n.photo} onClick={() => setExpandedPhoto(n.photo)} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover cursor-zoom-in opacity-90 hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {notes.length === 0 && savedNotes.length === 0 && <p className="text-center text-gray-300 text-sm italic mt-10">Aucune note pour le moment.</p>}
                       </div>
-                    )}
                   </div>
+
+                  {/* VUE IMPRESSION DES NOTES */}
+                  <table className="hidden print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-reset">
+                    <thead className="print:table-header-group w-full">
+                      <tr>
+                        <td className="pb-4 border-b-[3px] border-black mb-6 w-full align-bottom">
+                          <div className="flex justify-between items-end w-full">
+                            <div>
+                              <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">Journal des Notes & Constats</h2>
+                              <div className="text-sm font-bold text-gray-600 uppercase mt-2 flex flex-col gap-1">
+                                <div>Chantier : <span className="text-black">{chantierDetails?.nom || 'NON SÉLECTIONNÉ'}</span></div>
+                                <div>N° OTP : <span className="text-black">{chantierDetails?.numero_otp || 'Non défini'}</span></div>
+                              </div>
+                            </div>
+                            <div className="text-right text-xs font-medium print:bg-transparent p-3 rounded-lg print:border-black">
+                              <p className="mb-1 uppercase font-bold print:text-black">Édité le :</p>
+                              <p className="font-bold print:text-black text-sm">{new Date().toLocaleDateString('fr-FR')}</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </thead>
+                    <tbody className="w-full">
+                      <tr>
+                        <td className="pt-6 w-full">
+                          <div className="grid grid-cols-1 gap-6 w-full">
+                            {savedNotes.filter(n => selectedPrintNotes.includes(n.id)).map((n) => (
+                              <div key={n.id} className="break-inside-avoid w-full border border-gray-300 rounded-xl p-4">
+                                <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${n.severity === 'BLOQUANT' ? 'border-red-500 text-red-600' : n.severity === 'À surveiller' ? 'border-orange-500 text-orange-600' : 'border-gray-500 text-gray-600'}`}>
+                                      {n.severity === 'BLOQUANT' && <AlertTriangle size={10} className="inline mr-1"/>}
+                                      {n.severity || 'INFO'}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-gray-500 border-l border-gray-300 pl-2">{n.category}</span>
+                                    {n.weather && n.weather.length > 0 && <span className="text-[10px] font-bold text-gray-500 border-l border-gray-300 pl-2 flex items-center gap-1"><CloudRain size={10}/> {n.weather.join(', ')}</span>}
+                                  </div>
+                                  <span className="text-[10px] font-bold text-gray-500">{new Date(n.timestamp).toLocaleDateString('fr-FR')} {new Date(n.timestamp).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-black font-black' : 'text-gray-800'}`}>{n.text}</p>
+                                {n.photo && (
+                                  <div className="mt-4 break-inside-avoid">
+                                    <img src={n.photo} alt="Photo Note" className="max-h-48 rounded-lg border border-gray-300 object-contain" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            {selectedPrintNotes.length === 0 && <p className="text-center text-gray-400 italic py-10">Aucune note sélectionnée pour l'impression.</p>}
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot className="print:table-footer-group w-full print-footer">
+                      <tr>
+                        <td className="pt-4 pb-2 text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest border-t border-gray-200 mt-4">
+                          Document généré le {new Date().toLocaleDateString('fr-FR')} - Altrad Services BTP - PZO V10
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               )}
 
@@ -571,6 +743,14 @@ export default function Rapports() {
           </div>
         </div>
       </div>
+      
+      {/* Lightbox / Modal pour agrandir la photo */}
+      {expandedPhoto && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 print-hidden" onClick={() => setExpandedPhoto(null)}>
+            <img src={expandedPhoto} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+            <button className="absolute top-6 right-6 text-white hover:text-red-500 transition-colors bg-black/50 p-2 rounded-full"><X size={32}/></button>
+        </div>
+      )}
     </div>
   );
 }
