@@ -16,9 +16,15 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data: staff } = await supabase.from('users').select('*');
-      const { data: sites } = await supabase.from('chantiers').select('*').eq('statut', 'en_cours');
+      // Utilisation de .select('*', { count: 'exact' }) pour être plus performant si la table est grande
+      const { data: staff, error: staffError } = await supabase.from('users').select('*');
+      const { data: sites, error: sitesError } = await supabase.from('chantiers').select('*').eq('statut', 'en_cours');
       
+      if (staffError || sitesError) {
+        console.error("Erreur de récupération des stats dashboard:", staffError || sitesError);
+        return;
+      }
+
       const alerts = staff?.filter((e: any) => {
         return e.statut_actuel !== 'disponible';
       }).length || 0;
@@ -104,5 +110,3 @@ export default function Home() {
     </div>
   );
 }
-
-
