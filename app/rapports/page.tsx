@@ -369,7 +369,6 @@ export default function Rapports() {
       }));
   };
 
-  // Ajout des fonctions de métré manquantes
   const addToMetre = () => {
     const surface = ScientificEngine.calculateSurface(calcForm.type, calcForm);
     const paint = ScientificEngine.calculatePaint(surface, calcForm.microns, calcForm.rendement, calcForm.pertes);
@@ -394,7 +393,6 @@ export default function Rapports() {
     setMetreHistory(metreHistory.filter(m => m.id !== id));
   };
 
-  // ARCHITECTURE LOCAL FIRST + SUPABASE STORAGE SYNC
   const syncPendingReports = async () => {
     if (!isOnline) return alert("Vous êtes hors-ligne. Impossible de synchroniser.");
     setIsSyncing(true);
@@ -403,7 +401,6 @@ export default function Rapports() {
       if (pending.length === 0) { setIsSyncing(false); return; }
 
       for (const report of pending) {
-        // 1. Upload Base64 Photos -> Supabase Storage
         const updatedNotes = await Promise.all((report.notes || []).map(async (n: any) => {
           if (n.photo && n.photo.startsWith('data:image')) {
             const res = await fetch(n.photo);
@@ -418,7 +415,6 @@ export default function Rapports() {
           return n;
         }));
 
-        // 2. Upload Base64 Sketches -> Supabase Storage
         const updatedCalculs = await Promise.all((report.calculs || []).map(async (m: any) => {
           if (m.image && m.image.startsWith('data:image')) {
             const res = await fetch(m.image);
@@ -433,7 +429,6 @@ export default function Rapports() {
           return m;
         }));
 
-        // 3. Insert Final Report to Supabase
         const payload = {
           chantier_id: report.chantier_id,
           date: report.date,
@@ -449,7 +444,7 @@ export default function Rapports() {
       
       alert("Synchronisation Cloud terminée avec succès !");
       await updatePendingCount();
-      getDetails(); // Refresh view
+      getDetails(); 
     } catch (e: any) {
       alert("Erreur lors de la synchronisation : " + e.message);
     }
@@ -470,13 +465,11 @@ export default function Rapports() {
         metriques_techniques: { surface: totalMetre.surface, peinture: totalMetre.paint, abrasif: totalMetre.abrasive }
     };
     
-    // On sauvegarde toujours en LOCAL en priorité
     if (db) {
         await db.reports.add({ ...report, is_synced: false });
         await updatePendingCount();
     }
     
-    // On met à jour l'UI locale pour que l'utilisateur voit son ajout instantanément (même hors-ligne)
     const localNotes = notes.map(n => ({...n, reunion_id: 'local'}));
     setSavedNotes([...localNotes, ...savedNotes]);
     setNotes([]);
@@ -485,7 +478,6 @@ export default function Rapports() {
     setActionsList(actionsList.map(a => ({...a, isNew: false, isModified: false})));
 
     if (isOnline) {
-      // Maj des actions pré-existantes modifiées
       const modifiedActions = actionsList.filter(a => a.isModified && a.reunion_id);
       for(const modAction of modifiedActions) {
           const { data: rData } = await supabase.from('reunions').select('actions').eq('id', modAction.reunion_id).single();
@@ -494,7 +486,7 @@ export default function Rapports() {
               await supabase.from('reunions').update({ actions: updatedArray }).eq('id', modAction.reunion_id);
           }
       }
-      syncPendingReports(); // Lancement de la synchro des nouveaux éléments
+      syncPendingReports();
     } else {
       alert("Rapport enregistré localement. Il sera envoyé automatiquement au retour de la connexion.");
     }
@@ -693,7 +685,6 @@ export default function Rapports() {
                     </div>
                   )}
 
-                  {/* VUE IMPRESSION DES ACTIONS */}
                   <table className="hidden print:table print-document">
                     <thead className="print:table-header-group">
                       <tr>
@@ -749,7 +740,6 @@ export default function Rapports() {
                           ) : (
                             <p className="text-center text-gray-400 italic py-10">Aucune action planifiée pour cette visite.</p>
                           )}
-
                           <div className="mt-12 pt-6 border-t-[3px] border-black grid grid-cols-2 gap-4 text-sm font-bold break-inside-avoid">
                             <div><p className="uppercase mb-12">Signature Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
                             <div className="text-right"><p className="uppercase mb-12">Signature Chargé d'Affaires :</p><div className="w-48 border-b border-dotted border-black ml-auto"></div></div>
@@ -788,11 +778,9 @@ export default function Rapports() {
                                 <button onClick={()=>toggleWeather('Canicule')} className={`p-1.5 rounded-md transition-all ${noteWeather.includes('Canicule') ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:bg-gray-50'}`}><ThermometerSun size={14}/></button>
                             </div>
                         </div>
-                        
                         <div className="relative">
                           <textarea value={activeNote} onChange={(e) => setActiveNote(e.target.value)} placeholder={selectedChantier ? "Constat terrain, alerte ou observation..." : "Sélectionnez un chantier pour commencer..."} disabled={!selectedChantier} className="w-full bg-white border border-gray-200 focus:border-black rounded-xl p-4 font-medium text-gray-700 outline-none transition-all h-24 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
                         </div>
-
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <label className="cursor-pointer bg-white border border-gray-200 p-2 rounded-lg text-gray-500 hover:text-black hover:border-gray-400 transition-all flex items-center gap-2 text-[10px] font-bold uppercase">
@@ -804,7 +792,6 @@ export default function Rapports() {
                             <button onClick={addNote} disabled={!selectedChantier || (!activeNote && !notePhoto)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"><Plus size={16} /> Créer Note</button>
                         </div>
                       </div>
-
                       <div className="space-y-6">
                         {notes.length > 0 && (
                           <div className="space-y-4">
@@ -838,7 +825,6 @@ export default function Rapports() {
                             ))}
                           </div>
                         )}
-
                         {(savedNotes.length > 0) && (
                           <div className="space-y-4">
                             <div className="flex items-center justify-between border-b pb-2 mt-8 mb-4">
@@ -853,7 +839,6 @@ export default function Rapports() {
                                 </div>
                               </div>
                             </div>
-                            
                             {savedNotes.map((n, i) => (
                               <div key={n.id || i} className={`bg-white border p-5 rounded-2xl flex items-start gap-4 transition-all ${selectedPrintNotes.includes(n.id) ? 'ring-2 ring-black border-transparent' : 'border-gray-100'} ${n.severity === 'BLOQUANT' ? 'bg-red-50/20' : ''}`}>
                                 <div onClick={() => togglePrintNote(n.id)} className="cursor-pointer mt-1">
@@ -880,7 +865,6 @@ export default function Rapports() {
                                       </div>
                                     </div>
                                   </div>
-                                  
                                   {editingNoteId === n.id ? (
                                     <div className="mt-2 flex flex-col gap-2">
                                       <textarea value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} className="w-full bg-gray-50 border border-gray-200 focus:border-blue-400 rounded-lg p-3 text-sm text-gray-700 outline-none h-20 resize-none" />
@@ -892,7 +876,6 @@ export default function Rapports() {
                                   ) : (
                                     <p className={`font-medium leading-relaxed text-sm ${n.severity === 'BLOQUANT' ? 'text-red-900 font-bold' : 'text-gray-700'}`}>{n.text}</p>
                                   )}
-
                                   {n.photo && (
                                       <div className="mt-3">
                                           <img src={n.photo} onClick={() => setExpandedPhoto(n.photo)} alt="Note attachment" className="max-h-32 rounded-lg border border-gray-200 object-cover cursor-zoom-in opacity-90 hover:opacity-100 transition-opacity" />
@@ -906,7 +889,6 @@ export default function Rapports() {
                         {notes.length === 0 && savedNotes.length === 0 && <p className="text-center text-gray-300 text-sm italic mt-10">Aucune note pour le moment.</p>}
                       </div>
                   </div>
-
                   <table className="hidden print:table print-document">
                     <thead className="print:table-header-group">
                       <tr>
@@ -970,8 +952,6 @@ export default function Rapports() {
 
               {meetingTab === 'calculs' && (
                 <div className="flex-1 animate-in fade-in relative w-full">
-                  
-                  {/* Action Bar Impression Calculs */}
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer"><input type="checkbox" checked={showAbrasive} onChange={(e)=>setShowAbrasive(e.target.checked)} className="accent-black w-4 h-4" /> Besoin de sablage/abrasif</label>
@@ -984,7 +964,6 @@ export default function Rapports() {
                       <button onClick={() => window.print()} className="bg-black text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-sm"><Printer size={12} /> Imprimer Métré</button>
                     </div>
                   </div>
-
                   <table className="print:table w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document print-reset">
                     <thead className="hidden print:table-header-group">
                       <tr>
@@ -1008,18 +987,12 @@ export default function Rapports() {
                     <tbody>
                       <tr>
                         <td className="pt-6 w-full">
-                          
                           <div className="flex flex-col w-full print:block">
-                            
-                            {/* ZONE DESSIN PLEINE LARGEUR */}
                             <div className="w-full mb-8 break-inside-avoid">
                                 <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2 mb-4"><PencilRuler size={18} className="text-blue-500 print:text-black"/> Outil de Métré & Dessin</h3>
                                 <SketchTool ref={sketchRef} type={calcForm.type} dims={{ L: calcForm.L, l: calcForm.l, D: calcForm.D, H: calcForm.H }} />
                             </div>
-
-                            {/* ZONE SAISIE & RESULTATS */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 break-inside-avoid print:grid-cols-2">
-                                
                                 <div className="space-y-4 print-hidden">
                                   <div className="grid grid-cols-2 gap-2">
                                       <button onClick={()=>setCalcForm({...calcForm, type: 'rectangle'})} className={`p-2 rounded-xl text-[10px] font-black uppercase border transition-all ${calcForm.type==='rectangle' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'}`}>Rectangle</button>
@@ -1049,7 +1022,6 @@ export default function Rapports() {
                                       <button onClick={addToMetre} disabled={!calcForm.name} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 disabled:opacity-50"><Plus size={16}/> Ajouter</button>
                                   </div>
                                 </div>
-
                                 <div className="space-y-4">
                                   <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2"><Calculator size={18} className="text-blue-500 print:text-black"/> Historique des Métrés</h3>
                                   {metreHistory.length > 0 ? (
@@ -1094,8 +1066,6 @@ export default function Rapports() {
                                   )}
                                 </div>
                             </div>
-
-                            {/* CONDITIONS CLIMATIQUES (Optionnel) */}
                             {showDewPoint && (
                               <div className="space-y-4 break-inside-avoid">
                                   <h3 className="font-black uppercase text-gray-700 flex items-center gap-2 border-b border-gray-100 print:border-black pb-2"><CloudRain size={18} className="text-cyan-500 print:text-black"/> Contrôle des Conditions Climatiques</h3>
@@ -1126,9 +1096,7 @@ export default function Rapports() {
                                   </div>
                               </div>
                             )}
-
                           </div>
-
                         </td>
                       </tr>
                     </tbody>
@@ -1140,13 +1108,11 @@ export default function Rapports() {
                       </tr>
                     </tfoot>
                   </table>
-
                 </div>
               )}
 
               {meetingTab === 'recap_hebdo' && (
                 <div className="flex-1 animate-in fade-in relative w-full print:w-full print:max-w-full">
-                  
                   <div className="flex flex-wrap justify-between items-center mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 print-hidden">
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-black uppercase text-gray-500">Format d'impression :</label>
@@ -1156,7 +1122,6 @@ export default function Rapports() {
                     </div>
                     <button onClick={() => window.print()} className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-gray-800 transition-all shadow-md"><Printer size={16} /> Imprimer Document</button>
                   </div>
-                  
                   <table className="w-full bg-white print:p-0 print:border-none text-black text-xs md:text-sm print-document">
                     <thead className="print:table-header-group w-full">
                       <tr>
@@ -1183,7 +1148,6 @@ export default function Rapports() {
                       <tr>
                         <td className="pt-6 w-full">
                           <div className="grid grid-cols-1 gap-6 w-full">
-                            
                             <div className="break-inside-avoid w-full">
                               <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">1. Tâches prévues cette semaine</h3>
                               <table className="w-full text-left text-xs border-collapse">
@@ -1220,7 +1184,6 @@ export default function Rapports() {
                                 </tbody>
                               </table>
                             </div>
-
                             <div className="break-inside-avoid w-full">
                               <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">2. Fournitures & Consommables (À vérifier)</h3>
                               <table className="w-full text-left text-xs border-collapse">
@@ -1244,7 +1207,6 @@ export default function Rapports() {
                                 </tbody>
                               </table>
                             </div>
-
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid">
                               <div>
                                 <h3 className="text-xs font-black uppercase bg-gray-200 p-2 mb-3 border-l-4 border-black">3. Matériels sur Chantier</h3>
@@ -1285,7 +1247,6 @@ export default function Rapports() {
                                 </table>
                               </div>
                             </div>
-
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 break-inside-avoid print:mt-4">
                               <div className="border print:border-black rounded-lg p-3">
                                 <label className="text-[10px] font-black uppercase print:text-black mb-2 block">📦 Commandes à passer en urgence</label>
@@ -1296,7 +1257,6 @@ export default function Rapports() {
                                 <textarea value={risqueIdentifie} onChange={e => setRisqueIdentifie(e.target.value)} className="w-full h-20 resize-none outline-none text-xs print:bg-transparent" placeholder="Saisir ou laisser vide pour écrire au stylo..." />
                               </div>
                             </div>
-
                             <div className="mt-8 pt-6 border-t-[3px] border-black grid grid-cols-3 gap-4 text-sm font-bold break-inside-avoid">
                               <div><p className="uppercase mb-12">Chef d'équipe :</p><div className="w-48 border-b border-dotted border-black"></div></div>
                               <div><p className="uppercase mb-2">Signature & Tampon :</p><div className="h-24 w-48 border-2 border-dashed print:border-gray-500 rounded-lg"></div></div>
@@ -1305,7 +1265,6 @@ export default function Rapports() {
                                 <div className="flex justify-end gap-6"><label className="flex items-center gap-2"><Square size={16}/> OK</label><label className="flex items-center gap-2"><Square size={16}/> Réserve</label></div>
                               </div>
                             </div>
-
                           </div>
                         </td>
                       </tr>
@@ -1324,7 +1283,6 @@ export default function Rapports() {
           </div>
         </div>
       </div>
-      
       {expandedPhoto && (
         <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 print-hidden" onClick={() => setExpandedPhoto(null)}>
             <img src={expandedPhoto} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
