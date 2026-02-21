@@ -233,18 +233,20 @@ export default function Rapports() {
           setLocations([]);
         }
 
-        // --- FETCH TÂCHES (colonne 'tasks' de chantiers ou table 'taches') ---
+        // --- FETCH TÂCHES (colonne 'tasks' de chantiers) ---
         let parsedTasks: any[] = [];
         if (data && data.tasks) {
           try {
             parsedTasks = typeof data.tasks === 'string' ? JSON.parse(data.tasks) : data.tasks;
-          } catch(e) {}
+          } catch(e) {
+            console.error("Erreur parsing tasks:", e);
+          }
         }
-        if (!parsedTasks || parsedTasks.length === 0) {
-          const { data: tData } = await supabase.from('taches').select('*').eq('chantier_id', selectedChantier);
-          parsedTasks = tData || [];
-        }
-        setTaches(parsedTasks);
+        // CORRECTION ERREUR 404 : 
+        // Suppression du fallback automatique vers la table inexistante 'taches'
+        // On n'utilise que les données lues dans le JSON du chantier lui-même
+        // Cela empêche l'API de faire une requête 404 bloquante.
+        setTaches(parsedTasks || []);
 
       } catch (e) {
         console.error("Erreur détails chantier:", e);
