@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -18,11 +18,24 @@ import Link from 'next/link';
 const RISK_OPTIONS = ['Amiante', 'Plomb', 'Silice', 'ATEX', 'Hauteur', 'Levage', 'Confiné', 'Électrique', 'Chimique', 'Coactivité'];
 const EPI_OPTIONS = ['Casque', 'Harnais', 'Chaussures de sécurité', 'Combinaison', 'Protections respiratoires', 'Gants', 'Protections auditives', 'Lunettes', 'Masque ventilé', 'Gilet haute visibilité'];
 
+// --- INTERFACES BÁSICS (Pour assainir le code) ---
+interface IChantier {
+  id?: string;
+  nom: string; client: string; adresse: string; client_email: string; client_telephone: string;
+  numero_otp: string; responsable: string; chef_chantier_id: string; equipe_ids: string[];
+  date_debut: string; date_fin: string; type: string; statut: string;
+  heures_budget: number; heures_consommees: number; effectif_prevu: number; taux_reussite: number; 
+  montant_marche: number; taux_horaire_moyen: number; cpi: number;
+  cout_fournitures_prevu: number; cout_sous_traitance_prevu: number; cout_location_prevu: number; frais_generaux: number;
+  cout_fournitures_reel: number; cout_sous_traitance_reel: number; cout_location_reel: number; frais_generaux_reel: number;
+  risques: string[]; epi: string[]; mesures_obligatoires: boolean; mesures_acqpa?: any;
+}
+
 export default function ChantierDetail() {
   const params = useParams();
   const id = params?.id as string;
   
-  // --- ÉTATS ---
+  // --- ÉTATS UI ---
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('suivi'); 
   const [showACQPAModal, setShowACQPAModal] = useState(false);
@@ -31,7 +44,7 @@ export default function ChantierDetail() {
   const [showTeamSelector, setShowTeamSelector] = useState(false);
 
   // --- DATA ---
-  const [chantier, setChantier] = useState<any>({
+  const [chantier, setChantier] = useState<IChantier>({
     nom: '', client: '', adresse: '', client_email: '', client_telephone: '',
     numero_otp: '', responsable: '', chef_chantier_id: '', equipe_ids: [],
     date_debut: '', date_fin: '', type: 'Industriel', statut: 'en_cours',
@@ -56,8 +69,6 @@ export default function ChantierDetail() {
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [activeParentTask, setActiveParentTask] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  
-  // NOUVEAU: État complexe pour l'édition des sous-tâches
   const [editingSubTaskData, setEditingSubTaskData] = useState<any>(null);
 
   const [newSubTask, setNewSubTask] = useState({ label: '', heures: 0, date: '', effectif: 1 });
@@ -124,6 +135,7 @@ export default function ChantierDetail() {
 
     } catch (error: any) { console.error("Erreur chargement:", error); } finally { setLoading(false); }
   };
+  
   useEffect(() => { fetchChantierData(); }, [id]);
 
   // --- LOGIQUE FACTURATION ---
@@ -171,40 +183,46 @@ export default function ChantierDetail() {
 
   const handlePrint = () => { window.print(); };
 
-  // --- CALCULS KPI FINANCIERS ---
-  const TAUX_CHARGE = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
+  // --- MEMOIZATION DES CALCULS FINANCIERS ---
+  // Optimisation MAJEURE : Les calculs ne se refont que si chantier ou facturationList changent
+  const finances = useMemo(() => {
+    const tauxCharge = (chantier.taux_horaire_moyen || 0) + (chantier.cpi || 0);
+    const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
+    const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
+    
+    const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+    const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
+    
+    const montantMarcheInitial = chantier.montant_marche || 0;
+    const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
 
-  const tsValides = facturationList.filter(f => (f.type === 'TS' || f.type === 'PlusValue') && f.statut !== 'prevu');
-  const mvValides = facturationList.filter(f => f.type === 'MoinsValue' && f.statut !== 'prevu');
-  const totalTS = tsValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const totalMoinsValues = mvValides.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const montantMarcheInitial = chantier.montant_marche || 0;
-  const montantMarcheActif = montantMarcheInitial + totalTS - totalMoinsValues;
+    const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
+    const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
+    
+    const facturesPayees = facturationList.filter(f => f.statut === 'paye');
+    const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
+    
+    const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
 
-  const facturesEnvoyees = facturationList.filter(f => (f.type === 'Facture' || f.type === 'Acompte' || f.type === 'Solde') && f.statut !== 'prevu');
-  const totalFacture = facturesEnvoyees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const facturesPayees = facturationList.filter(f => f.statut === 'paye');
-  const totalEncaisse = facturesPayees.reduce((acc, f) => acc + (f.montant || 0), 0);
-  const percentFacturation = montantMarcheActif > 0 ? Math.round((totalFacture / montantMarcheActif) * 100) : 0;
+    const coutMO_Reel = (chantier.heures_consommees || 0) * tauxCharge;
+    const coutDirect_Reel = coutMO_Reel + (chantier.cout_fournitures_reel || 0) + (chantier.cout_sous_traitance_reel || 0) + (chantier.cout_location_reel || 0);
 
-  const coutMO_Prevu = (chantier.heures_budget || 0) * TAUX_CHARGE;
-  const coutMO_Reel = (chantier.heures_consommees || 0) * TAUX_CHARGE;
-  const coutDirect_Reel = coutMO_Reel + chantier.cout_fournitures_reel + chantier.cout_sous_traitance_reel + chantier.cout_location_reel;
+    const margeBrute = montantMarcheActif - coutDirect_Reel;
+    const margeNette = margeBrute - (chantier.frais_generaux_reel || 0);
+    const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
 
-  const margeBrute = montantMarcheActif - coutDirect_Reel;
-  const margeNette = margeBrute - chantier.frais_generaux_reel;
-  const tauxMargeNette = montantMarcheActif > 0 ? (margeNette / montantMarcheActif) * 100 : 0;
+    return {
+      tauxCharge, totalTS, totalMoinsValues, montantMarcheInitial, montantMarcheActif,
+      totalFacture, totalEncaisse, percentFacturation, coutMO_Reel, margeNette, tauxMargeNette
+    };
+  }, [chantier, facturationList]);
 
   // --- ACTIONS GLOBALES ---
   const handleSave = async () => {
     const toSave = { 
-        ...chantier, mesures_acqpa: acqpaData, chef_chantier_id: chantier.chef_chantier_id || null, 
-        montant_marche: chantier.montant_marche, taux_horaire_moyen: chantier.taux_horaire_moyen, cpi: chantier.cpi,
-        cout_fournitures_prevu: chantier.cout_fournitures_prevu, cout_sous_traitance_prevu: chantier.cout_sous_traitance_prevu,
-        cout_location_prevu: chantier.cout_location_prevu, frais_generaux: chantier.frais_generaux,
-        cout_fournitures_reel: chantier.cout_fournitures_reel, cout_sous_traitance_reel: chantier.cout_sous_traitance_reel,
-        cout_location_reel: chantier.cout_location_reel, frais_generaux_reel: chantier.frais_generaux_reel,
-        heures_budget: chantier.heures_budget, numero_otp: chantier.numero_otp, responsable: chantier.responsable, equipe_ids: chantier.equipe_ids
+        ...chantier, 
+        mesures_acqpa: acqpaData, 
+        chef_chantier_id: chantier.chef_chantier_id || null
     };
     const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
     if (error) alert("Erreur : " + error.message); else { alert('✅ Sauvegardé !'); fetchChantierData(); }
@@ -270,7 +288,6 @@ export default function ChantierDetail() {
       if(!error) { const newTasks = tasks.map(t => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t); setTasks(newTasks); }
   };
 
-  // SAUVEGARDE COMPLÈTE SOUS-TÂCHE (Nom, Heures, Date, Effectif)
   const saveSubTaskFull = async (parentId: string, subTaskId: number) => {
       if(!editingSubTaskData) return;
       const parentTask = tasks.find(t => t.id === parentId);
@@ -308,16 +325,33 @@ export default function ChantierDetail() {
   const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
   const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); };
   const updateCouche = (index: number, field: string, value: string) => { const n = [...acqpaData.couches]; n[index][field] = value; setAcqpaData({ ...acqpaData, couches: n }); };
-  const toggleArrayItem = (field: 'risques' | 'epi', value: string) => { const current = chantier[field] || []; setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] }); };
+  const toggleArrayItem = (field: 'risques' | 'epi', value: string) => { const current = (chantier as any)[field] || []; setChantier({ ...chantier, [field]: current.includes(value) ? current.filter((i: string) => i !== value) : [...current, value] }); };
   const deleteDocument = async (docId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); fetchChantierData(); } };
   const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); fetchChantierData(); } setUploading(false); };
   const toggleTeamMember = (empId: string) => { const currentTeam = chantier.equipe_ids || []; if (currentTeam.includes(empId)) setChantier({...chantier, equipe_ids: currentTeam.filter((id: string) => id !== empId)}); else setChantier({...chantier, equipe_ids: [...currentTeam, empId]}); };
 
-  const chartData = [{ label: 'M.O.', value: coutMO_Reel, color: '#3b82f6' }, { label: 'Matériaux', value: chantier.cout_fournitures_reel, color: '#f97316' }, { label: 'Sous-Traitance', value: chantier.cout_sous_traitance_reel, color: '#a855f7' }, { label: 'Location', value: chantier.cout_location_reel, color: '#ec4899' }, { label: 'Frais Génx', value: chantier.frais_generaux_reel, color: '#64748b' }, { label: 'Marge', value: Math.max(0, margeNette), color: '#10b981' }];
-  const totalChart = Math.max(montantMarcheActif, chartData.reduce((acc, d) => acc + d.value, 0));
-  let currentAngle = 0;
-  const gradientParts = chartData.map(d => { const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; const endAngle = currentAngle + percentage; const str = `${d.color} ${currentAngle}% ${endAngle}%`; currentAngle = endAngle; return str; }).join(', ');
-  const pieStyle = { background: `conic-gradient(${gradientParts}, transparent 0)` };
+  // --- DONNÉES GRAPHIQUES RECALCULÉES VÍA USEMEMO ---
+  const { pieStyle, chartData } = useMemo(() => {
+    const data = [
+      { label: 'M.O.', value: finances.coutMO_Reel, color: '#3b82f6' }, 
+      { label: 'Matériaux', value: chantier.cout_fournitures_reel || 0, color: '#f97316' }, 
+      { label: 'Sous-Traitance', value: chantier.cout_sous_traitance_reel || 0, color: '#a855f7' }, 
+      { label: 'Location', value: chantier.cout_location_reel || 0, color: '#ec4899' }, 
+      { label: 'Frais Génx', value: chantier.frais_generaux_reel || 0, color: '#64748b' }, 
+      { label: 'Marge', value: Math.max(0, finances.margeNette), color: '#10b981' }
+    ];
+    const totalChart = Math.max(finances.montantMarcheActif, data.reduce((acc, d) => acc + d.value, 0));
+    let currentAngle = 0;
+    const gradientParts = data.map(d => { 
+      const percentage = totalChart > 0 ? (d.value / totalChart) * 100 : 0; 
+      const endAngle = currentAngle + percentage; 
+      const str = `${d.color} ${currentAngle}% ${endAngle}%`; 
+      currentAngle = endAngle; 
+      return str; 
+    }).join(', ');
+    
+    return { pieStyle: { background: `conic-gradient(${gradientParts}, transparent 0)` }, chartData: data };
+  }, [finances, chantier.cout_fournitures_reel, chantier.cout_sous_traitance_reel, chantier.cout_location_reel, chantier.frais_generaux_reel]);
 
   const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
 
@@ -334,7 +368,7 @@ export default function ChantierDetail() {
                 <Link href="/chantier" className="bg-white p-2 rounded-xl border border-gray-200 text-gray-500 hover:text-black hover:scale-105 transition-all"><ArrowLeft size={20} /></Link>
                 <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-[#2d3436]">{chantier.nom}</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Marge Nette : <span className={tauxMargeNette >= 0 ? "text-emerald-500" : "text-red-500"}>{tauxMargeNette.toFixed(1)}%</span></p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Marge Nette : <span className={finances.tauxMargeNette >= 0 ? "text-emerald-500" : "text-red-500"}>{finances.tauxMargeNette.toFixed(1)}%</span></p>
                 </div>
             </div>
             <button onClick={handleSave} className="bg-[#00b894] hover:bg-[#00a383] text-white px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-200 transition-all hover:scale-105 active:scale-95 font-bold uppercase flex items-center gap-2"><Save size={18} /> Sauvegarder</button>
@@ -355,12 +389,12 @@ export default function ChantierDetail() {
                     <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300">
                         <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-600"><Receipt size={50}/></div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Montant Marché Final</p>
-                        <div className="text-3xl font-black text-[#2d3436] mt-1">{montantMarcheActif.toLocaleString()} €</div>
-                        <div className="mt-2 text-[9px] font-bold text-blue-400">Base: {montantMarcheInitial.toLocaleString()} € {totalTS > 0 && <span className="text-emerald-600"> + {totalTS}€ (TS)</span>} {totalMoinsValues > 0 && <span className="text-red-500"> - {totalMoinsValues}€ (MV)</span>}</div>
+                        <div className="text-3xl font-black text-[#2d3436] mt-1">{finances.montantMarcheActif.toLocaleString()} €</div>
+                        <div className="mt-2 text-[9px] font-bold text-blue-400">Base: {finances.montantMarcheInitial.toLocaleString()} € {finances.totalTS > 0 && <span className="text-emerald-600"> + {finances.totalTS}€ (TS)</span>} {finances.totalMoinsValues > 0 && <span className="text-red-500"> - {finances.totalMoinsValues}€ (MV)</span>}</div>
                     </div>
-                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Wallet size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Marge Nette</p><div className={`text-3xl font-black mt-1 ${margeNette >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{margeNette.toLocaleString()} €</div><div className="flex items-center gap-2 mt-2"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-black">{tauxMargeNette.toFixed(1)}%</span></div></div>
-                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-purple-600"><CreditCard size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Facturé Client</p><div className="text-3xl font-black text-purple-600 mt-1">{totalFacture.toLocaleString()} €</div><div className="mt-2 text-xs font-bold text-gray-400">{percentFacturation}% du Marché</div></div>
-                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><HardHat size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coût M.O. (Chargé)</p><div className="text-3xl font-black text-orange-500 mt-1">{coutMO_Reel.toLocaleString()} €</div><p className="text-[10px] font-bold text-gray-400 mt-1">Taux: {chantier.taux_horaire_moyen} + {chantier.cpi} €/h</p></div>
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><Wallet size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Marge Nette</p><div className={`text-3xl font-black mt-1 ${finances.margeNette >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{finances.margeNette.toLocaleString()} €</div><div className="flex items-center gap-2 mt-2"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-black">{finances.tauxMargeNette.toFixed(1)}%</span></div></div>
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-purple-600"><CreditCard size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Facturé Client</p><div className="text-3xl font-black text-purple-600 mt-1">{finances.totalFacture.toLocaleString()} €</div><div className="mt-2 text-xs font-bold text-gray-400">{finances.percentFacturation}% du Marché</div></div>
+                    <div className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 relative overflow-hidden group print:border-gray-300"><div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500"><HardHat size={50}/></div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Coût M.O. (Chargé)</p><div className="text-3xl font-black text-orange-500 mt-1">{finances.coutMO_Reel.toLocaleString()} €</div><p className="text-[10px] font-bold text-gray-400 mt-1">Taux: {chantier.taux_horaire_moyen} + {chantier.cpi} €/h</p></div>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
@@ -368,13 +402,13 @@ export default function ChantierDetail() {
                         <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2 self-start"><PieChart className="text-[#6c5ce7]"/> Répartition Prix Vente</h3>
                         <div className="flex items-center gap-8 w-full justify-center">
                             <div className="relative w-48 h-48 rounded-full border-4 border-white shadow-xl" style={pieStyle}><div className="absolute inset-0 flex items-center justify-center"><div className="bg-white w-24 h-24 rounded-full flex items-center justify-center shadow-inner"><span className="font-black text-xs text-gray-400">Total Vente</span></div></div></div>
-                            <div className="space-y-2 text-xs">{chartData.map((d, i) => (<div key={i} className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{backgroundColor: d.color}}></div><span className="font-bold text-gray-600">{d.label}</span><span className="font-black text-gray-800">{Math.round((d.value/montantMarcheActif)*100)}%</span></div>))}</div>
+                            <div className="space-y-2 text-xs">{chartData.map((d, i) => (<div key={i} className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{backgroundColor: d.color}}></div><span className="font-bold text-gray-600">{d.label}</span><span className="font-black text-gray-800">{Math.round((d.value/finances.montantMarcheActif)*100)}%</span></div>))}</div>
                         </div>
                     </div>
                     <div className="bg-[#f8f9fa] border border-dashed border-gray-300 p-6 rounded-[30px] print:hidden">
                         <h4 className="text-sm font-black uppercase text-gray-500 mb-4 flex items-center gap-2"><Calculator size={16}/> Saisie Rapide Coûts Réels</h4>
                         <div className="space-y-4">
-                            <div><label className="text-[10px] font-bold text-gray-400 uppercase">Taux Horaire + CPI (Coût Prod. Indirect)</label><div className="flex gap-2"><div className="flex-1 relative"><Euro size={14} className="absolute left-3 top-3 text-gray-400"/><input type="number" className="w-full bg-white pl-8 p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.taux_horaire_moyen} onChange={e => setChantier({...chantier, taux_horaire_moyen: parseFloat(e.target.value)||0})} placeholder="Taux" /></div><div className="flex-1 relative"><AlertOctagon size={14} className="absolute left-3 top-3 text-gray-400"/><input type="number" className="w-full bg-white pl-8 p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.cpi} onChange={e => setChantier({...chantier, cpi: parseFloat(e.target.value)||0})} placeholder="CPI" /></div></div><p className="text-[10px] text-blue-500 font-bold mt-1 text-right">Taux Chargé = {TAUX_CHARGE} €/h</p></div>
+                            <div><label className="text-[10px] font-bold text-gray-400 uppercase">Taux Horaire + CPI (Coût Prod. Indirect)</label><div className="flex gap-2"><div className="flex-1 relative"><Euro size={14} className="absolute left-3 top-3 text-gray-400"/><input type="number" className="w-full bg-white pl-8 p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.taux_horaire_moyen} onChange={e => setChantier({...chantier, taux_horaire_moyen: parseFloat(e.target.value)||0})} placeholder="Taux" /></div><div className="flex-1 relative"><AlertOctagon size={14} className="absolute left-3 top-3 text-gray-400"/><input type="number" className="w-full bg-white pl-8 p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.cpi} onChange={e => setChantier({...chantier, cpi: parseFloat(e.target.value)||0})} placeholder="CPI" /></div></div><p className="text-[10px] text-blue-500 font-bold mt-1 text-right">Taux Chargé = {finances.tauxCharge} €/h</p></div>
                             <div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-bold text-gray-400 uppercase">Matériaux Réel</label><input type="number" className="w-full bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.cout_fournitures_reel} onChange={e => setChantier({...chantier, cout_fournitures_reel: parseFloat(e.target.value)||0})} /></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Sous-Traitance Réel</label><input type="number" className="w-full bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.cout_sous_traitance_reel} onChange={e => setChantier({...chantier, cout_sous_traitance_reel: parseFloat(e.target.value)||0})} /></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Location Réel</label><input type="number" className="w-full bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.cout_location_reel} onChange={e => setChantier({...chantier, cout_location_reel: parseFloat(e.target.value)||0})} /></div><div><label className="text-[9px] font-bold text-gray-400 uppercase">Frais Généraux Réel</label><input type="number" className="w-full bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 outline-none" value={chantier.frais_generaux_reel} onChange={e => setChantier({...chantier, frais_generaux_reel: parseFloat(e.target.value)||0})} /></div></div>
                         </div>
                     </div>
@@ -383,11 +417,11 @@ export default function ChantierDetail() {
                 <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 print:shadow-none print:border-gray-300 no-break">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-black uppercase text-gray-700 flex items-center gap-2"><FileCheck className="text-[#6c5ce7]"/> Suivi Facturation & TS</h3>
-                        <div className="text-right"><p className="text-[10px] font-bold uppercase text-gray-400">Reste à Facturer</p><p className="text-xl font-black text-blue-600">{(montantMarcheActif - totalFacture).toLocaleString()} €</p></div>
+                        <div className="text-right"><p className="text-[10px] font-bold uppercase text-gray-400">Reste à Facturer</p><p className="text-xl font-black text-blue-600">{(finances.montantMarcheActif - finances.totalFacture).toLocaleString()} €</p></div>
                     </div>
                     <div className="w-full bg-gray-100 h-6 rounded-full overflow-hidden flex relative mb-6 border border-gray-200">
-                         <div className="h-full bg-green-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? (totalEncaisse/montantMarcheActif)*100 : 0}%`}}>Enc.</div>
-                         <div className="h-full bg-blue-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${montantMarcheActif > 0 ? ((totalFacture - totalEncaisse)/montantMarcheActif)*100 : 0}%`}}>Fact.</div>
+                         <div className="h-full bg-green-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${finances.montantMarcheActif > 0 ? (finances.totalEncaisse/finances.montantMarcheActif)*100 : 0}%`}}>Enc.</div>
+                         <div className="h-full bg-blue-400 flex items-center justify-center text-[10px] font-black text-white" style={{width: `${finances.montantMarcheActif > 0 ? ((finances.totalFacture - finances.totalEncaisse)/finances.montantMarcheActif)*100 : 0}%`}}>Fact.</div>
                     </div>
                     <table className="w-full text-left text-xs mb-4">
                         <thead className="bg-gray-50 uppercase text-gray-400 font-black"><tr><th className="p-3 rounded-l-lg">Type</th><th className="p-3">Libellé</th><th className="p-3">Envoi</th><th className="p-3">Echéance</th><th className="p-3 text-right">Montant HT</th><th className="p-3 text-center">Reçu</th><th className="p-3 text-center print:hidden">Action</th></tr></thead>
