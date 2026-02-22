@@ -28,7 +28,6 @@ interface IChantier {
   statut: string;
   numero_otp?: string;
   horaires?: string;
-  taches_hebdo?: string;
 }
 
 interface IAssignment {
@@ -90,6 +89,7 @@ function usePlanningData() {
   const [employes, setEmployes] = useState<IEmploye[]>([]);
   const [chantiers, setChantiers] = useState<IChantier[]>([]);
   const [assignments, setAssignments] = useState<IAssignment[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]); // NOUVEAU: Stockage des tâches globales
   const [loading, setLoading] = useState(true);
 
   const [currentDate, setCurrentDate] = useState(() => {
@@ -111,14 +111,16 @@ function usePlanningData() {
   const fetchData = async () => {
     setLoading(true);
     try {
-        const [empRes, chanRes, planRes] = await Promise.all([
-    supabase.from('employes').select('*').order('nom'),
-    supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires, taches_hebdo').neq('statut', 'termine').order('nom'),
-    supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)')
-]);
+        const [empRes, chanRes, planRes, tasksRes] = await Promise.all([
+            supabase.from('employes').select('*').order('nom'),
+            supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires').neq('statut', 'termine').order('nom'),
+            supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)'),
+            supabase.from('chantier_tasks').select('chantier_id, label, subtasks') // NOUVEAU : Récupération auto des tâches
+        ]);
 
         if (empRes.data) setEmployes(empRes.data);
         if (chanRes.data) setChantiers(chanRes.data);
+        if (tasksRes.data) setTasks(tasksRes.data);
         if (planRes.data) {
             const formattedPlan = planRes.data.map(p => ({ ...p, users: p.employes })) as IAssignment[];
             setAssignments(formattedPlan);
@@ -133,7 +135,6 @@ function usePlanningData() {
 
   useEffect(() => { fetchData(); }, [currentDate]);
 
-  // TRI INTELLIGENT : Les chantiers avec des affectations cette semaine remontent en haut
   const sortedChantiers = useMemo(() => {
     return [...chantiers].sort((a, b) => {
         const aHasAssign = assignments.some(ass => ass.chantier_id === a.id && weekDays.some(day => toLocalISOString(day) === ass.date_debut));
@@ -171,7 +172,7 @@ function usePlanningData() {
     }
   };
 
-  return { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, loading, actions };
+  return { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, tasks, loading, actions };
 }
 
 // ============================================================================
@@ -179,13 +180,12 @@ function usePlanningData() {
 // ============================================================================
 
 export default function PlanningPage() {
-  const { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, loading, actions } = usePlanningData();
+  const { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, tasks, loading, actions } = usePlanningData();
   const [modePointage, setModePointage] = useState(false); 
   const [modalConfig, setModalConfig] = useState<IModalConfig>({ isOpen: false, chantierId: null, date: null, typeContext: 'chantier' });
 
-  // CALCUL DE DISPONIBILITÉ GOLBALE
   const { totalAssigned, totalRequired, missingEmployes } = useMemo(() => {
-    const totalReq = employes.length * 5; // 5 jours par semaine
+    const totalReq = employes.length * 5; 
     let totalAss = 0;
     const missing = new Set<string>();
 
@@ -197,7 +197,7 @@ export default function PlanningPage() {
                 empAssignedDays++;
             }
         });
-        if (empAssignedDays === 0) missing.add(emp.id); // N'a aucune affectation
+        if (empAssignedDays === 0) missing.add(emp.id);
     });
 
     return { totalAssigned: totalAss, totalRequired: totalReq, missingEmployes: missing.size };
@@ -207,7 +207,6 @@ export default function PlanningPage() {
 
   return (
     <div className="min-h-screen bg-[#f0f3f4] p-4 md:p-6 font-['Fredoka'] ml-0 md:ml-0 transition-all text-gray-800 print:bg-white print:p-0 print:m-0 print:min-h-0 print:w-full print:absolute print:top-0 print:left-0 z-50">
-      
       <Toaster position="bottom-right" toastOptions={{ style: { fontFamily: 'Fredoka', fontWeight: 'bold' } }} />
 
       <style dangerouslySetInnerHTML={{__html: `
@@ -225,8 +224,6 @@ export default function PlanningPage() {
           <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">
               <span>Planning <span className="text-[#00b894]">Chantiers</span></span>
           </h1>
-          
-          {/* INDICATEUR DE DISPONIBILITÉ */}
           <div className="mt-2 flex items-center gap-3">
               <div className="bg-white border border-gray-200 rounded-lg px-3 py-1 flex items-center gap-2 shadow-sm">
                   <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -234,7 +231,6 @@ export default function PlanningPage() {
                   </div>
                   <span className="text-[10px] font-black text-gray-500">{totalAssigned} / {totalRequired} Jours planifiés</span>
               </div>
-              
               {missingEmployes === 0 && totalAssigned > 0 ? (
                   <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1">
                       <CheckCircle2 size={12}/> Équipe 100% assignée
@@ -276,17 +272,16 @@ export default function PlanningPage() {
           </div>
       </div>
 
-      {/* TABLEAU */}
       <PlanningTable 
         chantiers={sortedChantiers} 
         weekDays={weekDays} 
         assignments={assignments} 
+        tasks={tasks}
         modePointage={modePointage}
         onDelete={actions.deleteAssignment}
         onOpenModal={(chantierId: string | null, date: Date, typeContext: 'chantier' | 'hors_chantier') => setModalConfig({ isOpen: true, chantierId, date, typeContext })}
       />
 
-      {/* MODALE D'AFFECTATION */}
       {modalConfig.isOpen && modalConfig.date && (
         <AssignmentModal 
             config={modalConfig}
@@ -304,7 +299,11 @@ export default function PlanningPage() {
 // SOUS-COMPOSANT : GRILLE DU PLANNING
 // ============================================================================
 
-function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelete, onOpenModal }: { chantiers: IChantier[], weekDays: Date[], assignments: IAssignment[], modePointage: boolean, onDelete: (id: string) => void, onOpenModal: (chantierId: string | null, date: Date, typeContext: 'chantier' | 'hors_chantier') => void }) {
+function PlanningTable({ chantiers, weekDays, assignments, tasks, modePointage, onDelete, onOpenModal }: { chantiers: IChantier[], weekDays: Date[], assignments: IAssignment[], tasks: any[], modePointage: boolean, onDelete: (id: string) => void, onOpenModal: (chantierId: string | null, date: Date, typeContext: 'chantier' | 'hors_chantier') => void }) {
+  
+  const startStr = toLocalISOString(weekDays[0]);
+  const endStr = toLocalISOString(weekDays[4]);
+
   return (
     <div className="bg-white rounded-[20px] shadow-sm overflow-hidden border border-gray-200 overflow-x-auto print:border-none print:shadow-none print:overflow-visible print:rounded-none">
         <table className="w-full min-w-[1000px] border-collapse text-left print:min-w-0 print:w-full print:table-fixed">
@@ -327,32 +326,45 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
             {chantiers.map((chantier: IChantier) => {
               const hasAssignments = assignments.some((a: IAssignment) => a.chantier_id === chantier.id && weekDays.some((day: Date) => toLocalISOString(day) === a.date_debut));
 
+              // LECTURE AUTOMATIQUE DES TÂCHES DE LA SEMAINE
+              const cTasks = tasks.filter((t: any) => t.chantier_id === chantier.id);
+              const weeklyTasks = cTasks.flatMap((t: any) => {
+                  return (t.subtasks || [])
+                      .filter((st: any) => st.date >= startStr && st.date <= endStr)
+                      .map((st: any) => `• ${st.label}`);
+              });
+
               return (
               <tr key={chantier.id} className={`group hover:bg-gray-50 transition-colors print:break-inside-avoid ${hasAssignments ? '' : 'print:hidden'}`}>
                 <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2 align-top">
                   
-                  {/* NOUVEAU DESIGN COLONNE GAUCHE (OTP, Horaires, Tâches) */}
                   <div className="flex items-start gap-3">
                       <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 shrink-0"><HardHat size={18} /></div>
                       <div className="flex-1 min-w-0">
                           <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs truncate" title={chantier.nom}>{chantier.nom}</p>
                           
-                          {/* OTP & Horaires (Affichés s'ils existent) */}
+                          {/* OTP & Horaires */}
                           <div className="flex flex-col gap-0.5 mt-1">
                               {chantier.numero_otp && <p className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit uppercase">OTP: {chantier.numero_otp}</p>}
                               <p className="text-[10px] text-gray-500 uppercase truncate" title={chantier.adresse}>{chantier.adresse || 'Localisation non définie'}</p>
-                              {chantier.horaires && <p className="text-[9px] text-gray-400 font-bold mt-0.5">🕒 {chantier.horaires}</p>}
+                              {chantier.horaires && <p className="text-[9px] text-gray-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={10}/> {chantier.horaires}</p>}
                           </div>
 
-                          {/* Zone "Tâches à réaliser" intégrée à gauche */}
-                          {(chantier.taches_hebdo) && (
-                            <div className="mt-3 bg-gray-50 border border-gray-100 p-2 rounded-lg print:border-dashed print:bg-transparent">
-                                <p className="text-[8px] font-black uppercase text-gray-400 mb-1 border-b border-gray-200 pb-0.5">Tâches de la semaine</p>
-                                <p className="text-[10px] text-gray-600 leading-snug whitespace-pre-wrap line-clamp-3 hover:line-clamp-none transition-all print:line-clamp-none">
-                                    {chantier.taches_hebdo}
-                                </p>
-                            </div>
-                          )}
+                          {/* Zone Tâches auto-générée */}
+                          <div className="mt-3 bg-gray-50 border border-gray-100 p-2 rounded-lg print:border-dashed print:bg-transparent">
+                              <p className="text-[8px] font-black uppercase text-gray-400 mb-1 border-b border-gray-200 pb-0.5">Tâches planifiées</p>
+                              <div className="text-[10px] text-gray-600 leading-snug max-h-[70px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
+                                  {weeklyTasks.length > 0 ? (
+                                      <ul className="space-y-0.5">
+                                          {weeklyTasks.map((wt: string, idx: number) => (
+                                              <li key={idx} className="truncate print:whitespace-normal" title={wt}>{wt}</li>
+                                          ))}
+                                      </ul>
+                                  ) : (
+                                      <span className="italic opacity-50 text-[9px]">Aucune tâche définie...</span>
+                                  )}
+                              </div>
+                          </div>
                       </div>
                   </div>
 
@@ -533,7 +545,6 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                     <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Sélectionner Collaborateurs ({selectedEmployes.length})</label>
                     <div className="max-h-[300px] overflow-y-auto border border-gray-200 rounded-xl custom-scrollbar shadow-inner bg-gray-50">
                         {employes.map(e => {
-                            // Vérifie si l'employé est DÉJÀ affecté sur n'importe quel chantier/absence sur la plage de date sélectionnée
                             const isConflict = assignments.some(a => a.employe_id === e.id && a.date_debut >= dateRange.start && a.date_debut <= dateRange.end);
                             const isSelected = selectedEmployes.includes(e.id);
                             const roleConfig = getRoleConfig(e.role);
@@ -542,7 +553,7 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                                 <div 
                                     key={e.id} 
                                     onClick={() => {
-                                        if (isConflict) return; // Désactive le clic si conflit
+                                        if (isConflict) return; 
                                         if (isSelected) setSelectedEmployes(prev => prev.filter(id => id !== e.id));
                                         else setSelectedEmployes(prev => [...prev, e.id]);
                                     }}
