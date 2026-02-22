@@ -52,7 +52,7 @@ export default function HSEDashboardPage() {
   useEffect(() => { fetchData(); }, []);
 
   // CORRECTION ICI : On a ajouté 'vmt' aux options permises par TypeScript
-  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit') => {
+  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit' | 'causerie') => {
     if (!activeChantierId) return toast.error("Sélectionnez un chantier d'abord");
     router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
@@ -101,7 +101,9 @@ export default function HSEDashboardPage() {
           <div className="pt-8 pb-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Registres & Audits</div>
           <NavButton id="accueils" icon={Users} label="Registre Accueils" active={view} set={setView} />
           <NavButton id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} />
-          <NavButton id="causerie" icon={Megaphone} label="Minute Sécurité" active={view} set={setView} />
+          <button onClick={() => navigateToTool('causerie')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-orange-500 group">
+    <Megaphone size={22} className="text-orange-500 group-hover:text-white" /> Minute Sécurité
+</button>
         </nav>
       </aside>
 
