@@ -6,12 +6,12 @@ import { supabase } from '@/lib/supabase';
 import { 
   ClipboardCheck, Shield, User, Check, X, Save, 
   Eye, Calendar, CheckCircle2, ChevronRight, Plus, Loader2,
-  AlertTriangle, HardHat, Info
+  AlertTriangle, HardHat, Info, Printer, FileText, ArrowLeft
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
 
-// Import de notre nouveau référentiel métier
+// Import de notre référentiel métier
 import { RISK_DATABASE, EPI_DATABASE } from '../data'; 
 
 // ============================================================================
@@ -34,16 +34,22 @@ function PreJobContent() {
   const chantierId = searchParams.get('cid');
 
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'list' | 'create'>('list');
+  const [view, setView] = useState<'list' | 'create' | 'view'>('list');
   const [archives, setArchives] = useState<any[]>([]);
   const [equipe, setEquipe] = useState<any[]>([]);
   const [chantierInfo, setChantierInfo] = useState<any>(null);
+  
+  // Élément sélectionné pour la vue / impression
+  const [selectedPreJob, setSelectedPreJob] = useState<any>(null);
+  const [printLayout, setPrintLayout] = useState<'prejob' | 'adr'>('prejob');
 
   // --- ÉTAT DU FORMULAIRE WIZARD ---
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    animateur_mode: 'list', // 'list' ou 'manual'
     animateur_selectionne: '',
+    animateur_manuel: '',
     taches_principales: [] as string[],
     risques_selectionnes: [] as string[],
     epi_specifiques: [] as string[],
@@ -79,15 +85,14 @@ function PreJobContent() {
   // --- HELPERS ---
   const toggleItem = (list: string[], item: string) => list.includes(item) ? list.filter(i => i !== item) : [...list, item];
 
-  // Regrouper les tâches uniques pour l'affichage
   const uniqueTasks = Array.from(new Set(RISK_DATABASE.map(r => r.task)));
-
-  // Obtenir les risques liés aux tâches sélectionnées (Plus logistique de base)
   const relevantRisks = RISK_DATABASE.filter(r => formData.taches_principales.includes(r.task) || r.category === 'Logistique');
 
   // --- SAUVEGARDE ---
   const handleSave = async () => {
-    if (!formData.animateur_selectionne) return toast.error("Veuillez sélectionner un animateur.");
+    const finalAnimateur = formData.animateur_mode === 'list' ? formData.animateur_selectionne : formData.animateur_manuel;
+    
+    if (!finalAnimateur) return toast.error("Veuillez renseigner l'animateur.");
     if (sigPad.current?.isEmpty()) return toast.error("La signature de l'animateur est obligatoire.");
     
     const toastId = toast.loading("Enregistrement du Pre-Job...");
@@ -96,10 +101,10 @@ function PreJobContent() {
     const payload = {
         chantier_id: chantierId,
         date: formData.date,
-        animateur: formData.animateur_selectionne,
+        animateur: finalAnimateur,
         tache_principale: formData.taches_principales.join(', '),
-        risques_id: formData.risques_selectionnes, // On stocke les IDs des risques (ex: TCA-14)
-        epi_ids: [...EPI_DATABASE.base, ...formData.epi_specifiques], // Base + Spécifiques
+        risques_id: formData.risques_selectionnes, 
+        epi_ids: [...EPI_DATABASE.base, ...formData.epi_specifiques],
         mesures_specifiques: formData.mesures_specifiques,
         signatures: { animateur: signatureData }
     };
@@ -110,22 +115,29 @@ function PreJobContent() {
         toast.error("Erreur d'enregistrement : " + error.message, { id: toastId });
     } else { 
         toast.success("✅ Pre-Job enregistré avec succès !", { id: toastId }); 
-        
-        // Rechargement des archives et retour liste
         const { data } = await supabase.from('chantier_prejobs').select('*').eq('chantier_id', chantierId).order('date', { ascending: false });
         if(data) setArchives(data);
         
         setView('list'); 
         setStep(1); 
-        setFormData({ ...formData, taches_principales: [], risques_selectionnes: [], epi_specifiques: [], mesures_specifiques: '' });
+        setFormData({ ...formData, animateur_mode: 'list', animateur_manuel: '', taches_principales: [], risques_selectionnes: [], epi_specifiques: [], mesures_specifiques: '' });
     }
+  };
+
+  // --- GESTION IMPRESSION ---
+  const handlePrint = (layout: 'prejob' | 'adr') => {
+    setPrintLayout(layout);
+    // On laisse le temps à React de changer le DOM avant de lancer l'impression
+    setTimeout(() => {
+        window.print();
+    }, 300);
   };
 
   if (!chantierId) return <div className="p-10 text-center font-black uppercase text-red-500">Erreur : Aucun chantier sélectionné. Passez par le Dashboard.</div>;
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-gray-500"><Loader2 className="animate-spin text-red-600 mr-3"/> Chargement du contexte...</div>;
 
   // ==========================================================================
-  // VUE 1 : LISTE DES ARCHIVES PRE-JOB
+  // VUE 1 : LISTE DES ARCHIVES
   // ==========================================================================
   if (view === 'list') {
     return (
@@ -172,7 +184,7 @@ function PreJobContent() {
                             <span className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase border border-red-100">
                                 {a.risques_id?.length || 0} Risques identifiés
                             </span>
-                            <button className="bg-white p-3 rounded-xl text-gray-400 group-hover:text-[#00b894] border border-gray-200 shadow-sm transition-all">
+                            <button onClick={() => { setSelectedPreJob(a); setView('view'); }} className="bg-white p-3 rounded-xl text-gray-400 group-hover:text-[#00b894] border border-gray-200 shadow-sm transition-all">
                                 <Eye size={20}/>
                             </button>
                         </div>
@@ -185,7 +197,154 @@ function PreJobContent() {
   }
 
   // ==========================================================================
-  // VUE 2 : CRÉATION WIZARD (Avec le nouveau data.ts)
+  // VUE 2 : VISIONNEUSE / IMPRESSION (Pre-Job & ADR)
+  // ==========================================================================
+  if (view === 'view' && selectedPreJob) {
+      // Retrouver les objets Risques complets depuis les IDs sauvegardés
+      const dbRisks = selectedPreJob.risques_id.map((id: string) => RISK_DATABASE.find(r => r.id === id)).filter(Boolean);
+
+      return (
+          <div className="min-h-screen bg-gray-100 font-sans text-gray-900 p-4 md:p-8">
+              
+              {/* STYLE D'IMPRESSION GLOBAL */}
+              <style dangerouslySetInnerHTML={{__html: `
+                @media print {
+                  @page { size: A4 portrait; margin: 10mm; }
+                  body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                  .no-print { display: none !important; }
+                  .print-only { display: block !important; }
+                  .print-container { box-shadow: none !important; border: none !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
+                  table { width: 100%; border-collapse: collapse; }
+                  th, td { border: 1px solid #000; padding: 8px; font-size: 12px; }
+                  th { background-color: #f3f4f6 !important; font-weight: bold; }
+                }
+              `}}/>
+
+              {/* BOUTONS D'ACTION (Cachés à l'impression) */}
+              <div className="max-w-4xl mx-auto mb-6 flex flex-col md:flex-row justify-between gap-4 no-print">
+                  <button onClick={() => setView('list')} className="flex items-center gap-2 text-gray-500 font-bold hover:text-black bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-200">
+                      <ArrowLeft size={18}/> Retour aux archives
+                  </button>
+                  <div className="flex gap-2">
+                      <button onClick={() => handlePrint('prejob')} className="bg-[#2d3436] hover:bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-lg transition-all">
+                          <Printer size={16}/> Imprimer PRE-JOB
+                      </button>
+                      <button onClick={() => handlePrint('adr')} className="bg-[#e21118] hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-lg transition-all">
+                          <FileText size={16}/> Imprimer ADR (Analyse Risque)
+                      </button>
+                  </div>
+              </div>
+
+              {/* CONTENEUR DU DOCUMENT (S'adapte selon le bouton cliqué) */}
+              <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-2xl p-10 print-container">
+                  
+                  {/* --- LAYOUT : PRE-JOB BRIEFING --- */}
+                  {printLayout === 'prejob' && (
+                      <div className="space-y-8">
+                          {/* En-tête */}
+                          <div className="border-b-2 border-black pb-4 flex justify-between items-end">
+                              <div>
+                                  <h1 className="text-2xl font-black uppercase tracking-tight">PRE-JOB BRIEFING</h1>
+                                  <h2 className="text-lg font-bold text-gray-600 uppercase mt-1">{chantierInfo?.nom}</h2>
+                              </div>
+                              <div className="text-right">
+                                  <p className="text-sm font-bold uppercase border border-black px-3 py-1 inline-block">Date : {new Date(selectedPreJob.date).toLocaleDateString()}</p>
+                              </div>
+                          </div>
+
+                          {/* Infos Générales */}
+                          <div className="grid grid-cols-2 gap-4 text-sm font-bold border border-black p-4 bg-gray-50">
+                              <div><span className="text-gray-500 uppercase mr-2">Animateur :</span> {selectedPreJob.animateur}</div>
+                              <div><span className="text-gray-500 uppercase mr-2">Client :</span> {chantierInfo?.client || 'N/A'}</div>
+                              <div className="col-span-2"><span className="text-gray-500 uppercase mr-2">Tâches prévues :</span> {selectedPreJob.tache_principale}</div>
+                          </div>
+
+                          {/* EPI */}
+                          <div>
+                              <h3 className="text-lg font-black uppercase mb-2 border-b border-gray-300">Équipements de Protection Individuelle (EPI)</h3>
+                              <div className="flex flex-wrap gap-2">
+                                  {selectedPreJob.epi_ids.map((epi: string) => (
+                                      <span key={epi} className="border border-black px-3 py-1 text-xs font-bold bg-gray-50">{epi}</span>
+                                  ))}
+                              </div>
+                          </div>
+
+                          {/* Résumé des risques (Simplifié pour le Pre-job) */}
+                          <div>
+                              <h3 className="text-lg font-black uppercase mb-2 border-b border-gray-300">Points de vigilance majeurs abordés</h3>
+                              <ul className="list-disc pl-5 space-y-1 text-sm font-bold">
+                                  {dbRisks.map((r: any) => (
+                                      <li key={r.id}>{r.task} : <span className="text-red-600">{r.risks[0]}</span></li>
+                                  ))}
+                              </ul>
+                          </div>
+
+                          {/* Signatures */}
+                          <div className="mt-12 border border-black">
+                              <div className="bg-gray-100 border-b border-black p-2 font-black uppercase text-sm">Émargement Animateur</div>
+                              <div className="p-4 flex items-center justify-center min-h-[150px]">
+                                  {selectedPreJob.signatures?.animateur ? (
+                                      <img src={selectedPreJob.signatures.animateur} alt="Signature" className="max-h-24" />
+                                  ) : (
+                                      <span className="text-gray-300 italic">Aucune signature</span>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* --- LAYOUT : ADR (ANALYSE DE RISQUE) --- */}
+                  {printLayout === 'adr' && (
+                      <div className="space-y-6">
+                          {/* En-tête ADR */}
+                          <div className="text-center border-2 border-black p-4 mb-8">
+                              <h1 className="text-2xl font-black uppercase">ANALYSE DE RISQUE (A.D.R)</h1>
+                              <p className="text-sm font-bold uppercase mt-2">Chantier : {chantierInfo?.nom} | Date : {new Date(selectedPreJob.date).toLocaleDateString()}</p>
+                              <p className="text-xs mt-1">Rédacteur / Animateur : {selectedPreJob.animateur}</p>
+                          </div>
+
+                          {/* Tableau Strict */}
+                          <table className="w-full text-sm">
+                              <thead>
+                                  <tr>
+                                      <th className="w-[10%]">Code</th>
+                                      <th className="w-[25%]">Opération / Tâche</th>
+                                      <th className="w-[30%] text-red-600">Risques identifiés</th>
+                                      <th className="w-[35%] text-green-700">Mesures de prévention (EPI/EPC)</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                  {dbRisks.map((r: any) => (
+                                      <tr key={r.id}>
+                                          <td className="font-mono text-xs text-center font-bold">{r.id}</td>
+                                          <td className="font-bold uppercase text-xs">{r.task}</td>
+                                          <td className="text-xs">
+                                              <ul className="list-disc pl-4 space-y-1">
+                                                  {r.risks.map((risk: string, i: number) => <li key={i}>{risk}</li>)}
+                                              </ul>
+                                          </td>
+                                          <td className="text-xs">
+                                              <ul className="list-disc pl-4 space-y-1">
+                                                  {r.measures.map((mes: string, i: number) => <li key={i}>{mes}</li>)}
+                                              </ul>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+
+                          <div className="mt-10 text-xs italic text-gray-500">
+                              Document généré automatiquement depuis ALTRAD.OS sur la base de la bibliothèque des risques.
+                          </div>
+                      </div>
+                  )}
+              </div>
+          </div>
+      );
+  }
+
+  // ==========================================================================
+  // VUE 3 : CRÉATION WIZARD
   // ==========================================================================
   return (
     <div className="min-h-screen bg-[#2d3436] p-4 md:p-8 font-['Fredoka'] flex items-center justify-center text-gray-800">
@@ -220,14 +379,42 @@ function PreJobContent() {
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100">
                             <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Animateur (Chef d'équipe)</label>
-                                <select className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-red-200 border border-gray-100 cursor-pointer shadow-sm" 
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Animateur (Chef d'équipe / CdT)</label>
+                                
+                                {/* SÉLECTEUR AVEC OPTION MANUELLE */}
+                                {formData.animateur_mode === 'list' ? (
+                                    <select 
+                                        className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-red-200 border border-gray-100 cursor-pointer shadow-sm" 
                                         value={formData.animateur_selectionne} 
-                                        onChange={e=>setFormData({...formData, animateur_selectionne: e.target.value})}>
-                                    <option value="">-- Sélectionner l'animateur --</option>
-                                    {equipe.map((e:any) => <option key={e.id} value={`${e.nom} ${e.prenom}`}>{e.nom} {e.prenom} ({e.role})</option>)}
-                                </select>
+                                        onChange={(e) => {
+                                            if (e.target.value === 'custom') {
+                                                setFormData({...formData, animateur_mode: 'manual', animateur_selectionne: ''});
+                                            } else {
+                                                setFormData({...formData, animateur_selectionne: e.target.value});
+                                            }
+                                        }}
+                                    >
+                                        <option value="">-- Sélectionner dans l'équipe --</option>
+                                        {equipe.map((e:any) => <option key={e.id} value={`${e.nom} ${e.prenom}`}>{e.nom} {e.prenom} ({e.role})</option>)}
+                                        <option value="custom" className="font-black text-blue-600">➕ AUTRE (Saisie Manuelle)...</option>
+                                    </select>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Nom et Prénom de l'animateur..."
+                                            className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-red-200 border border-gray-100 shadow-sm"
+                                            value={formData.animateur_manuel}
+                                            onChange={(e) => setFormData({...formData, animateur_manuel: e.target.value})}
+                                            autoFocus
+                                        />
+                                        <button onClick={() => setFormData({...formData, animateur_mode: 'list'})} className="p-4 bg-gray-200 rounded-2xl hover:bg-gray-300 transition-colors" title="Retour à la liste">
+                                            <X size={20}/>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
+
                             <div>
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Date d'intervention</label>
                                 <input type="date" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-red-200 border border-gray-100 shadow-sm" 
@@ -238,8 +425,8 @@ function PreJobContent() {
 
                         <div>
                             <div className="flex items-center gap-2 mb-4">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block">Tâches prévues aujourd'hui (Multi-choix)</label>
-                                <div className="bg-blue-50 text-blue-500 text-[9px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1"><Info size={10}/> Définit les risques</div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block">Tâches prévues aujourd'hui</label>
+                                <div className="bg-blue-50 text-blue-500 text-[9px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1"><Info size={10}/> Définit les risques de l'ADR</div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {uniqueTasks.map(task => (
@@ -255,13 +442,13 @@ function PreJobContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 2 : RISQUES (Dynamique selon data.ts) --- */}
+                {/* --- ETAPE 2 : RISQUES --- */}
                 {step === 2 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
-                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-red-500 inline-block pb-1">2. Analyse des Risques</h3>
+                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-red-500 inline-block pb-1">2. Analyse des Risques (ADR)</h3>
                         <p className="text-xs font-bold text-gray-500 bg-orange-50 p-4 rounded-2xl border border-orange-100 flex items-center gap-3">
                             <AlertTriangle className="text-orange-500" size={24}/>
-                            Sélectionnez les risques applicables aux tâches choisies. (Les risques logistiques sont toujours inclus).
+                            Cochez les risques applicables pour les inclure dans l'ADR. (Les risques logistiques sont inclus par défaut).
                         </p>
 
                         <div className="space-y-4">
@@ -284,11 +471,11 @@ function PreJobContent() {
 
                                         <div className={`space-y-4 ${isSelected ? 'opacity-100' : 'opacity-40'}`}>
                                             <div>
-                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Risques identifiés</p>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Risques</p>
                                                 <p className="text-xs font-bold text-red-500 bg-red-50 p-2 rounded-xl">{risk.risks.join(' • ')}</p>
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Mesures de prévention (À appliquer)</p>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Prévention</p>
                                                 <ul className="text-xs font-bold text-emerald-700 bg-emerald-50 p-3 rounded-xl space-y-1">
                                                     {risk.measures.map((m, i) => <li key={i} className="flex items-start gap-2"><CheckCircle2 size={12} className="mt-0.5 shrink-0"/> {m}</li>)}
                                                 </ul>
@@ -307,9 +494,8 @@ function PreJobContent() {
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-red-500 inline-block pb-1">3. EPI & Signature</h3>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* EPI DE BASE (Verrouillés) */}
                             <div className="bg-gray-50 p-6 rounded-3xl border border-gray-200">
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><HardHat size={14}/> EPI de Base (Obligatoires)</h4>
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><HardHat size={14}/> EPI de Base (Altrad)</h4>
                                 <div className="space-y-2">
                                     {EPI_DATABASE.base.map(epi => (
                                         <div key={epi} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 opacity-70">
@@ -320,9 +506,8 @@ function PreJobContent() {
                                 </div>
                             </div>
 
-                            {/* EPI SPÉCIFIQUES (Cochables) */}
                             <div className="bg-blue-50/30 p-6 rounded-3xl border border-blue-100">
-                                <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Shield size={14}/> EPI Spécifiques (Sélectionner)</h4>
+                                <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Shield size={14}/> EPI Spécifiques</h4>
                                 <div className="grid grid-cols-1 gap-2">
                                     {EPI_DATABASE.specifiques.map(epi => (
                                         <div key={epi.nom} 
@@ -341,9 +526,10 @@ function PreJobContent() {
                             </div>
                         </div>
 
-                        {/* SIGNATURE */}
                         <div className="mt-8">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Validation Animateur ({formData.animateur_selectionne || 'Non défini'})</label>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">
+                                Validation : {formData.animateur_mode === 'list' ? formData.animateur_selectionne : formData.animateur_manuel}
+                            </label>
                             <div className="border-4 border-gray-100 rounded-[30px] h-48 bg-gray-50 relative overflow-hidden">
                                 <SignatureCanvas ref={sigPad} penColor="black" canvasProps={{className: 'absolute inset-0 w-full h-full cursor-crosshair'}} />
                                 <div className="absolute bottom-4 w-full text-center text-[10px] font-black uppercase text-gray-300 pointer-events-none tracking-widest">Signer dans le cadre</div>
@@ -363,8 +549,9 @@ function PreJobContent() {
                 
                 {step < 3 ? (
                     <button onClick={() => {
-                        if (step === 1 && formData.taches_principales.length === 0) {
-                            return toast.error("Veuillez sélectionner au moins une tâche.");
+                        const finalAnimateur = formData.animateur_mode === 'list' ? formData.animateur_selectionne : formData.animateur_manuel;
+                        if (step === 1 && (!finalAnimateur || formData.taches_principales.length === 0)) {
+                            return toast.error("Veuillez remplir l'animateur et les tâches.");
                         }
                         setStep(step+1);
                     }} className="bg-[#2d3436] text-white px-8 py-4 rounded-2xl font-black uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-black transition-all">
