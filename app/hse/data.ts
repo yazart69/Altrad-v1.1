@@ -212,7 +212,7 @@ export const INDUCTION_CHECKLIST = {
     "Contrôles à réaliser / Critères d’acceptation",
     "Documents à renseigner / Traçabilité"
   ],
-  surete: [
+   surete: [
     "Présentation des IPSN / AIP / AIS",
     "Présentation des risques Sûreté",
     "Risque particulier (AAR, FME, Incendie)"
