@@ -1,10 +1,10 @@
 // =============================================================================
-// REFERENTIEL HSE & TECHNIQUE - ALTRAD.OS
+// REFERENTIEL QHSE & TECHNIQUE - ALTRAD.OS
 // Ce fichier centralise toutes les données statiques métiers.
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// 1. BIBLIOTHÈQUE DES RISQUES (Générateur Documents / Analyse Risque)
+// 1. BIBLIOTHÈQUE DES RISQUES (Générateur Documents / Analyse Risque / PreJob)
 // -----------------------------------------------------------------------------
 export const RISK_DATABASE = [
   // --- FAMILLE 1 : LOGISTIQUE & ORGANISATION (TCA) ---
@@ -20,226 +20,228 @@ export const RISK_DATABASE = [
     category: 'Logistique', 
     task: "Déplacement sur chantier (Piéton/Véhicule)", 
     risks: ["Heurt par engin", "Accident de trajet", "Choc/Coup", "Chute de plain-pied", "Coactivité"], 
-    measures: ["Respect des voies de circulation piétons", "Vigilance vis-à-vis de la coactivité", "Port EPI complet (Casque/Chaussures/Gilet)", "Interdiction de courir", "Vigilance sol glissant / encombré"] 
-  },
-  { 
-    id: 'TCA-17', 
-    category: 'Logistique', 
-    task: "Chargement / Déchargement manuel", 
-    risks: ["Choc/Coup", "Troubles Musculo-Squelettiques (TMS)", "Ecrasement pieds/mains", "Pollution accidentelle"], 
-    measures: ["Prise de connaissance du protocole site", "Règle des 3 points d'appuis (montée véhicule)", "Utilisation outils aide manutention (diable, transpal)", "Kit anti-pollution à portée de main", "Gants protection mécanique (EN 388 4542)"] 
+    measures: ["Respect des voies de circulation piétons", "Vigilance vis-à-vis de la coactivité", "Port EPI complet", "Interdiction de courir", "Vigilance sol glissant / encombré"] 
   },
   { 
     id: 'TCA-15', 
     category: 'Logistique', 
     task: "Repli et Nettoyage de chantier", 
-    risks: ["Inhalation poussières", "Choc/coup", "Chute de plain-pied", "Incidence musculaire", "Coupure"], 
-    measures: ["Port masque P2/P3 si balayage", "Matériel maintenu en bon état", "Maintien de l'ordre et la propreté (Au fur et à mesure)", "Tri sélectif des déchets (DIS/DIB)", "Adopter les bons gestes et postures"] 
+    risks: ["Inhalation poussières", "Choc/coup", "Chute de plain-pied", "Coupure"], 
+    measures: ["Port masque P2/P3 si balayage", "Maintien de l'ordre et la propreté (Au fur et à mesure)", "Tri sélectif des déchets (DIS/DIB)"] 
   },
 
   // --- FAMILLE 2 : TRAVAUX EN HAUTEUR (ECH) ---
   { 
     id: 'ECH-01', 
-    category: 'Hauteur', 
-    task: "Montage / Modification échafaudage", 
-    risks: ["Chute de hauteur", "Chute d'objet", "Effondrement structure", "Coincement"], 
-    measures: ["Personnel formé et habilité (Monteur)", "Port du harnais avec double longe (Point ancrage haut)", "Balisage strict de la zone de montage", "Vérification stabilité du sol d'assise", "Cales de répartition sous pieds", "Contrôle visuel journalier"] 
-  },
-  { 
-    id: 'ECH-02', 
-    category: 'Hauteur', 
-    task: "Démontage échafaudage", 
-    risks: ["Chute de hauteur", "Chute d'objet sur tiers", "Coincement membres", "Lumbago"], 
-    measures: ["Zone interdite balisée physiquement", "Descente matériel à la poulie ou chaîne humaine", "Ordre et propreté permanent des plateaux", "Harnais attaché en permanence"] 
+    category: 'Hauteur / Echafaudage', 
+    task: "Montage / Modification / Démontage échafaudage", 
+    risks: ["Chute de hauteur", "Chute d'objet", "Effondrement structure", "Pincement / Ecrasement", "Incidence musculaire"], 
+    measures: ["Personnel formé et habilité (Monteur)", "Port du harnais avec enrouleur à rappel automatique et absorbeur", "Longe simple avec absorbeur", "Ceinture de maintien et longes porte-outils", "Balisage strict de la zone", "Contrôle visuel journalier"] 
   },
   { 
     id: 'TCA-09', 
     category: 'Hauteur', 
     task: "Travaux avec Nacelle (PEMP)", 
-    risks: ["Chute de hauteur", "Ejection", "Heurt structure", "Renversement", "Electrocution"], 
-    measures: ["CACES PEMP valide et Autorisation conduite", "Harnais attaché dans le panier (Point ancrage)", "Balisage au sol (Zone évolution)", "Vérification VGP < 6 mois", "Présence surveillant au sol"] 
-  },
-  { 
-    id: 'TCA-12', 
-    category: 'Hauteur', 
-    task: "Travaux à l'échelle / Escabeau", 
-    risks: ["Chute de hauteur", "Déséquilibre"], 
-    measures: ["Travail ponctuel et court uniquement", "Toujours 3 points d'appui", "Maintien de l'échelle par un tiers", "Echelle attachée en tête si possible", "Interdit comme poste de travail permanent"] 
+    risks: ["Chute de hauteur", "Ejection", "Heurt structure", "Renversement"], 
+    measures: ["CACES PEMP valide", "Harnais attaché dans le panier (Point ancrage)", "Balisage au sol", "Vérification VGP < 6 mois"] 
   },
 
-  // --- FAMILLE 3 : PEINTURE & TRAITEMENT (PRS) ---
+  // --- FAMILLE 3 : PEINTURE, TRAITEMENT & REVÊTEMENT (PRS) ---
   { 
-    id: 'PRS-06', 
+    id: 'PRS-01', 
     category: 'Peinture', 
-    task: "Sablage / Grenaillage (Abrasif)", 
-    risks: ["Projection abrasif violent", "Bruit > 85dB", "Poussière importante", "Fouettement flexible"], 
-    measures: ["Heaume ventilé avec adduction air", "Combinaison sablage cuir/épaisse", "Câbles de sécurité anti-fouettement", "Dispositif Homme mort fonctionnel", "Balisage hermétique de la zone"] 
+    task: "Malaxage Peinture (PPI / Conteneur / Air libre)", 
+    risks: ["Exposition aux COV", "Projection de produits", "Contact cutané avec produits", "Incendie"], 
+    measures: ["Demi-masque avec filtre A2 a minima", "Lunettes étanches", "Gants chimiques (Nitrile/Néoprène selon FDS)", "Utilisation bac de rétention"] 
   },
   { 
     id: 'PRS-09', 
     category: 'Peinture', 
-    task: "Application Peinture (Pistolet/Airless)", 
-    risks: ["Risque Chimique (Inhalation/Contact)", "Incendie / Explosion", "Projection haute pression (Injection)"], 
-    measures: ["Masque cartouche A2P3", "Combinaison chimique étanche", "Extincteur à proximité immédiate", "Mise à la terre du matériel (Pompe)", "Consultation FDS obligatoire"] 
+    task: "Application Peinture (Airless)", 
+    risks: ["Exposition aux vapeurs de peinture", "Contact cutané", "Projection haute pression (Injection)"], 
+    measures: ["Masque facial intégral avec cartouches A2", "Combinaison blanche étanche", "Gants chimiques (selon FDS)", "Mise à la terre du matériel", "Films protecteurs sur visière"] 
   },
   { 
-    id: 'PRS-08', 
+    id: 'PRS-10', 
     category: 'Peinture', 
-    task: "Mélange / Préparation Peinture", 
-    risks: ["Emanations COV", "Eclaboussure yeux/peau", "Renversement produit"], 
-    measures: ["Local ventilé ou extérieur", "Utilisation bac de rétention", "Lunettes étanches + Gants néoprène/nitrile", "Kit lavage oculaire à proximité immédiate"] 
+    task: "Application Peinture (Manuelle / Retouches)", 
+    risks: ["Coupure (Camouflage)", "Exposition aux vapeurs", "Contact cutané"], 
+    measures: ["Gants anti-coupure (Indice 4/5) pour le camouflage", "Cutter rétractable OBLIGATOIRE", "Demi-masque A2", "Produits dans contenants fermés et identifiés"] 
+  },
+  { 
+    id: 'PRS-06', 
+    category: 'Décapage', 
+    task: "Sablage / Grenaillage (Abrasif) / Lavage HP", 
+    risks: ["Projection abrasif violent", "Bruit > 85dB", "Poussière (Plomb)", "Fouettement flexible"], 
+    measures: ["Heaume ventilé avec adduction air", "Combinaison sablage", "Câbles de sécurité anti-fouettement", "Balisage hermétique de la zone (Zone Rouge)", "Sas de décontamination si Plomb"] 
   },
 
-  // --- FAMILLE 4 : RISQUES SPÉCIFIQUES (CET) ---
+  // --- FAMILLE 4 : RISQUES SPÉCIFIQUES & SÛRETÉ (CET) ---
   { 
     id: 'CET-04', 
     category: 'Spécifique', 
     task: "Travaux en capacité confinée (Cuve, Galerie)", 
-    risks: ["Anoxie (Manque O2)", "Intoxication gaz", "Explosion", "Difficulté évacuation"], 
-    measures: ["Permis de pénétrer valide", "Surveillant obligatoire au trou d'homme", "Détecteur 4 gaz étalonné", "Ventilation mécanique continue", "Masque auto-sauveteur au ceinturon"] 
+    risks: ["Anoxie (Manque O2)", "Intoxication gaz", "Explosion"], 
+    measures: ["Permis de pénétrer valide", "Surveillant au trou d'homme", "Détecteur 4 gaz étalonné", "Ventilation continue", "Masque auto-sauveteur (Masque d'évacuation)"] 
   },
   { 
     id: 'CET-10', 
     category: 'Spécifique', 
     task: "Travaux en Zone ATEX", 
     risks: ["Explosion", "Incendie", "Electricité statique"], 
-    measures: ["Matériel certifié ATEX", "Interdiction téléphone/allumette", "Permis de feu", "Explosimètre permanent", "Vêtements antistatiques et coton"] 
+    measures: ["Matériel certifié ATEX", "Interdiction téléphone/allumette", "Permis de feu", "Explosimètre permanent", "Vêtements antistatiques"] 
   },
-  { 
-    id: 'TCA-23', 
-    category: 'Spécifique', 
-    task: "Utilisation outils coupants (Cutter)", 
-    risks: ["Coupure grave", "Hémorragie"], 
-    measures: ["Utilisation Cutter à lame rétractable OBLIGATOIRE", "Gants niveau 5", "Interdiction coupe vers soi", "Couteau de sécurité si possible"] 
-  },
-  // NOUVEAUX RISQUES AJOUTÉS
   { 
     id: 'HOT-01', 
     category: 'Points Chauds', 
     task: "Soudure / Meulage / Découpe", 
     risks: ["Incendie / Explosion", "Brûlures", "Fumées de soudage", "Rayonnements UV"], 
-    measures: ["Permis de feu obligatoire", "Extincteur à portée de main", "Écran facial/Masque soudure", "Vêtements coton ignifugé", "Bâche anti-feu", "Surveillance après travail (2h)"] 
-  },
-  { 
-    id: 'LEV-01', 
-    category: 'Levage', 
-    task: "Manutention mécanique (Grue, Pont)", 
-    risks: ["Chute de la charge", "Ecrasement", "Rupture élingue", "Heurt"], 
-    measures: ["Chef de manœuvre identifié", "Vérification des accessoires de levage (VGP)", "Interdiction de passer sous la charge", "Guidage radio ou gestuel", "Zone de pose balisée"] 
+    measures: ["Permis de feu", "Extincteur à portée", "Écran facial/Masque soudure", "Bâche anti-feu", "Surveillance post-travail (2h)"] 
   }
 ];
 
 // -----------------------------------------------------------------------------
-// 2. RÈGLES DE VÉRIFICATION PÉRIODIQUE (Module VGP)
+// 2. REFERENTIEL DES EPI (Équipements de Protection Individuelle)
 // -----------------------------------------------------------------------------
-// Périodicité en mois
-export const VGP_RULES = {
-  "Levage": 6,      // Nacelles, Treuils, Palans, Elingues
-  "EPI_Harnais": 12, // Harnais, Longes, Anti-chute
-  "Electrique": 12, // Armoires, Coffrets
-  "Pression": 12,   // Compresseurs, Cuves
-  "Echafaudage": 3,  // Vérif trimestrielle
-  "Extincteur": 12, // Vérification annuelle
-  "Vehicule": 12,    // Contrôle technique / Vérif interne
-  "Outillage": 12   // Meuleuses, Perceuses...
-};
-
-// Liste déroulante pour le formulaire d'ajout matériel
-export const EQUIPMENT_TYPES = [
-  { label: "Nacelle (PEMP)", category: "Levage" },
-  { label: "Grue / Pont Roulant", category: "Levage" },
-  { label: "Harnais de sécurité", category: "EPI_Harnais" },
-  { label: "Longe / Anti-chute", category: "EPI_Harnais" },
-  { label: "Compresseur", category: "Pression" },
-  { label: "Echafaudage Roulant", category: "Echafaudage" },
-  { label: "Extincteur", category: "Extincteur" },
-  { label: "Coffret Électrique", category: "Electrique" },
-  { label: "Véhicule Utilitaire", category: "Vehicule" },
-  { label: "Outillage électroportatif", category: "Outillage" }
-];
-
-// -----------------------------------------------------------------------------
-// 3. RÉFÉRENTIEL INCIDENTS (NOUVEAU - Module Registre)
-// -----------------------------------------------------------------------------
-export const INCIDENT_REFERENTIAL = {
-    types: [
-        "Accident avec Arrêt (AAA)",
-        "Accident sans Arrêt (ASA)",
-        "Presque-Accident / Near Miss",
-        "Incident Matériel",
-        "Incident Environnemental (Fuite...)",
-        "Soins Bénins (Infirmerie)"
-    ],
-    siege_lesions: [
-        "Mains / Doigts",
-        "Yeux / Visage",
-        "Pieds / Chevilles",
-        "Dos / Rachis",
-        "Tête / Cou",
-        "Jambes / Genoux",
-        "Voies respiratoires",
-        "Non applicable (Matériel/Env)"
-    ],
-    gravite: [
-        "Faible (Pas de soin)",
-        "Moyenne (Soin infirmier)",
-        "Grave (Arrêt de travail)",
-        "Critique (Hospitalisation/Décès)"
-    ]
-};
-
-// -----------------------------------------------------------------------------
-// 4. RÉFÉRENTIEL Q3SRE (Visites Terrain)
-// -----------------------------------------------------------------------------
-export const Q3SRE_REFERENTIAL = {
-  lignes_defense: [
-    "Technique (Matériel, EPC, EPI)",
-    "Humaine (Compétence, Vigilance, Comportement)",
-    "Organisationnelle (Procédures, Planning, Permis)"
+export const EPI_DATABASE = {
+  base: [
+    "Casque avec jugulaire 4 points",
+    "Lunettes de circulation",
+    "Vêtement de travail couvrant",
+    "Chaussures de sécurité montantes (S3)"
   ],
-  points_controle: [
-    "Port des EPI obligatoires",
-    "Balisage de la zone",
-    "Conformité de l'échafaudage",
-    "Permis de feu / Pénétrer présents",
-    "État du matériel électroportatif",
-    "Propreté de la zone de travail",
-    "Stockage des produits chimiques (Rétention)",
-    "Présence extincteur valide",
-    "Postures de travail",
-    "Respect des procédures consignation"
+  specifiques: [
+    { nom: "Demi-masque filtre A2", categorie: "Respiratoire", usage: "Peinture manuelle, Malaxage" },
+    { nom: "Masque facial intégral (A2P3)", categorie: "Respiratoire", usage: "Peinture Airless, Plomb" },
+    { nom: "Masque d'évacuation / Auto-sauveteur", categorie: "Respiratoire", usage: "Espace confiné" },
+    { nom: "Heaume ventilé + adduction d'air", categorie: "Respiratoire", usage: "Sablage, Grenaillage" },
+    { nom: "Gants chimiques (Nitrile/Néoprène)", categorie: "Mains", usage: "Manipulation FDS dangereuse" },
+    { nom: "Gants anti-coupure (Indice D / Niv 4-5)", categorie: "Mains", usage: "Camouflage, Manutention" },
+    { nom: "Gants de sablage", categorie: "Mains", usage: "Sablage" },
+    { nom: "Harnais de sécurité complet (Modèle NEOFEU)", categorie: "Hauteur", usage: "Nacelle, Echafaudage" },
+    { nom: "Longe simple + absorbeur", categorie: "Hauteur", usage: "Déplacement structure" },
+    { nom: "Enrouleur à rappel automatique", categorie: "Hauteur", usage: "Poste fixe en hauteur" },
+    { nom: "Longes porte-outils", categorie: "Hauteur", usage: "Prévention chute d'objets" },
+    { nom: "Combinaison étanche (Tyvek / Blanche)", categorie: "Corps", usage: "Peinture Airless, Plomb" },
+    { nom: "Combinaison cuir sablage", categorie: "Corps", usage: "Sablage" },
+    { nom: "Détecteur 4 Gaz", categorie: "Spécifique", usage: "ATEX, Confiné" }
   ]
 };
 
 // -----------------------------------------------------------------------------
-// 5. CATÉGORIES D'OBSERVATION (Module OST)
+// 3. RÈGLES DE VÉRIFICATION PÉRIODIQUE (Module VGP)
 // -----------------------------------------------------------------------------
-export const OST_THEMES = [
-  "Réaction face au risque",
-  "Positions et Ergonomie",
-  "Port des EPI",
-  "Outillage et Equipement",
-  "Procédures et Organisation",
-  "Ordre et Propreté",
-  "Environnement"
-];
+export const VGP_RULES = {
+  "Levage": 6,      // Nacelles, Treuils, Palans, Elingues
+  "EPI_Harnais": 12,// Harnais, Longes, Anti-chute, Lignes de vie
+  "Electrique": 12, // Armoires, Coffrets, Rallonges
+  "Pression": 12,   // Compresseurs, Cuves
+  "Echafaudage": 3, // Vérif trimestrielle
+  "Extincteur": 12, // Vérification annuelle
+  "Vehicule": 12,   // Contrôle technique / Vérif interne
+  "Outillage": 12   // Meuleuses, Perceuses, Malaxeurs
+};
 
 // -----------------------------------------------------------------------------
-// 6. THÈMES CAUSERIES (Module Sécurité)
+// 4. RÉFÉRENTIEL DES ÉVÈNEMENTS & NON-CONFORMITÉS (NC)
+// -----------------------------------------------------------------------------
+export const NC_REFERENTIAL = {
+  types: [
+    "NC-RAQ (Règles d’Assurance Qualité)",
+    "NC-F (Fournisseur/Fourniture)",
+    "NC-MOeP (Mise en Œuvre de nos Prestations)"
+  ],
+  impacts: [
+    "CFSI (Contrefait / Frauduleux / Suspicion d’irrégularité)",
+    "Sûreté (AIP/AIS)",
+    "Santé - Sécurité",
+    "Environnement",
+    "Conformité Produit-Prestation",
+    "Délai",
+    "Financier",
+    "Matériels"
+  ],
+  cotations: [
+    "NC Niveau 1 (Mineur)",
+    "NC Niveau 2 (Majeur)",
+    "NC Critique"
+  ]
+};
+
+// Critères d'évaluation de fin de prestation (REX)
+export const EVALUATION_CRITERIA = {
+  surete: ["ESS (Évènement Significatif Sûreté)", "EIS (Évènement Important Sûreté)", "CFSI", "NQM (Non Qualité de Maintenance)"],
+  securite: ["AT AA (Accident du Travail Avec Arrêt)", "AT SA (Accident du Travail Sans Arrêt)", "Presque-Accident / Near Miss", "Soins Bénins"],
+  radioprotection: ["ESR (Évènement Significatif Radiopro)", "EIR (Évènement Important Radiopro)"],
+  environnement: ["ESE (Évènement Significatif Environnement)", "EIE (Évènement Important Environnement)", "Incident Matériel / Fuite"]
+};
+
+// -----------------------------------------------------------------------------
+// 5. THÈMES CAUSERIES & SENSIBILISATIONS (Module Sécurité)
 // -----------------------------------------------------------------------------
 export const CAUSERIE_THEMES = [
+  "Règles d'or ALTRAD",
+  "Maîtrise des risques",
   "Travaux en hauteur & Chutes",
+  "Ligne de danger & Balisage",
+  "Gestion des véhicules et du trafic (Coactivité)",
+  "Levage & Manutention",
+  "Travail à chaud (Points chauds)",
+  "Equipements de travail & Vérification",
   "Risque Routier & Trajets",
   "Manutention & TMS",
   "Addictions (Alcool / Drogue)",
   "Risque Chimique & Étiquetage",
-  "Outillage à main (Cutter...)",
+  "Outillage à main (Cutter sécurisé)",
   "Bruit & Protection auditive",
   "Accueil & Nouveaux embauchés",
-  "Rangement & Propreté",
-  "Coactivité & Balisage",
-  "Points Chauds & Incendie",
+  "Ordre, Rangement & Propreté",
   "Espaces Confinés",
-  "Risque Électrique",
   "Droit de retrait & Stop work"
 ];
+
+// -----------------------------------------------------------------------------
+// 6. CHECKLIST ACCUEIL DÉMARRAGE CHANTIER (Sensibilisation)
+// -----------------------------------------------------------------------------
+export const INDUCTION_CHECKLIST = {
+  organisation_qualite: [
+    "Organigramme / Répartition des tâches",
+    "Travaux à réaliser / limites de la prestation",
+    "Consignes de mise en œuvre",
+    "Matériel / Matériaux / Produits à utiliser",
+    "Contrôles à réaliser / Critères d’acceptation",
+    "Documents à renseigner / Traçabilité"
+  ],
+  surete: [
+    "Présentation des IPSN / AIP / AIS",
+    "Présentation des risques Sûreté",
+    "Risque particulier (AAR, FME, Incendie)"
+  ],
+  securite_environnement: [
+    "Commentaires des PPSPS / PdP / PHSE / PDR",
+    "Consignes en cas d’évènements HSE",
+    "Consignes sécurité générale et spécif. au site",
+    "Travaux, risques et mesures de prévention",
+    "Equipements de protections (EPI)"
+  ]
+};
+
+// -----------------------------------------------------------------------------
+// 7. RÉFÉRENTIEL VISITES TERRAIN (Q3SRE / VMT / OST)
+// -----------------------------------------------------------------------------
+export const Q3SRE_REFERENTIAL = {
+  lignes_defense: [
+    "Technique (Matériel, EPC, EPI, Conformité échafaudage)",
+    "Humaine (Compétence, Vigilance, Comportement, Postures)",
+    "Organisationnelle (Procédures, Permis de feu/pénétrer, PPSPS)"
+  ],
+  themes_observation: [
+    "Réaction face au risque",
+    "Positions et Ergonomie (TMS)",
+    "Port des EPI (Base + Spécifiques)",
+    "Outillage et Equipement (VGP à jour)",
+    "Ordre et Propreté de la zone de travail",
+    "Stockage des produits chimiques (Rétention)",
+    "Respect des procédures consignation"
+  ]
+};
