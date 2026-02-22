@@ -13,6 +13,7 @@ import {
   CreditCard, FileCheck, CalendarClock, BellRing, Pencil
 } from 'lucide-react';
 import Link from 'next/link';
+import toast, { Toaster } from 'react-hot-toast';
 
 // --- CONSTANTES ---
 const RISK_OPTIONS = ['Amiante', 'Plomb', 'Silice', 'ATEX', 'Hauteur', 'Levage', 'Confiné', 'Électrique', 'Chimique', 'Coactivité'];
@@ -85,7 +86,7 @@ function useChantierData(id: string) {
         if (results[6].status === 'fulfilled' && results[6].value.data) setCatalogueMateriel(results[6].value.data);
         if (results[7].status === 'fulfilled' && results[7].value.data) setStockFournitures(results[7].value.data);
         if (results[8].status === 'fulfilled' && results[8].value.data) setFacturationList(results[8].value.data);
-    } catch (error: any) { console.error("Erreur chargement:", error); } finally { setLoading(false); }
+    } catch (error: any) { console.error("Erreur chargement:", error); toast.error("Erreur lors du chargement des données"); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchChantierData(); }, [id]);
@@ -114,12 +115,17 @@ function useChantierData(id: string) {
     return { tauxCharge, totalTS, totalMoinsValues, montantMarcheInitial, montantMarcheActif, totalFacture, totalEncaisse, percentFacturation, coutMO_Reel, margeNette, tauxMargeNette };
   }, [chantier, facturationList]);
 
-  // Expose methods for components to interact with data
   const actions = {
     handleSave: async () => {
+        const toastId = toast.loading('Sauvegarde en cours...');
         const toSave = { ...chantier, mesures_acqpa: acqpaData, chef_chantier_id: chantier.chef_chantier_id || null, date_debut: chantier.date_debut || null, date_fin: chantier.date_fin || null };
         const { error } = await supabase.from('chantiers').update(toSave).eq('id', id);
-        if (error) alert("Erreur : " + error.message); else { alert('✅ Sauvegardé !'); fetchChantierData(); }
+        if (error) {
+            toast.error("Erreur : " + error.message, { id: toastId });
+        } else { 
+            toast.success('Sauvegardé avec succès !', { id: toastId }); 
+            fetchChantierData(); 
+        }
     },
     refresh: fetchChantierData,
     updateChantierTotalHours: async (currentTasks: any[]) => {
@@ -149,6 +155,9 @@ export default function ChantierDetail() {
   return (
     <div className="min-h-screen bg-[#f0f3f4] font-['Fredoka'] pb-20 text-gray-800 ml-0 md:ml-0 transition-all print:bg-white print:p-0 print:m-0 print:w-full">
       <style jsx global>{` @media print { @page { size: landscape; margin: 5mm; } body { -webkit-print-color-adjust: exact; background: white; } nav, aside, .sidebar, .print-hidden { display: none !important; } .no-break { break-inside: avoid; } } `}</style>
+      
+      {/* TOASTER POUR LES NOTIFICATIONS */}
+      <Toaster position="bottom-right" toastOptions={{ style: { fontFamily: 'Fredoka', fontWeight: 'bold' } }} />
 
       {/* HEADER */}
       <div className="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200 shadow-sm print:hidden">
@@ -223,12 +232,19 @@ function DashboardTab({ data }: { data: any }) {
   }, [finances, chantier]);
 
   const handleAddFacture = async () => {
-    if(!newFacture.label || !newFacture.montant) return alert("Veuillez remplir le libellé et le montant");
+    if(!newFacture.label || !newFacture.montant) return toast.error("Veuillez remplir le libellé et le montant");
+    const toastId = toast.loading("Ajout en cours...");
     const { error } = await supabase.from('chantier_facturation').insert([{ ...newFacture, chantier_id: chantier.id }]);
-    if(!error) { setNewFacture({ type: 'Facture', label: '', montant: 0, date_emission: '', date_echeance: '', statut: 'prevu' }); actions.refresh(); }
+    if(!error) { 
+        setNewFacture({ type: 'Facture', label: '', montant: 0, date_emission: '', date_echeance: '', statut: 'prevu' }); 
+        toast.success("Ligne de facturation ajoutée !", { id: toastId });
+        actions.refresh(); 
+    } else {
+        toast.error("Erreur lors de l'ajout", { id: toastId });
+    }
   };
-  const deleteFacture = async (fid: string) => { if(confirm('Supprimer cette ligne ?')) { await supabase.from('chantier_facturation').delete().eq('id', fid); actions.refresh(); } };
-  const toggleFactureRecu = async (facture: any) => { const newStatus = facture.statut === 'paye' ? 'envoye' : 'paye'; await supabase.from('chantier_facturation').update({ statut: newStatus }).eq('id', facture.id); actions.refresh(); };
+  const deleteFacture = async (fid: string) => { if(confirm('Supprimer cette ligne ?')) { await supabase.from('chantier_facturation').delete().eq('id', fid); actions.refresh(); toast.success("Ligne supprimée"); } };
+  const toggleFactureRecu = async (facture: any) => { const newStatus = facture.statut === 'paye' ? 'envoye' : 'paye'; await supabase.from('chantier_facturation').update({ statut: newStatus }).eq('id', facture.id); actions.refresh(); toast.success("Statut mis à jour"); };
   const isOverdue = (f: any) => { if (f.statut === 'paye') return false; const today = new Date().toISOString().split('T')[0]; return f.date_echeance && f.date_echeance < today; };
 
   return (
@@ -374,11 +390,18 @@ function LogistiqueTab({ data }: { data: any }) {
   const [newMat, setNewMat] = useState({ materiel_id: '', date_debut: chantier.date_debut || '', date_fin: chantier.date_fin || '', qte: 1 });
 
   const handleAddMateriel = async () => { 
-    if (!newMat.materiel_id) return alert("Sélectionnez un matériel"); 
+    if (!newMat.materiel_id) return toast.error("Veuillez sélectionner un matériel"); 
+    const toastId = toast.loading("Ajout en cours...");
     const { error } = await supabase.from('chantier_materiel').insert([{ chantier_id: chantier.id, materiel_id: newMat.materiel_id, date_debut: newMat.date_debut || null, date_fin: newMat.date_fin || null, qte_prise: newMat.qte || 1, statut: 'prevu' }]); 
-    if (!error) { setShowAddMaterielModal(false); actions.refresh(); }
+    if (!error) { 
+        toast.success("Matériel ajouté !", { id: toastId });
+        setShowAddMaterielModal(false); 
+        actions.refresh(); 
+    } else {
+        toast.error("Erreur d'ajout", { id: toastId });
+    }
   };
-  const deleteMateriel = async (matId: string) => { if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); actions.refresh(); } };
+  const deleteMateriel = async (matId: string) => { if (confirm('Supprimer ?')) { await supabase.from('chantier_materiel').delete().eq('id', matId); actions.refresh(); toast.success("Supprimé"); } };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4">
@@ -420,9 +443,24 @@ function FournituresTab({ data }: { data: any }) {
   const filteredStock = stockFournitures.filter((s: any) => s.nom.toLowerCase().includes(supplySearch.toLowerCase()) || (s.ral && s.ral.includes(supplySearch)));
   const getSelectedUnit = () => { const selected = stockFournitures.find((s: any) => s.id === newFourniture.fourniture_ref_id); return selected ? selected.unite : ''; };
   
-  const addFourniture = async () => { if(!newFourniture.fourniture_ref_id) return alert("Sélectionnez un produit"); const selectedItem = stockFournitures.find((s: any) => s.id === newFourniture.fourniture_ref_id); const payload = { chantier_id: chantier.id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom || 'Sans nom', unite: selectedItem?.unite || 'u', qte_prevue: newFourniture.qte_prevue || 0, qte_consommee: 0 }; const { error } = await supabase.from('chantier_fournitures').insert([payload]); if(error) alert("Erreur: " + error.message); else { setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); setSupplySearch(""); actions.refresh(); } };
+  const addFourniture = async () => { 
+      if(!newFourniture.fourniture_ref_id) return toast.error("Veuillez sélectionner un produit"); 
+      const selectedItem = stockFournitures.find((s: any) => s.id === newFourniture.fourniture_ref_id); 
+      const payload = { chantier_id: chantier.id, fourniture_ref_id: newFourniture.fourniture_ref_id, nom: selectedItem?.nom || 'Sans nom', unite: selectedItem?.unite || 'u', qte_prevue: newFourniture.qte_prevue || 0, qte_consommee: 0 }; 
+      
+      const toastId = toast.loading("Ajout du besoin...");
+      const { error } = await supabase.from('chantier_fournitures').insert([payload]); 
+      if(error) {
+          toast.error("Erreur: " + error.message, { id: toastId });
+      } else { 
+          setNewFourniture({ fourniture_ref_id: '', qte_prevue: 0 }); 
+          setSupplySearch(""); 
+          toast.success("Produit ajouté !", { id: toastId });
+          actions.refresh(); 
+      } 
+  };
   const updateConsommation = async (fId: string, val: number) => { const newVal = Math.max(0, val); setFournituresPrevu((prev: any[]) => prev.map((f: any) => f.id === fId ? { ...f, qte_consommee: newVal } : f)); await supabase.from('chantier_fournitures').update({ qte_consommee: newVal }).eq('id', fId); };
-  const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); actions.refresh(); } };
+  const deleteFourniture = async (fId: string) => { if(confirm("Supprimer ?")) { await supabase.from('chantier_fournitures').delete().eq('id', fId); actions.refresh(); toast.success("Produit supprimé"); } };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
@@ -469,12 +507,12 @@ function PlanningTab({ data }: { data: any }) {
   
   const updateTaskField = async (taskId: string, field: string, value: any) => { const { error } = await supabase.from('chantier_tasks').update({ [field]: value }).eq('id', taskId); if (!error) { const updatedTasks = tasks.map((t: any) => t.id === taskId ? { ...t, [field]: value } : t); setTasks(updatedTasks); if (field === 'heures_reelles' || field === 'done') actions.updateChantierTotalHours(updatedTasks); } };
   const toggleTask = async (task: any) => { const newStatus = !task.done; const realHoursValue = newStatus ? (task.heures_reelles || task.objectif_heures) : 0; const updatedSubtasks = (task.subtasks || []).map((st: any) => ({ ...st, done: newStatus, avancement: newStatus ? 100 : 0 })); const { error } = await supabase.from('chantier_tasks').update({ done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks }).eq('id', task.id); if (!error) { const newTasks = tasks.map((t: any) => t.id === task.id ? { ...t, done: newStatus, heures_reelles: realHoursValue, subtasks: updatedSubtasks } : t); setTasks(newTasks); actions.updateChantierTotalHours(newTasks); } };
-  const addTask = async () => { if (!newTaskLabel) return; const { data: d } = await supabase.from('chantier_tasks').insert([{ chantier_id: chantier.id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (d) setTasks([d[0], ...tasks]); setNewTaskLabel(""); };
-  const deleteTask = async (taskId: string) => { if(confirm('Supprimer cette tâche et ses sous-tâches ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter((t: any) => t.id !== taskId); setTasks(updatedList); actions.updateChantierTotalHours(updatedList); } };
+  const addTask = async () => { if (!newTaskLabel) return; const { data: d } = await supabase.from('chantier_tasks').insert([{ chantier_id: chantier.id, label: newTaskLabel, objectif_heures: 0, heures_reelles: 0, done: false, subtasks: [] }]).select(); if (d) setTasks([d[0], ...tasks]); setNewTaskLabel(""); toast.success("Tâche ajoutée"); };
+  const deleteTask = async (taskId: string) => { if(confirm('Supprimer cette tâche et ses sous-tâches ?')) { await supabase.from('chantier_tasks').delete().eq('id', taskId); const updatedList = tasks.filter((t: any) => t.id !== taskId); setTasks(updatedList); actions.updateChantierTotalHours(updatedList); toast.success("Tâche supprimée"); } };
   const saveTaskLabel = async (taskId: string, newLabel: string) => { const { error } = await supabase.from('chantier_tasks').update({ label: newLabel }).eq('id', taskId); if(!error) { setTasks(tasks.map((t: any) => t.id === taskId ? { ...t, label: newLabel } : t)); setEditingTaskId(null); } };
-  const addSubTask = async (parentId: string) => { if(!newSubTask.label) return; const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false, avancement: 0 }]; const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0); await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); const newTasks = tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t); setTasks(newTasks); setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 }); setActiveParentTask(null); };
+  const addSubTask = async (parentId: string) => { if(!newSubTask.label) return; const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = [...(parentTask.subtasks || []), { id: Date.now(), label: newSubTask.label, heures: parseFloat(newSubTask.heures.toString()) || 0, effectif: parseInt(newSubTask.effectif.toString()) || 1, date: newSubTask.date, done: false, avancement: 0 }]; const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0); await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); const newTasks = tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t); setTasks(newTasks); setNewSubTask({ label: '', heures: 0, date: '', effectif: 1 }); setActiveParentTask(null); toast.success("Sous-tâche ajoutée"); };
   const toggleSubTask = async (parentId: string, subtaskId: number) => { const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subtaskId ? { ...st, done: !st.done, avancement: !st.done ? 100 : 0 } : st); const allDone = updatedSubtasks.every((st: any) => st.done); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, done: allDone, heures_reelles: allDone ? (parentTask.heures_reelles || parentTask.objectif_heures) : parentTask.heures_reelles }).eq('id', parentId); if (!error) { const newTasks = tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, done: allDone } : t); setTasks(newTasks); actions.updateChantierTotalHours(newTasks); } };
-  const deleteSubTask = async (parentId: string, subTaskId: number) => { if(!confirm("Supprimer cette sous-tâche ?")) return; const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = parentTask.subtasks.filter((st: any) => st.id !== subTaskId); const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); if(!error) setTasks(tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t)); };
+  const deleteSubTask = async (parentId: string, subTaskId: number) => { if(!confirm("Supprimer cette sous-tâche ?")) return; const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = parentTask.subtasks.filter((st: any) => st.id !== subTaskId); const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); if(!error) { setTasks(tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t)); toast.success("Sous-tâche supprimée"); } };
   const saveSubTaskFull = async (parentId: string, subTaskId: number) => { if(!editingSubTaskData) return; const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subTaskId ? { ...st, label: editingSubTaskData.label, date: editingSubTaskData.date, effectif: parseInt(editingSubTaskData.effectif)||1, heures: parseFloat(editingSubTaskData.heures)||0 } : st); const newTotalHours = updatedSubtasks.reduce((acc: number, curr: any) => acc + (parseFloat(curr.heures) || 0), 0); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks, objectif_heures: newTotalHours }).eq('id', parentId); if(!error) { setTasks(tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks, objectif_heures: newTotalHours } : t)); setEditingSubTaskData(null); } };
   const updateSubTaskProgress = async (parentId: string, subTaskId: number, avancement: number) => { const safeVal = Math.min(100, Math.max(0, avancement || 0)); const parentTask = tasks.find((t: any) => t.id === parentId); const updatedSubtasks = parentTask.subtasks.map((st: any) => st.id === subTaskId ? { ...st, avancement: safeVal, done: safeVal === 100 } : st); const { error } = await supabase.from('chantier_tasks').update({ subtasks: updatedSubtasks }).eq('id', parentId); if (!error) setTasks(tasks.map((t: any) => t.id === parentId ? { ...t, subtasks: updatedSubtasks } : t)); };
   
@@ -599,8 +637,8 @@ function HseTab({ data }: { data: any }) {
 function AcqpaTab({ data }: { data: any }) {
   const { state: { acqpaData }, setters: { setAcqpaData }, actions } = data;
   const [showACQPAModal, setShowACQPAModal] = useState(false);
-  const addCouche = () => setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] });
-  const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); };
+  const addCouche = () => { setAcqpaData({ ...acqpaData, couches: [...(acqpaData.couches || []), { type: '', lot: '', methode: '', dilution: '' }] }); toast.success("Couche ajoutée"); };
+  const removeCouche = (index: number) => { const n = [...acqpaData.couches]; n.splice(index, 1); setAcqpaData({ ...acqpaData, couches: n }); toast.success("Couche supprimée"); };
   const updateCouche = (index: number, field: string, value: string) => { const n = [...acqpaData.couches]; n[index][field] = value; setAcqpaData({ ...acqpaData, couches: n }); };
 
   return (
@@ -632,8 +670,25 @@ function DocsTab({ data }: { data: any }) {
   const { state: { chantier, documents }, actions } = data;
   const [uploading, setUploading] = useState(false);
 
-  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); actions.refresh(); } };
-  const handleFileUpload = async (e: any) => { if (!e.target.files?.length) return; setUploading(true); const file = e.target.files[0]; const filePath = `${chantier.id}/${Math.random()}.${file.name.split('.').pop()}`; const { error } = await supabase.storage.from('documents').upload(filePath, file); if(!error) { const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); await supabase.from('chantier_documents').insert([{ chantier_id: chantier.id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); actions.refresh(); } setUploading(false); };
+  const deleteDocument = async (docId: string) => { if(confirm('Supprimer ?')) { await supabase.from('chantier_documents').delete().eq('id', docId); actions.refresh(); toast.success("Document supprimé"); } };
+  const handleFileUpload = async (e: any) => { 
+      if (!e.target.files?.length) return; 
+      setUploading(true); 
+      const toastId = toast.loading("Upload en cours...");
+      const file = e.target.files[0]; 
+      const filePath = `${chantier.id}/${Math.random()}.${file.name.split('.').pop()}`; 
+      const { error } = await supabase.storage.from('documents').upload(filePath, file); 
+      
+      if(!error) { 
+          const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath); 
+          await supabase.from('chantier_documents').insert([{ chantier_id: chantier.id, nom: file.name, url: publicUrl, type: file.type.startsWith('image/') ? 'image' : 'pdf' }]); 
+          toast.success("Document ajouté avec succès", { id: toastId });
+          actions.refresh(); 
+      } else {
+          toast.error("Erreur d'upload", { id: toastId });
+      }
+      setUploading(false); 
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4">
