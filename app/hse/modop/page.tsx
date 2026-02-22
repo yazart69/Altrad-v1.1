@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   FileText, X, Save, Eye, CheckCircle2, ChevronRight, 
   Plus, Loader2, ArrowLeft, Printer, ShieldAlert, 
-  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat,
+  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat, Pencil,
   Check
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
@@ -32,9 +32,9 @@ function MODOPContent() {
   const [chantierInfo, setChantierInfo] = useState<any>(null);
   const [employesDB, setEmployesDB] = useState<any[]>([]);
   const [selectedMODOP, setSelectedMODOP] = useState<any>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
+  const defaultForm = {
     otp: '',
     redacteur: '',
     validateur_sup: '',
@@ -48,7 +48,10 @@ function MODOPContent() {
     procedures_urgence: "Alerter le SST le plus proche. Dégager la victime de la zone dangereuse (< 3 min) si cela ne présente pas de risque de sur-accident. Contacter le 15 (SAMU) ou le 112.",
     signature_redacteur: '',
     signature_validateur: ''
-  });
+  };
+
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState(defaultForm);
 
   // Gestion des sous-traitants / externes
   const [extWorker, setExtWorker] = useState({ nom: '', role: 'Sous-traitant', habs: '' });
@@ -65,19 +68,23 @@ function MODOPContent() {
     }
   }, [step]);
 
+  const fetchArchives = async () => {
+      const { data } = await supabase.from('chantier_modop').select('*').eq('chantier_id', chantierId).order('created_at', { ascending: false });
+      if (data) setArchives(data);
+  };
+
   useEffect(() => {
     if (!chantierId) return;
     const loadData = async () => {
         setLoading(true);
         try {
-            const [cData, eData, aData] = await Promise.all([
+            const [cData, eData] = await Promise.all([
                 supabase.from('chantiers').select('nom, client').eq('id', chantierId).single(),
-                supabase.from('employes').select('id, nom, prenom, role, habilitations'),
-                supabase.from('chantier_modop').select('*').eq('chantier_id', chantierId).order('created_at', { ascending: false })
+                supabase.from('employes').select('id, nom, prenom, role, habilitations')
             ]);
             if (cData.data) setChantierInfo(cData.data);
             if (eData.data) setEmployesDB(eData.data);
-            if (aData.data) setArchives(aData.data);
+            await fetchArchives();
         } catch (error) { toast.error("Erreur de chargement des données"); } 
         finally { setLoading(false); }
     };
@@ -126,6 +133,40 @@ function MODOPContent() {
       setFormData({ ...formData, etapes_mise_en_oeuvre: formData.etapes_mise_en_oeuvre.filter((_, i) => i !== idx) });
   };
 
+  // --- NOUVELLES ACTIONS : EDITER & SUPPRIMER ---
+  const handleEdit = (modop: any) => {
+      setEditingId(modop.id);
+      setFormData({
+          otp: modop.otp || '',
+          redacteur: modop.redacteur || '',
+          validateur_sup: modop.validateur_sup || '',
+          version: modop.version || 'A',
+          localisation: modop.localisation || '',
+          description_travaux: modop.description_travaux || '',
+          equipe: modop.equipe || [],
+          mesures_prevention: modop.mesures_prevention || { atex: false, plomb: false, amiante: 'non' },
+          techniques: modop.techniques || [],
+          etapes_mise_en_oeuvre: modop.controles || [],
+          procedures_urgence: modop.procedures_urgence || defaultForm.procedures_urgence,
+          signature_redacteur: modop.signatures?.redacteur || '',
+          signature_validateur: modop.signatures?.validateur_sup || ''
+      });
+      setStep(1);
+      setView('create');
+  };
+
+  const handleDelete = async (id: string) => {
+      if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce Mode Opératoire ?")) return;
+      const toastId = toast.loading("Suppression en cours...");
+      const { error } = await supabase.from('chantier_modop').delete().eq('id', id);
+      if (error) {
+          toast.error("Erreur de suppression : " + error.message, { id: toastId });
+      } else {
+          toast.success("MODOP supprimé avec succès.", { id: toastId });
+          setArchives(archives.filter(a => a.id !== id));
+      }
+  };
+
   const handleSave = async () => {
     if (!formData.signature_redacteur) return toast.error("La signature du rédacteur est requise.");
     const toastId = toast.loading("Enregistrement du Mode Opératoire...");
@@ -139,14 +180,22 @@ function MODOPContent() {
         signatures: { redacteur: signature_redacteur, validateur_sup: signature_validateur } 
     };
 
-    const { error } = await supabase.from('chantier_modop').insert([payload]);
+    let error;
+    if (editingId) {
+        const res = await supabase.from('chantier_modop').update(payload).eq('id', editingId);
+        error = res.error;
+    } else {
+        const res = await supabase.from('chantier_modop').insert([payload]);
+        error = res.error;
+    }
     
     if (error) { toast.error("Erreur SQL : " + error.message, { id: toastId }); } 
     else {
-        toast.success("✅ MODOP Validé et Archivé !", { id: toastId });
-        const { data } = await supabase.from('chantier_modop').select('*').eq('chantier_id', chantierId).order('created_at', { ascending: false });
-        if (data) setArchives(data);
-        setView('list'); setStep(1);
+        toast.success(editingId ? "✅ MODOP Mis à jour !" : "✅ MODOP Créé et Archivé !", { id: toastId });
+        await fetchArchives();
+        setView('list'); 
+        setStep(1);
+        setEditingId(null);
     }
   };
 
@@ -167,8 +216,10 @@ function MODOPContent() {
                     <button onClick={() => router.push('/hse')} className="text-xs font-bold text-gray-400 hover:text-black mt-3 flex items-center gap-1 transition-colors">← Retour au Dashboard</button>
                 </div>
                 <button onClick={() => { 
-                    setFormData({...formData, localisation: '', description_travaux: ''}); 
-                    setView('create'); setStep(1); 
+                    setEditingId(null);
+                    setFormData(defaultForm); 
+                    setView('create'); 
+                    setStep(1); 
                 }} className="bg-blue-700 hover:bg-black text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95">
                     <Plus size={20}/> Nouveau MODOP
                 </button>
@@ -182,7 +233,7 @@ function MODOPContent() {
                     </div>
                 )}
                 {archives.map(a => (
-                    <div key={a.id} className="flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-lg transition-all">
+                    <div key={a.id} className="flex flex-col lg:flex-row justify-between lg:items-center p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-lg transition-all gap-4">
                         <div>
                             <p className="font-black text-gray-800 text-lg uppercase leading-tight mb-1 flex items-center gap-2">
                                 INDICE {a.version} - {a.localisation || 'Adresse non renseignée'}
@@ -195,7 +246,17 @@ function MODOPContent() {
                                 {a.mesures_prevention?.amiante === 'SS4' && <span className="bg-orange-500 text-white px-2 py-1 rounded uppercase shadow-sm">AMIANTE SS4</span>}
                             </div>
                         </div>
-                        <button onClick={() => { setSelectedMODOP(a); setView('view'); }} className="p-3 bg-white rounded-xl text-blue-600 hover:bg-blue-50 border border-gray-200 shadow-sm transition-colors"><Eye size={20}/></button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => handleEdit(a)} className="p-3 bg-white rounded-xl text-orange-500 hover:bg-orange-50 border border-gray-200 shadow-sm transition-colors" title="Modifier">
+                                <Pencil size={20}/>
+                            </button>
+                            <button onClick={() => handleDelete(a.id)} className="p-3 bg-white rounded-xl text-red-500 hover:bg-red-50 border border-gray-200 shadow-sm transition-colors" title="Supprimer">
+                                <Trash2 size={20}/>
+                            </button>
+                            <button onClick={() => { setSelectedMODOP(a); setView('view'); }} className="p-3 bg-white rounded-xl text-blue-600 hover:bg-blue-50 border border-gray-200 shadow-sm transition-colors" title="Consulter PDF">
+                                <Eye size={20}/>
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -359,7 +420,6 @@ function MODOPContent() {
 
             <div className="flex-1 p-10 overflow-y-auto custom-scrollbar">
                 
-                {/* --- ETAPE 1 : CADRE ET EQUIPE --- */}
                 {step === 1 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">1. Cadre et Intervenants</h3>
@@ -375,7 +435,6 @@ function MODOPContent() {
                         <div>
                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-4 flex items-center gap-2"><Users size={14}/> Sélection de l'équipe (Vérification des habilitations)</label>
                             
-                            {/* Liste visuelle des sélectionnés */}
                             {formData.equipe.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mb-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
                                     <span className="text-xs font-black text-blue-800 w-full mb-1">Équipe affectée :</span>
@@ -406,7 +465,6 @@ function MODOPContent() {
                                 })}
                             </div>
 
-                            {/* Formulaire d'ajout externe / sous-traitant */}
                             <div className="bg-gray-100 p-4 rounded-2xl border border-gray-200">
                                 <h4 className="text-xs font-black uppercase text-gray-600 mb-3 flex items-center gap-2"><HardHat size={16}/> Ajouter un Sous-Traitant / Intérimaire</h4>
                                 <div className="flex flex-col md:flex-row gap-3">
@@ -420,7 +478,6 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 2 : ENVIRONNEMENT --- */}
                 {step === 2 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">2. Spécificités Environnementales</h3>
@@ -464,7 +521,6 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 3 : ETAPES DE MISE EN OEUVRE --- */}
                 {step === 3 && (
                     <div className="space-y-6 animate-in slide-in-from-right-10">
                         <div className="flex justify-between items-center">
@@ -493,7 +549,6 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 4 : ADR INTELLIGENTE --- */}
                 {step === 4 && (
                     <div className="space-y-6 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">4. Opérations et Analyse de Risques</h3>
@@ -526,7 +581,6 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 5 : VALIDATION --- */}
                 {step === 5 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">5. Signatures et Validation</h3>
@@ -555,7 +609,6 @@ function MODOPContent() {
 
             </div>
 
-            {/* --- FOOTER NAVIGATION --- */}
             <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center rounded-b-[40px]">
                 {step > 1 ? (
                     <button onClick={() => {
@@ -577,17 +630,29 @@ function MODOPContent() {
                     </button>
                 ) : (
                     <button onClick={() => {
+                        let finalRedacteurSig = formData.signature_redacteur;
+                        let finalValidateurSig = formData.signature_validateur;
+
                         if (sigPadRedacteur.current && !sigPadRedacteur.current.isEmpty()) {
-                            setFormData(prev => ({
-                                ...prev, 
-                                signature_redacteur: sigPadRedacteur.current.getTrimmedCanvas().toDataURL('image/png'),
-                                signature_validateur: sigPadValidateur.current && !sigPadValidateur.current.isEmpty() ? sigPadValidateur.current.getTrimmedCanvas().toDataURL('image/png') : prev.signature_validateur
-                            }));
-                            setTimeout(handleSave, 100);
-                        } else if (formData.signature_redacteur) { handleSave(); } 
-                        else { toast.error("La signature du rédacteur est exigée."); }
+                            finalRedacteurSig = sigPadRedacteur.current.getTrimmedCanvas().toDataURL('image/png');
+                        }
+                        if (sigPadValidateur.current && !sigPadValidateur.current.isEmpty()) {
+                            finalValidateurSig = sigPadValidateur.current.getTrimmedCanvas().toDataURL('image/png');
+                        }
+
+                        if (!finalRedacteurSig) {
+                            return toast.error("La signature du rédacteur est exigée.");
+                        }
+
+                        setFormData(prev => ({
+                            ...prev, 
+                            signature_redacteur: finalRedacteurSig,
+                            signature_validateur: finalValidateurSig
+                        }));
+                        
+                        setTimeout(handleSave, 100);
                     }} disabled={loading} className="bg-blue-700 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all">
-                        {loading ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> Verrouiller & Archiver</>}
+                        {loading ? <Loader2 className="animate-spin" size={18}/> : <><Save size={18}/> {editingId ? "Mettre à jour" : "Verrouiller & Archiver"}</>}
                     </button>
                 )}
             </div>
