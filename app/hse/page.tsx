@@ -9,7 +9,6 @@ import {
   Truck, QrCode, ExternalLink, UserPlus, Paperclip, Loader2, Printer, AlertOctagon, 
   Siren, Activity, ArrowRight, Plus, Eye, ArrowLeft, Users
 } from 'lucide-react';
-import { RISK_DATABASE, VGP_RULES } from './data';
 import toast, { Toaster } from 'react-hot-toast';
 
 // ============================================================================
@@ -52,7 +51,8 @@ export default function HSEDashboardPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const navigateToTool = (tool: 'prejob' | 'accueil') => {
+  // CORRECTION ICI : On a ajouté 'vmt' aux options permises par TypeScript
+  const navigateToTool = (tool: 'prejob' | 'accueil' | 'vmt') => {
     if (!activeChantierId) return toast.error("Sélectionnez un chantier d'abord");
     router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
@@ -94,13 +94,13 @@ export default function HSEDashboardPage() {
           <button onClick={() => navigateToTool('accueil')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-green-500 group">
             <UserPlus size={22} className="text-green-500 group-hover:text-white" /> Réaliser Accueil
           </button>
+          <button onClick={() => navigateToTool('vmt')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-500 group">
+            <Camera size={22} className="text-blue-500 group-hover:text-white" /> Visite VMT / Q3SRE
+          </button>
           
           <div className="pt-8 pb-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Registres & Audits</div>
           <NavButton id="accueils" icon={Users} label="Registre Accueils" active={view} set={setView} />
           <NavButton id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} />
-          <button onClick={() => navigateToTool('vmt')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-500 group">
-    <Camera size={22} className="text-blue-500 group-hover:text-white" /> Visite VMT / Q3SRE
-</button>
           <NavButton id="causerie" icon={Megaphone} label="Minute Sécurité" active={view} set={setView} />
         </nav>
       </aside>
@@ -111,7 +111,6 @@ export default function HSEDashboardPage() {
             {view === 'dashboard' && <HSECockpit stats={stats} chantiers={chantiers} setView={setView} />}
             {view === 'accueils' && <RegistreAccueils />}
             {view === 'vgp' && <VGPModule materiel={materiel} />}
-            {view === 'terrain' && <div className="p-20 text-center text-gray-300 font-black uppercase border-4 border-dashed rounded-[40px]">Module Audit VMT en cours de déploiement</div>}
             {view === 'causerie' && <div className="p-20 text-center text-gray-300 font-black uppercase border-4 border-dashed rounded-[40px]">Module Causerie en cours de déploiement</div>}
         </div>
       </main>
@@ -174,7 +173,7 @@ function HSECockpit({ stats, chantiers, setView }: any) {
 }
 
 // ============================================================================
-// MODULE : REGISTRE DES ACCUEILS (NOUVEAU)
+// MODULE : REGISTRE DES ACCUEILS 
 // ============================================================================
 function RegistreAccueils() {
     const [accueils, setAccueils] = useState<any[]>([]);
@@ -190,11 +189,9 @@ function RegistreAccueils() {
         fetchAccueils();
     }, []);
 
-    // --- VUE DÉTAILLÉE (VISIONNEUSE / IMPRESSION) ---
     if (selectedAccueil) {
         return (
             <div className="animate-in fade-in">
-                {/* HACK CSS POUR IMPRESSION (Même que Pre-Job) */}
                 <style dangerouslySetInnerHTML={{__html: `
                     @media print {
                         @page { size: A4 portrait; margin: 10mm; }
@@ -209,13 +206,12 @@ function RegistreAccueils() {
                     <button onClick={() => setSelectedAccueil(null)} className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-200 text-gray-500 hover:text-black font-bold transition-all">
                         <ArrowLeft size={18}/> Retour à la liste
                     </button>
-                    <button onClick={() => window.print()} className="bg-[#2d3436] hover:bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-lg transition-all">
+                    <button onClick={() => { setTimeout(() => window.print(), 300); }} className="bg-[#2d3436] hover:bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-lg transition-all">
                         <Printer size={16}/> Imprimer la fiche d'accueil
                     </button>
                 </div>
 
                 <div className="print-container bg-white p-10 rounded-[35px] shadow-2xl border border-gray-100 max-w-3xl mx-auto text-sm">
-                    {/* Header Document */}
                     <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-end">
                         <div>
                             <h1 className="text-2xl font-black uppercase tracking-tight">FICHE D'ACCUEIL SÉCURITÉ</h1>
@@ -227,7 +223,6 @@ function RegistreAccueils() {
                         </div>
                     </div>
 
-                    {/* Bloc Identité */}
                     <div className="bg-gray-50 border border-gray-300 p-4 mb-6">
                         <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">1. Identification de l'arrivant</h2>
                         <div className="grid grid-cols-2 gap-4">
@@ -238,7 +233,6 @@ function RegistreAccueils() {
                         </div>
                     </div>
 
-                    {/* Bloc Documents Cadres */}
                     <div className="mb-6">
                         <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">2. Documents Supports Présentés</h2>
                         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -248,7 +242,6 @@ function RegistreAccueils() {
                         </div>
                     </div>
 
-                    {/* Bloc Checklist Sensibilisation */}
                     <div className="mb-6">
                         <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">3. Points abordés lors de la sensibilisation</h2>
                         <ul className="list-disc pl-5 space-y-1 text-xs font-bold text-gray-800">
@@ -258,7 +251,6 @@ function RegistreAccueils() {
                         </ul>
                     </div>
 
-                    {/* Bloc Contrôles préalables */}
                     <div className="mb-8">
                         <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">4. Contrôles préalables (Aptitudes)</h2>
                         <div className="space-y-2 text-xs">
@@ -283,7 +275,6 @@ function RegistreAccueils() {
                         </div>
                     </div>
 
-                    {/* Signature */}
                     <div className="border border-black">
                         <div className="bg-gray-100 border-b border-black p-2 font-black uppercase text-xs">Engagement et Émargement de l'arrivant</div>
                         <p className="p-2 text-[10px] italic text-gray-600 text-justify">
@@ -297,13 +288,11 @@ function RegistreAccueils() {
                             )}
                         </div>
                     </div>
-
                 </div>
             </div>
         );
     }
 
-    // --- VUE LISTE ---
     return (
         <div className="animate-in fade-in space-y-6">
             <div className="flex justify-between items-center">
