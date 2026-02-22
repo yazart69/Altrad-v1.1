@@ -53,7 +53,7 @@ export default function HSEDashboardPage() {
   useEffect(() => { fetchData(); }, []);
 
   // CORRECTION ICI : On a ajouté 'vmt' aux options permises par TypeScript
-  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit' | 'causerie' | 'rex') => {
+  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit' | 'causerie' | 'rex' | 'modop') => {
     if (!activeChantierId) return toast.error("Sélectionnez un chantier d'abord");
     router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
@@ -107,6 +107,9 @@ export default function HSEDashboardPage() {
 </button>
           <button onClick={() => navigateToTool('rex')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-purple-500 group">
     <Trophy size={22} className="text-purple-500 group-hover:text-white" /> REX
+</button>
+<button onClick={() => navigateToTool('modop')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-700 group">
+    <FileText size={22} className="text-blue-700 group-hover:text-white" /> Mode Opératoire (MODOP)
 </button>
         </nav>
       </aside>
