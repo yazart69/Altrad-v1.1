@@ -1,296 +1,229 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation'; // Navigation autonome
 import { supabase } from '@/lib/supabase';
 import { 
-  ClipboardCheck, Users, Shield, MapPin, 
-  User, Check, X, Save, PenTool, AlertCircle, 
-  Trash2, MessageSquare, Camera
+  ClipboardCheck, Shield, User, Check, X, Save, 
+  Eye, Calendar, CheckCircle2, ChevronRight, Plus, Loader2
 } from 'lucide-react';
-import SignatureCanvas from 'react-signature-canvas'; // Installer via: npm install react-signature-canvas
+import SignatureCanvas from 'react-signature-canvas';
+import { RISK_DATABASE } from '../data'; // Assurez-vous que data.ts est bien dans app/hse/
 
-export default function HSEPrejobModule({ chantier, equipe, animateurId }) {
-  const [step, setStep] = useState(1); // 1: Info/Equipe, 2: Briefing, 3: EPI, 4: Emargement, 5: Debriefing
-  const [isSaving, setIsSaving] = useState(false);
+// Wrapper pour gérer les paramètres d'URL
+export default function PreJobPage() {
+  return (
+    <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin"/></div>}>
+      <PreJobContent />
+    </Suspense>
+  );
+}
 
-  // --- ÉTATS DU FORMULAIRE (Fidèle à la fiche) ---
-  const [generalInfo, setGeneralInfo] = useState({
+function PreJobContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const chantierId = searchParams.get('cid'); // On récupère l'ID du lien
+
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'list' | 'create'>('list');
+  const [archives, setArchives] = useState<any[]>([]);
+  const [equipe, setEquipe] = useState<any[]>([]);
+  const [chantierInfo, setChantierInfo] = useState<any>(null);
+
+  // --- FORMULAIRE ---
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    projet: chantier?.nom || '',
-    unite_zone: '',
-    poste_travail: ''
+    animateur_selectionne: '',
+    taches_principales: [] as string[],
+    risques_selectionnes: [] as string[],
+    epi_selectionnes: [] as string[],
+    mesures_specifiques: '',
   });
-
-  const [equipeStatus, setEquipeStatus] = useState({
-    nb_personnes: equipe?.length || 0,
-    aptitude_equipe: true,
-    absents_equipe: false,
-    equipe_heure: true
-  });
-
-  const [briefingChecks, setBriefingChecks] = useState({
-    "Zone dégagée / risques pris en compte": false,
-    "Absence risque plomb/amiante": false,
-    "Description travaux / phases critiques": false,
-    "Rôle de chacun défini": false,
-    "Modes de communication définis": false,
-    "Consignes et moyens de secours présentés": false,
-    "Risques produits (FDS) présentés": false,
-    "Stockage matériel / tri déchets": false,
-    "Objectif avancement fin de poste": false,
-    "Autorisation de travail conforme": false,
-    "Moyen d'accès conforme": false,
-    "Balisage zone": false,
-    "Extincteur présent": false,
-    "Eclairage adéquat": false,
-    "Protection environnement (kit anti-pollution)": false,
-    "Outillage conforme et contrôlé": false
-  });
-
-  const [epiSelection, setEpiSelection] = useState({
-    "Tenue de base": true,
-    "Sur tenue type 4/6": false,
-    "Combinaison sablage": false,
-    "Lunettes de base": true,
-    "Lunettes étanches": false,
-    "Visière complète": false,
-    "Cagoule sablage": false,
-    "Masque jetable": false,
-    "Demi masque": false,
-    "Masque complet": false,
-    "Filtration P3": false,
-    "Filtration A2P3": false,
-    "Gants manutention": true,
-    "Gants chimiques": false,
-    "Gants de sablage": false,
-    "EPI base: Chaussures montantes": true,
-    "EPI base: Casque 4 points": true,
-    "EPI base: Protections auditives": true
-  });
-
-  const [signatures, setSignatures] = useState([]); // {id_user, nom, signature_prejob, signature_debrief}
   const sigPad = useRef<any>(null);
 
-  // --- LOGIQUE DE SAUVEGARDE ---
-  const handleSaveAll = async () => {
-    setIsSaving(true);
-    try {
-      const { error } = await supabase.from('hse_prejob_briefings').insert([{
-        chantier_id: chantier.id,
-        projet: generalInfo.projet,
-        unite_zone: generalInfo.unite_zone,
-        poste_travail: generalInfo.poste_travail,
-        animateur_id: animateurId,
-        nb_personnes: equipeStatus.nb_personnes,
-        aptitude_equipe: equipeStatus.aptitude_equipe,
-        briefing_check: briefingChecks,
-        epi_selection: epiSelection,
-        signatures_prejob: signatures
-      }]);
-      if (error) throw error;
-      alert("✅ Fiche Préjob enregistrée et archivée !");
-    } catch (e: any) {
-      alert("Erreur: " + e.message);
-    } finally {
-      setIsSaving(false);
+  // 1. CHARGEMENT DES DONNÉES (Autonome)
+  useEffect(() => {
+    if (!chantierId) return;
+    const loadData = async () => {
+        setLoading(true);
+        // Récup infos chantier + Equipe + Archives
+        const [cData, eData, aData] = await Promise.all([
+            supabase.from('chantiers').select('nom, client').eq('id', chantierId).single(),
+            supabase.from('employes').select('id, nom, prenom'), // Idéalement filtré par chantier
+            supabase.from('chantier_prejobs').select('*').eq('chantier_id', chantierId).order('date', { ascending: false })
+        ]);
+
+        if (cData.data) setChantierInfo(cData.data);
+        if (eData.data) setEquipe(eData.data);
+        if (aData.data) setArchives(aData.data);
+        setLoading(false);
+    };
+    loadData();
+  }, [chantierId]);
+
+  // --- LOGIQUE MÉTIER ---
+  const toggleItem = (list: string[], item: string) => list.includes(item) ? list.filter(i => i !== item) : [...list, item];
+
+  const handleSave = async () => {
+    if (!formData.animateur_selectionne) return alert("Sélectionnez un animateur.");
+    
+    const signatureData = sigPad.current ? sigPad.current.getTrimmedCanvas().toDataURL('image/png') : null;
+
+    const payload = {
+        chantier_id: chantierId,
+        date: formData.date,
+        animateur: formData.animateur_selectionne,
+        tache_principale: formData.taches_principales.join(', '),
+        risques_id: formData.risques_selectionnes,
+        epi_ids: formData.epi_selectionnes,
+        mesures_specifiques: formData.mesures_specifiques,
+        signatures: { animateur: signatureData }
+    };
+
+    const { error } = await supabase.from('chantier_prejobs').insert([payload]);
+    if (error) alert("Erreur: " + error.message);
+    else { 
+        alert("✅ Pre-Job enregistré !"); 
+        // Recharger les archives
+        const { data } = await supabase.from('chantier_prejobs').select('*').eq('chantier_id', chantierId).order('date', { ascending: false });
+        if(data) setArchives(data);
+        setView('list'); 
+        setStep(1); 
     }
   };
 
-  return (
-    <div className="max-w-4xl mx-auto bg-white rounded-[40px] shadow-2xl border border-gray-100 overflow-hidden font-['Fredoka']">
-      
-      {/* HEADER ALTRAD PREZIOSO  */}
-      <div className="bg-[#e21118] p-8 text-white flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-black uppercase tracking-tighter">PREJOB BRIEFING</h1>
-          <p className="text-sm font-bold opacity-80 uppercase tracking-widest">Activité REVETEMENT</p>
-        </div>
-        <img src="/logo-altrad-white.png" alt="Altrad Prezioso" className="h-12" />
-      </div>
+  if (!chantierId) return <div className="p-10 text-center font-bold text-red-500">Erreur : Aucun chantier sélectionné. Passez par le Dashboard.</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-bold text-gray-500">Chargement du contexte chantier...</div>;
 
-      {/* NAVIGATION ÉTAPES */}
-      <div className="flex bg-gray-50 border-b overflow-x-auto">
-        {['Infos', 'Briefing', 'EPI', 'Émargement', 'Debriefing'].map((label, i) => (
-          <button 
-            key={i} 
-            onClick={() => setStep(i + 1)}
-            className={`px-8 py-4 text-xs font-black uppercase whitespace-nowrap transition-all ${step === i + 1 ? 'bg-white text-red-600 border-b-4 border-red-600' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            {i + 1}. {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="p-10">
-        
-        {/* STEP 1: INFORMATION GÉNÉRALE & ÉQUIPE [cite: 2, 4] */}
-        {step === 1 && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2 md:col-span-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Date d'intervention</label>
-                <input type="date" className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold" value={generalInfo.date} onChange={e => setGeneralInfo({...generalInfo, date: e.target.value})} />
-              </div>
-              <div className="col-span-2 md:col-span-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Projet / Contrat</label>
-                <input type="text" className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold" value={generalInfo.projet} readOnly />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Unité / Zone</label>
-                <input type="text" className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold" placeholder="ex: Zone Sud / Cuve 4" value={generalInfo.unite_zone} onChange={e => setGeneralInfo({...generalInfo, unite_zone: e.target.value})} />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Poste de travail</label>
-                <input type="text" className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold" value={generalInfo.poste_travail} onChange={e => setGeneralInfo({...generalInfo, poste_travail: e.target.value})} />
-              </div>
-            </div>
-
-            <div className="bg-blue-50 p-6 rounded-[30px] border border-blue-100 space-y-4">
-              <h3 className="font-black uppercase text-blue-800 flex items-center gap-2"><Users size={20}/> État de l'Équipe</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm">
-                  <span className="text-sm font-bold text-gray-700">Toute l'équipe est apte (physique/mental) ?</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEquipeStatus({...equipeStatus, aptitude_equipe: true})} className={`p-2 rounded-lg ${equipeStatus.aptitude_equipe ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}><Check size={18}/></button>
-                    <button onClick={() => setEquipeStatus({...equipeStatus, aptitude_equipe: false})} className={`p-2 rounded-lg ${!equipeStatus.aptitude_equipe ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400'}`}><X size={18}/></button>
-                  </div>
+  // --- VUE 1 : LISTE DES ARCHIVES ---
+  if (view === 'list') {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-5xl mx-auto bg-white rounded-[30px] p-8 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h2 className="text-2xl font-black uppercase text-gray-800 flex items-center gap-3"><ClipboardCheck className="text-red-600"/> Pre-Jobs : {chantierInfo?.nom}</h2>
+                    <button onClick={() => router.back()} className="text-sm font-bold text-gray-400 hover:text-black mt-1">← Retour Dashboard</button>
                 </div>
-                <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm">
-                  <span className="text-sm font-bold text-gray-700">Équipe arrivée à l'heure ?</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEquipeStatus({...equipeStatus, equipe_heure: true})} className={`p-2 rounded-lg ${equipeStatus.equipe_heure ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}><Check size={18}/></button>
-                    <button onClick={() => setEquipeStatus({...equipeStatus, equipe_heure: false})} className={`p-2 rounded-lg ${!equipeStatus.equipe_heure ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400'}`}><X size={18}/></button>
-                  </div>
-                </div>
-              </div>
+                <button onClick={() => setView('create')} className="bg-[#e21118] text-white px-6 py-3 rounded-xl font-black uppercase flex items-center gap-2 hover:bg-red-700 transition-all"><Plus size={18}/> Nouveau Briefing</button>
             </div>
-          </div>
-        )}
-
-        {/* STEP 2: POINTS DU BRIEFING  */}
-        {step === 2 && (
-          <div className="space-y-4 animate-in fade-in">
-            <div className="flex items-center justify-between mb-6">
-               <h2 className="text-xl font-black uppercase text-gray-800">Checklist du Briefing Matin</h2>
-               <span className="text-[10px] font-bold bg-orange-100 text-orange-600 px-3 py-1 rounded-full uppercase italic">Le visa atteste du partage [cite: 3]</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {Object.keys(briefingChecks).map((check) => (
-                <label key={check} className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${briefingChecks[check] ? 'bg-green-50 border-green-500 shadow-md' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
-                  <span className="text-sm font-bold text-gray-700 leading-tight">{check}</span>
-                  <input 
-                    type="checkbox" 
-                    className="w-6 h-6 rounded-lg text-green-600" 
-                    checked={briefingChecks[check]} 
-                    onChange={(e) => setBriefingChecks({...briefingChecks, [check]: e.target.checked})}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: ÉQUIPEMENTS DE PROTECTION (EPI)  */}
-        {step === 3 && (
-          <div className="space-y-6 animate-in fade-in">
-            <h2 className="text-xl font-black uppercase text-gray-800 flex items-center gap-2"><Shield className="text-red-600"/> Sélection des EPI requis</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-               {Object.keys(epiSelection).map((epi) => (
-                 <button 
-                  key={epi}
-                  onClick={() => setEpiSelection({...epiSelection, [epi]: !epiSelection[epi]})}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${epiSelection[epi] ? 'bg-red-50 border-red-600 shadow-inner scale-95' : 'bg-white border-gray-100 hover:bg-gray-50'}`}
-                 >
-                   <div className="flex items-center gap-3">
-                     <div className={`w-4 h-4 rounded border-2 ${epiSelection[epi] ? 'bg-red-600 border-red-600' : 'border-gray-300'}`}>
-                        {epiSelection[epi] && <Check size={12} className="text-white"/>}
-                     </div>
-                     <span className={`text-[11px] font-black uppercase ${epiSelection[epi] ? 'text-red-700' : 'text-gray-400'}`}>{epi}</span>
-                   </div>
-                 </button>
-               ))}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 4: ÉMARGEMENT TACTILE [cite: 5, 6] */}
-        {step === 4 && (
-          <div className="space-y-8 animate-in fade-in">
-            <div className="bg-yellow-50 p-6 rounded-3xl border border-yellow-200">
-               <p className="text-xs font-bold text-yellow-800 italic leading-relaxed">
-                  "Chaque membre s'engage à respecter les consignes et à réaliser la Minute d’Arrêt Sécurité avant de commencer."
-               </p>
-            </div>
-
-            <div className="space-y-4">
-              {equipe.map((membre) => (
-                <div key={membre.id} className="bg-white border-2 border-gray-100 rounded-3xl p-6 flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-red-600 transition-colors shadow-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center font-black text-gray-400 group-hover:bg-red-600 group-hover:text-white transition-colors uppercase">
-                      {membre.nom.substring(0,1)}{membre.prenom.substring(0,1)}
+            <div className="space-y-3">
+                {archives.map(a => (
+                    <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div>
+                            <p className="font-black text-gray-800 text-sm uppercase">{a.tache_principale || "Général"}</p>
+                            <p className="text-xs text-gray-400 font-bold">{new Date(a.date).toLocaleDateString()} • {a.animateur}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-[10px] font-black">{a.risques_id?.length || 0} Risques</span>
+                            <Eye className="text-gray-300 hover:text-blue-500 cursor-pointer" size={20}/>
+                        </div>
                     </div>
-                    <div>
-                      <p className="font-black text-gray-900 uppercase leading-none">{membre.nom} {membre.prenom}</p>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Émargement Pré-Job</p>
-                    </div>
-                  </div>
-                  
-                  {/* ZONE SIGNATURE TACTILE */}
-                  <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl w-full md:w-64 h-32 relative overflow-hidden">
-                    <SignatureCanvas 
-                      ref={sigPad}
-                      penColor='black'
-                      canvasProps={{width: 300, height: 128, className: 'sigCanvas'}}
-                    />
-                    <div className="absolute bottom-2 right-2 flex gap-1">
-                      <button onClick={() => sigPad.current.clear()} className="p-2 bg-white rounded-lg shadow-sm hover:text-red-500"><Trash2 size={12}/></button>
-                      <button className="p-2 bg-black text-white rounded-lg shadow-sm"><PenTool size={12}/></button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-8 border-t flex justify-end">
-               <button 
-                disabled={isSaving}
-                onClick={handleSaveAll} 
-                className="bg-red-600 text-white px-10 py-5 rounded-2xl font-black uppercase shadow-xl shadow-red-200 flex items-center gap-3 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
-               >
-                 {isSaving ? 'Envoi...' : <><Save size={24}/> Clôturer le Pré-Job</>}
-               </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 5: DEBRIEFING FIN DE POSTE  */}
-        {step === 5 && (
-          <div className="space-y-8 animate-in fade-in">
-             <div className="space-y-4">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Commentaires avancement scope / Fin de poste</label>
-                <textarea className="w-full p-6 bg-gray-50 border-2 border-gray-100 rounded-3xl h-32 font-bold outline-none focus:border-red-600 transition-all"></textarea>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  "Évènement sécurité même minime ?",
-                  "Problématique matériel / outillage ?",
-                  "Zone rangée et déchets évacués ?",
-                  "Remontées d'info du personnel ?"
-                ].map((q) => (
-                  <div key={q} className="bg-white border-2 border-gray-100 p-5 rounded-2xl flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-700">{q}</span>
-                    <div className="flex gap-2">
-                       <button className="px-4 py-2 rounded-lg bg-gray-100 text-[10px] font-black uppercase text-gray-400">Non</button>
-                       <button className="px-4 py-2 rounded-lg bg-red-50 text-[10px] font-black uppercase text-red-600">Oui</button>
-                    </div>
-                  </div>
                 ))}
-             </div>
-          </div>
-        )}
-
+                {archives.length === 0 && <div className="text-center py-10 text-gray-300 italic font-bold">Aucun Pre-Job archivé pour ce chantier.</div>}
+            </div>
+        </div>
       </div>
+    );
+  }
+
+  // --- VUE 2 : CRÉATION (WIZARD) ---
+  return (
+    <div className="min-h-screen bg-gray-50 p-8 font-['Fredoka']">
+        <div className="max-w-4xl mx-auto bg-white rounded-[30px] shadow-xl border border-gray-100 overflow-hidden flex flex-col min-h-[700px]">
+            {/* Header */}
+            <div className="bg-[#e21118] p-6 text-white flex justify-between items-center">
+                <h1 className="text-xl font-black uppercase flex items-center gap-2"><Shield className="text-white"/> Nouveau Pre-Job</h1>
+                <button onClick={() => setView('list')} className="bg-white/20 p-2 rounded-lg hover:bg-white/30"><X size={20}/></button>
+            </div>
+
+            <div className="flex-1 p-8 overflow-y-auto">
+                {/* STEP 1 */}
+                {step === 1 && (
+                    <div className="space-y-6 animate-in slide-in-from-right-8">
+                        <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">1. Contexte</h3>
+                        <div className="grid grid-cols-2 gap-6">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Animateur</label>
+                                <select className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm mt-1" value={formData.animateur_selectionne} onChange={e=>setFormData({...formData, animateur_selectionne: e.target.value})}>
+                                    <option value="">-- Choisir --</option>
+                                    {equipe.map((e:any) => <option key={e.id} value={`${e.nom} ${e.prenom}`}>{e.nom} {e.prenom}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Date</label>
+                                <input type="date" className="w-full p-3 bg-gray-50 rounded-xl font-bold text-sm mt-1" value={formData.date} onChange={e=>setFormData({...formData, date: e.target.value})} />
+                            </div>
+                            <div className="col-span-2">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Tâches Principales (Multi-choix)</label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {Array.from(new Set(RISK_DATABASE.map(r => r.task))).map(task => (
+                                        <div key={task} onClick={() => setFormData({...formData, taches_principales: toggleItem(formData.taches_principales, task)})} 
+                                             className={`p-3 rounded-xl border cursor-pointer text-xs font-bold transition-all ${formData.taches_principales.includes(task) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                                            {task}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 2 */}
+                {step === 2 && (
+                    <div className="space-y-6 animate-in slide-in-from-right-8">
+                        <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">2. Risques & Prévention</h3>
+                        <div className="space-y-3">
+                            {RISK_DATABASE.filter(r => formData.taches_principales.includes(r.task) || r.category === 'Logistique').map(risk => (
+                                <div key={risk.id} onClick={() => setFormData({...formData, risques_selectionnes: toggleItem(formData.risques_selectionnes, risk.id)})} 
+                                     className={`p-4 border-2 rounded-2xl cursor-pointer transition-all ${formData.risques_selectionnes.includes(risk.id) ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-white'}`}>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="font-black text-gray-800 text-sm uppercase">{risk.category} - {risk.task}</span>
+                                        {formData.risques_selectionnes.includes(risk.id) && <CheckCircle2 className="text-red-500" size={18}/>}
+                                    </div>
+                                    {formData.risques_selectionnes.includes(risk.id) && (
+                                        <div className="text-xs mt-2 pl-2 border-l-2 border-red-200">
+                                            <p><span className="font-bold text-red-500">Danger:</span> {risk.risks.join(', ')}</p>
+                                            <p className="mt-1"><span className="font-bold text-emerald-600">Mesure:</span> {risk.measures.join(', ')}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 3 */}
+                {step === 3 && (
+                    <div className="space-y-6 animate-in slide-in-from-right-8">
+                        <h3 className="text-lg font-black uppercase text-gray-700 border-b pb-2">3. Validation</h3>
+                        <p className="text-xs font-bold text-gray-400 uppercase">EPI Obligatoires</p>
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                            {["Casque", "Lunettes", "Gants", "Chaussures", "Harnais", "Masque", "Gilet", "Auditifs"].map(epi => (
+                                <button key={epi} onClick={() => setFormData({...formData, epi_selectionnes: toggleItem(formData.epi_selectionnes, epi)})} 
+                                        className={`p-3 rounded-xl border font-bold text-xs uppercase ${formData.epi_selectionnes.includes(epi) ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-400'}`}>{epi}</button>
+                            ))}
+                        </div>
+                        <div className="border-2 border-dashed border-gray-300 rounded-2xl h-40 bg-gray-50 relative">
+                            <SignatureCanvas ref={sigPad} penColor="black" canvasProps={{className: 'absolute inset-0 w-full h-full'}} />
+                            <div className="absolute bottom-2 left-2 text-[10px] text-gray-400 uppercase font-bold pointer-events-none">Signature Animateur</div>
+                            <button onClick={()=>sigPad.current.clear()} className="absolute top-2 right-2 text-xs bg-white border px-2 py-1 rounded font-bold">Effacer</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="p-6 border-t bg-gray-50 flex justify-between">
+                {step > 1 ? <button onClick={()=>setStep(step-1)} className="px-6 py-3 font-bold text-gray-500">Retour</button> : <div></div>}
+                {step < 3 ? (
+                    <button onClick={()=>setStep(step+1)} className="bg-black text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2">Suivant <ChevronRight size={16}/></button>
+                ) : (
+                    <button onClick={handleSave} className="bg-[#e21118] text-white px-8 py-3 rounded-xl font-black uppercase flex items-center gap-2"><Save size={18}/> Valider</button>
+                )}
+            </div>
+        </div>
     </div>
   );
 }

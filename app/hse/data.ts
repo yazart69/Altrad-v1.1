@@ -4,7 +4,7 @@
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// 1. BIBLIOTHÈQUE DES RISQUES (Générateur Documents)
+// 1. BIBLIOTHÈQUE DES RISQUES (Générateur Documents / Analyse Risque)
 // -----------------------------------------------------------------------------
 export const RISK_DATABASE = [
   // --- FAMILLE 1 : LOGISTIQUE & ORGANISATION (TCA) ---
@@ -111,40 +111,86 @@ export const RISK_DATABASE = [
     task: "Utilisation outils coupants (Cutter)", 
     risks: ["Coupure grave", "Hémorragie"], 
     measures: ["Utilisation Cutter à lame rétractable OBLIGATOIRE", "Gants niveau 5", "Interdiction coupe vers soi", "Couteau de sécurité si possible"] 
+  },
+  // NOUVEAUX RISQUES AJOUTÉS
+  { 
+    id: 'HOT-01', 
+    category: 'Points Chauds', 
+    task: "Soudure / Meulage / Découpe", 
+    risks: ["Incendie / Explosion", "Brûlures", "Fumées de soudage", "Rayonnements UV"], 
+    measures: ["Permis de feu obligatoire", "Extincteur à portée de main", "Écran facial/Masque soudure", "Vêtements coton ignifugé", "Bâche anti-feu", "Surveillance après travail (2h)"] 
+  },
+  { 
+    id: 'LEV-01', 
+    category: 'Levage', 
+    task: "Manutention mécanique (Grue, Pont)", 
+    risks: ["Chute de la charge", "Ecrasement", "Rupture élingue", "Heurt"], 
+    measures: ["Chef de manœuvre identifié", "Vérification des accessoires de levage (VGP)", "Interdiction de passer sous la charge", "Guidage radio ou gestuel", "Zone de pose balisée"] 
   }
 ];
 
 // -----------------------------------------------------------------------------
 // 2. RÈGLES DE VÉRIFICATION PÉRIODIQUE (Module VGP)
 // -----------------------------------------------------------------------------
-// Sert à calculer automatiquement si une VGP est périmée ou non.
-// Periodicite en mois.
+// Périodicité en mois
 export const VGP_RULES = {
-  "Levage": 6,      // Nacelles, Treuils, Palans, Elingues (6 mois)
-  "EPI_Harnais": 12, // Harnais, Longes, Anti-chute (12 mois)
-  "Electrique": 12, // Armoires, Coffrets (12 mois)
-  "Pression": 12,   // Compresseurs, Cuves (12 à 40 mois selon type, on met 12 par sécurité)
-  "Echafaudage": 3,  // Vérif trimestrielle recommandée (ou avant mise en service)
+  "Levage": 6,      // Nacelles, Treuils, Palans, Elingues
+  "EPI_Harnais": 12, // Harnais, Longes, Anti-chute
+  "Electrique": 12, // Armoires, Coffrets
+  "Pression": 12,   // Compresseurs, Cuves
+  "Echafaudage": 3,  // Vérif trimestrielle
   "Extincteur": 12, // Vérification annuelle
-  "Vehicule": 12    // Contrôle technique / Vérif interne
+  "Vehicule": 12,    // Contrôle technique / Vérif interne
+  "Outillage": 12   // Meuleuses, Perceuses...
 };
 
 // Liste déroulante pour le formulaire d'ajout matériel
 export const EQUIPMENT_TYPES = [
   { label: "Nacelle (PEMP)", category: "Levage" },
+  { label: "Grue / Pont Roulant", category: "Levage" },
   { label: "Harnais de sécurité", category: "EPI_Harnais" },
   { label: "Longe / Anti-chute", category: "EPI_Harnais" },
   { label: "Compresseur", category: "Pression" },
   { label: "Echafaudage Roulant", category: "Echafaudage" },
   { label: "Extincteur", category: "Extincteur" },
   { label: "Coffret Électrique", category: "Electrique" },
-  { label: "Véhicule Utilitaire", category: "Vehicule" }
+  { label: "Véhicule Utilitaire", category: "Vehicule" },
+  { label: "Outillage électroportatif", category: "Outillage" }
 ];
 
 // -----------------------------------------------------------------------------
-// 3. RÉFÉRENTIEL Q3SRE (Visites Terrain)
+// 3. RÉFÉRENTIEL INCIDENTS (NOUVEAU - Module Registre)
 // -----------------------------------------------------------------------------
-// Utilisé pour peupler les listes déroulantes du formulaire Q3SRE
+export const INCIDENT_REFERENTIAL = {
+    types: [
+        "Accident avec Arrêt (AAA)",
+        "Accident sans Arrêt (ASA)",
+        "Presque-Accident / Near Miss",
+        "Incident Matériel",
+        "Incident Environnemental (Fuite...)",
+        "Soins Bénins (Infirmerie)"
+    ],
+    siege_lesions: [
+        "Mains / Doigts",
+        "Yeux / Visage",
+        "Pieds / Chevilles",
+        "Dos / Rachis",
+        "Tête / Cou",
+        "Jambes / Genoux",
+        "Voies respiratoires",
+        "Non applicable (Matériel/Env)"
+    ],
+    gravite: [
+        "Faible (Pas de soin)",
+        "Moyenne (Soin infirmier)",
+        "Grave (Arrêt de travail)",
+        "Critique (Hospitalisation/Décès)"
+    ]
+};
+
+// -----------------------------------------------------------------------------
+// 4. RÉFÉRENTIEL Q3SRE (Visites Terrain)
+// -----------------------------------------------------------------------------
 export const Q3SRE_REFERENTIAL = {
   lignes_defense: [
     "Technique (Matériel, EPC, EPI)",
@@ -159,12 +205,14 @@ export const Q3SRE_REFERENTIAL = {
     "État du matériel électroportatif",
     "Propreté de la zone de travail",
     "Stockage des produits chimiques (Rétention)",
-    "Présence extincteur valide"
+    "Présence extincteur valide",
+    "Postures de travail",
+    "Respect des procédures consignation"
   ]
 };
 
 // -----------------------------------------------------------------------------
-// 4. CATÉGORIES D'OBSERVATION (Module OST)
+// 5. CATÉGORIES D'OBSERVATION (Module OST)
 // -----------------------------------------------------------------------------
 export const OST_THEMES = [
   "Réaction face au risque",
@@ -172,11 +220,12 @@ export const OST_THEMES = [
   "Port des EPI",
   "Outillage et Equipement",
   "Procédures et Organisation",
-  "Ordre et Propreté"
+  "Ordre et Propreté",
+  "Environnement"
 ];
 
 // -----------------------------------------------------------------------------
-// 5. THÈMES CAUSERIES (Module Sécurité)
+// 6. THÈMES CAUSERIES (Module Sécurité)
 // -----------------------------------------------------------------------------
 export const CAUSERIE_THEMES = [
   "Travaux en hauteur & Chutes",
@@ -188,5 +237,9 @@ export const CAUSERIE_THEMES = [
   "Bruit & Protection auditive",
   "Accueil & Nouveaux embauchés",
   "Rangement & Propreté",
-  "Coactivité & Balisage"
+  "Coactivité & Balisage",
+  "Points Chauds & Incendie",
+  "Espaces Confinés",
+  "Risque Électrique",
+  "Droit de retrait & Stop work"
 ];
