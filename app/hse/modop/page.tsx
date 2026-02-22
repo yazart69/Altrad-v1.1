@@ -6,12 +6,31 @@ import { supabase } from '@/lib/supabase';
 import { 
   FileText, X, Save, Eye, CheckCircle2, ChevronRight, 
   Plus, Loader2, ArrowLeft, Printer, ShieldAlert, 
-  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat, Pencil, Beaker, UploadCloud, ScanLine,
-  Check
+  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, 
+  MapPin, HardHat, Pencil, Beaker, Paperclip, Droplets, AlertTriangle, Activity, Leaf, Download,
+  Check,
+  UploadCloud
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
 import { RISK_DATABASE } from '../data'; 
+
+// --- CATALOGUE CHIMIQUE METIER ---
+const CHEMICAL_CATALOG = [
+    { id: 'C1', produit: 'Peinture Epoxy (Bi-composant)', dangers: ['Irritation cutanée', 'Sensibilisation allergique', 'Toxique pour l\'environnement'], mesures: ['Gants Nitrile', 'Lunettes de sécurité étanches', 'Masque respiratoire A2P3'] },
+    { id: 'C2', produit: 'Diluant Solvanté / Nettoyant', dangers: ['Liquide et vapeurs très inflammables', 'Provoque une sévère irritation des yeux', 'Vapeurs toxiques (somnolence)'], mesures: ['Ventilation renforcée', 'Gants de protection solvants', 'Masque cartouche A2', 'Élimination des sources d\'ignition'] },
+    { id: 'C3', produit: 'Acide Chlorhydrique / Décapant chimique', dangers: ['Provoque des brûlures de la peau et des lésions oculaires graves', 'Corrosif pour les voies respiratoires'], mesures: ['Gants anti-acides (Néoprène/Butyl)', 'Écran facial (visière)', 'Tablier de protection chimique'] },
+    { id: 'C4', produit: 'Résine Polyuréthane', dangers: ['Nocif par inhalation', 'Irritant pour les voies respiratoires et la peau', 'Risque suspecté de cancer (Isocyanates)'], mesures: ['Port combinaison jetable type 5/6', 'Gants étanches', 'Masque complet à ventilation assistée ou cartouche A2B2P3'] }
+];
+
+const PICTOGRAMS = [
+    { id: 'inflammable', label: 'Inflammable', icon: Flame, danger: 'Liquide ou vapeur inflammable', mesure: 'Éloigner de toute source de chaleur. Extincteur à proximité.' },
+    { id: 'corrosif', label: 'Corrosif', icon: Droplets, danger: 'Provoque des brûlures cutanées et lésions oculaires', mesure: 'Gants chimiques et lunettes masques obligatoires.' },
+    { id: 'toxique', label: 'Toxique', icon: Skull, danger: 'Toxique ou mortel en cas d\'inhalation/ingestion', mesure: 'Masque respiratoire adapté obligatoire. Ne pas manger/boire.' },
+    { id: 'nocif', label: 'Nocif / Irritant', icon: AlertTriangle, danger: 'Irritant pour la peau et les yeux', mesure: 'Port de gants et lunettes de sécurité.' },
+    { id: 'cmr', label: 'CMR (Santé)', icon: Activity, danger: 'Risque grave pour la santé (Cancérigène, Mutagène)', mesure: 'Protection EPI maximale. Aspiration à la source.' },
+    { id: 'environnement', label: 'Environnement', icon: Leaf, danger: 'Dangereux pour le milieu aquatique', mesure: 'Prévoir bac de rétention. Interdit de rejeter à l\'égout.' },
+];
 
 export default function MODOPPage() {
   return (
@@ -34,40 +53,27 @@ function MODOPContent() {
   const [selectedMODOP, setSelectedMODOP] = useState<any>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Etat pour le scan IA des FDS
-  const [isScanningFDS, setIsScanningFDS] = useState(false);
-
   const defaultForm = {
-    otp: '',
-    redacteur: '',
-    validateur_sup: '',
-    version: 'A',
-    localisation: '', 
-    description_travaux: '',
-    equipe: [] as any[],
-    risques_chimiques: [] as any[], // NOUVEAU: Stocke l'analyse des FDS
-    mesures_prevention: { atex: false, plomb: false, amiante: 'non' },
-    techniques: [] as string[], 
-    etapes_mise_en_oeuvre: [] as { etape: string, controle_requis: boolean, validateur: string }[],
+    otp: '', redacteur: '', validateur_sup: '', version: 'A', localisation: '', description_travaux: '',
+    equipe: [] as any[], risques_chimiques: [] as any[], mesures_prevention: { atex: false, plomb: false, amiante: 'non' },
+    techniques: [] as string[], etapes_mise_en_oeuvre: [] as { etape: string, controle_requis: boolean, validateur: string }[],
     procedures_urgence: "Alerter le SST le plus proche. Dégager la victime de la zone dangereuse (< 3 min) si cela ne présente pas de risque de sur-accident. Contacter le 15 (SAMU) ou le 112. En cas de projection chimique, rincer abondamment à l'eau ou solution diphotérine.",
-    signature_redacteur: '',
-    signature_validateur: ''
+    signature_redacteur: '', signature_validateur: ''
   };
 
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState(defaultForm);
   const [extWorker, setExtWorker] = useState({ nom: '', role: 'Sous-traitant', habs: '' });
+  
+  // États pour la création manuelle de produit chimique
+  const [customChem, setCustomChem] = useState({ nom: '', pictos: [] as string[] });
 
   const sigPadRedacteur = useRef<any>(null);
   const sigPadValidateur = useRef<any>(null);
 
   useEffect(() => {
-    if (step === 6 && formData.signature_redacteur && sigPadRedacteur.current) {
-        setTimeout(() => { sigPadRedacteur.current?.fromDataURL(formData.signature_redacteur); }, 50);
-    }
-    if (step === 6 && formData.signature_validateur && sigPadValidateur.current) {
-        setTimeout(() => { sigPadValidateur.current?.fromDataURL(formData.signature_validateur); }, 50);
-    }
+    if (step === 6 && formData.signature_redacteur && sigPadRedacteur.current) setTimeout(() => { sigPadRedacteur.current?.fromDataURL(formData.signature_redacteur); }, 50);
+    if (step === 6 && formData.signature_validateur && sigPadValidateur.current) setTimeout(() => { sigPadValidateur.current?.fromDataURL(formData.signature_validateur); }, 50);
   }, [step]);
 
   const fetchArchives = async () => {
@@ -93,12 +99,12 @@ function MODOPContent() {
     loadData();
   }, [chantierId]);
 
+  // --- LOGIQUE METIER EQUIPE ---
   const toggleEmploye = (emp: any) => {
       const exists = formData.equipe.find(e => e.id === emp.id);
       if (exists) setFormData({ ...formData, equipe: formData.equipe.filter(e => e.id !== emp.id) });
       else setFormData({ ...formData, equipe: [...formData.equipe, { id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role, habilitations: emp.habilitations || [] }] });
   };
-
   const addExtWorker = () => {
       if (!extWorker.nom) return toast.error("Le nom est obligatoire.");
       const newEmp = { id: 'ext-' + Date.now(), nom: extWorker.nom, prenom: '', role: extWorker.role, habilitations: extWorker.habs ? extWorker.habs.split(',').map(h => h.trim()) : [] };
@@ -106,55 +112,53 @@ function MODOPContent() {
       setExtWorker({ nom: '', role: 'Sous-traitant', habs: '' });
   };
 
-  // --- MOTEUR DE LECTURE FDS (SIMULATION IA) ---
-  const handleFDSUpload = (e: any) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      setIsScanningFDS(true);
-      
-      // On simule un délai de traitement OCR / IA de 2 secondes
-      setTimeout(() => {
-          // Extraction simulée basée sur des mots-clés typiques de la chimie du BTP
-          const analyseIA = {
-              id: Date.now().toString(),
-              fichier: file.name,
-              produit: file.name.replace('.pdf', '').replace(/_/g, ' ').toUpperCase(),
-              dangers: [
-                  "Toxicité aigüe (Inhalation de vapeurs/solvants)",
-                  "Irritation cutanée et lésions oculaires graves",
-                  "Risque inflammable ou émanation de COV"
-              ],
-              mesures: [
-                  "Port du demi-masque avec cartouches A2P3 obligatoire",
-                  "Gants de protection chimique (Nitrile/Néoprène)",
-                  "Lunettes masques étanches (risque projection)",
-                  "Ventilation mécanique de la zone de travail"
-              ]
-          };
-
-          setFormData(prev => ({
-              ...prev,
-              risques_chimiques: [...(prev.risques_chimiques || []), analyseIA]
-          }));
-          setIsScanningFDS(false);
-          toast.success("FDS analysée avec succès ! Les risques ont été ajoutés.");
-      }, 2000);
+  // --- LOGIQUE METIER CHIMIE & FDS ---
+  const addChemicalFromCatalog = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const chemId = e.target.value;
+      if (!chemId) return;
+      const chem = CHEMICAL_CATALOG.find(c => c.id === chemId);
+      if (chem && !formData.risques_chimiques.find((c:any) => c.produit === chem.produit)) {
+          setFormData({ ...formData, risques_chimiques: [...formData.risques_chimiques, { ...chem, id: Date.now().toString(), fds_filename: null, fds_data: null }] });
+      }
+      e.target.value = ""; // reset select
   };
 
-  const removeFDS = (idx: number) => {
+  const addCustomChemical = () => {
+      if (!customChem.nom) return toast.error("Veuillez saisir le nom du produit.");
+      if (customChem.pictos.length === 0) return toast.error("Veuillez sélectionner au moins un pictogramme de danger.");
+      
+      const dangers = customChem.pictos.map(pid => PICTOGRAMS.find(p => p.id === pid)?.danger);
+      const mesures = customChem.pictos.map(pid => PICTOGRAMS.find(p => p.id === pid)?.mesure);
+      
+      setFormData({ ...formData, risques_chimiques: [...formData.risques_chimiques, { id: Date.now().toString(), produit: customChem.nom, dangers, mesures, fds_filename: null, fds_data: null }] });
+      setCustomChem({ nom: '', pictos: [] });
+  };
+
+  const handleFDSUpload = (idx: number, e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.type !== 'application/pdf') return toast.error("Veuillez uploader un fichier PDF.");
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+          const newChems = [...formData.risques_chimiques];
+          newChems[idx].fds_filename = file.name;
+          newChems[idx].fds_data = reader.result;
+          setFormData({ ...formData, risques_chimiques: newChems });
+          toast.success("FDS jointe au document !");
+      };
+      reader.readAsDataURL(file);
+  };
+
+  const removeChemical = (idx: number) => {
       setFormData({ ...formData, risques_chimiques: formData.risques_chimiques.filter((_, i) => i !== idx) });
   };
 
+  // --- LOGIQUE METIER TECHNIQUE ---
   const toggleTechnique = (id: string) => {
-    setFormData(prev => ({
-        ...prev,
-        techniques: prev.techniques.includes(id) ? prev.techniques.filter(i => i !== id) : [...prev.techniques, id]
-    }));
+    setFormData(prev => ({ ...prev, techniques: prev.techniques.includes(id) ? prev.techniques.filter(i => i !== id) : [...prev.techniques, id] }));
   };
-
   const updateAmiante = (val: string) => setFormData({ ...formData, mesures_prevention: { ...formData.mesures_prevention, amiante: val } });
-
   const addEtape = () => setFormData({ ...formData, etapes_mise_en_oeuvre: [...formData.etapes_mise_en_oeuvre, { etape: '', controle_requis: false, validateur: '' }] });
   const updateEtape = (idx: number, field: string, value: any) => {
       const newEtapes = [...formData.etapes_mise_en_oeuvre];
@@ -163,16 +167,14 @@ function MODOPContent() {
   };
   const removeEtape = (idx: number) => setFormData({ ...formData, etapes_mise_en_oeuvre: formData.etapes_mise_en_oeuvre.filter((_, i) => i !== idx) });
 
+  // --- SAUVEGARDE & CRUD ---
   const handleEdit = (modop: any) => {
       setEditingId(modop.id);
       setFormData({
           otp: modop.otp || '', redacteur: modop.redacteur || '', validateur_sup: modop.validateur_sup || '',
           version: modop.version || 'A', localisation: modop.localisation || '', description_travaux: modop.description_travaux || '',
-          equipe: modop.equipe || [],
-          risques_chimiques: modop.risques_chimiques || [], // Chargement des produits
-          mesures_prevention: modop.mesures_prevention || { atex: false, plomb: false, amiante: 'non' },
-          techniques: modop.techniques || [], etapes_mise_en_oeuvre: modop.controles || [],
-          procedures_urgence: modop.procedures_urgence || defaultForm.procedures_urgence,
+          equipe: modop.equipe || [], risques_chimiques: modop.risques_chimiques || [], mesures_prevention: modop.mesures_prevention || { atex: false, plomb: false, amiante: 'non' },
+          techniques: modop.techniques || [], etapes_mise_en_oeuvre: modop.controles || [], procedures_urgence: modop.procedures_urgence || defaultForm.procedures_urgence,
           signature_redacteur: modop.signatures?.redacteur || '', signature_validateur: modop.signatures?.validateur_sup || ''
       });
       setStep(1); setView('create');
@@ -210,6 +212,9 @@ function MODOPContent() {
   if (!chantierId) return <div className="p-10 text-center font-black uppercase text-red-500">Erreur : Aucun chantier sélectionné.</div>;
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-700 size-10"/></div>;
 
+  // ==========================================================================
+  // VUE 1 : LISTE DES ARCHIVES
+  // ==========================================================================
   if (view === 'list') {
     return (
       <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8 font-['Fredoka'] text-gray-800">
@@ -239,8 +244,7 @@ function MODOPContent() {
                             <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500 mt-2">
                                 {a.otp && <span className="bg-gray-800 text-white px-2 py-1 rounded font-mono uppercase">OTP: {a.otp}</span>}
                                 <span className="bg-white px-2 py-1 rounded border border-gray-200">Créé le {new Date(a.created_at).toLocaleDateString()}</span>
-                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">Rédigé par: {a.redacteur}</span>
-                                {(a.risques_chimiques && a.risques_chimiques.length > 0) && <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded uppercase shadow-sm flex items-center gap-1"><Beaker size={12}/> {a.risques_chimiques.length} FDS</span>}
+                                {(a.risques_chimiques && a.risques_chimiques.length > 0) && <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded border border-yellow-200 uppercase flex items-center gap-1"><Beaker size={12}/> {a.risques_chimiques.length} Produit(s)</span>}
                                 {a.mesures_prevention?.amiante === 'SS3' && <span className="bg-red-600 text-white px-2 py-1 rounded uppercase shadow-sm animate-pulse">AMIANTE SS3</span>}
                             </div>
                         </div>
@@ -257,9 +261,12 @@ function MODOPContent() {
     );
   }
 
-  // VUE PDF
+  // ==========================================================================
+  // VUE 2 : VISIONNEUSE PDF QUALITE
+  // ==========================================================================
   if (view === 'view' && selectedMODOP) {
       const dbRisks = (selectedMODOP.techniques || []).map((id: string) => RISK_DATABASE.find(r => r.id === id)).filter(Boolean);
+      const attachedFds = (selectedMODOP.risques_chimiques || []).filter((c:any) => c.fds_filename);
 
       return (
           <div className="min-h-screen bg-gray-100 font-sans text-gray-900 p-4 md:p-8">
@@ -311,7 +318,7 @@ function MODOPContent() {
                                   ))}
                               </tbody>
                           </table>
-                      ) : <p className="text-xs italic text-gray-500">Aucune équipe spécifiée dans le document.</p>}
+                      ) : <p className="text-xs italic text-gray-500">Aucune équipe spécifiée.</p>}
                   </div>
 
                   <div className="mb-6">
@@ -322,10 +329,10 @@ function MODOPContent() {
                           <div className="mt-4 border-2 border-red-500 p-3 bg-red-50">
                               <h4 className="font-black text-red-700 uppercase text-xs mb-2 flex items-center gap-2"><ShieldAlert size={16}/> EXIGENCES LÉGALES ET ENVIRONNEMENTALES</h4>
                               <ul className="list-disc pl-5 text-xs font-bold text-red-900 space-y-2">
-                                  {selectedMODOP.mesures_prevention?.atex && <li><strong>ZONE ATEX :</strong> Matériel certifié ATEX (EX) obligatoire, explosimètre permanent, interdiction formelle de source d'ignition. Permis de feu indispensable.</li>}
-                                  {selectedMODOP.mesures_prevention?.plomb && <li><strong>RISQUE PLOMB :</strong> Délimitation Zone Rouge, sas de décontamination hygiène (propre/sale), aspiration avec filtre THE, port de masque P3 obligatoire. Bilan plombémie à jour.</li>}
-                                  {selectedMODOP.mesures_prevention?.amiante === 'SS4' && <li><strong>AMIANTE SS4 (Maintenance) :</strong> Respect strict du mode opératoire SS4. Confinement localisé, humidification des supports, masque FFP3/Ventilé selon l'empoussièrement estimé. Gestion des déchets en amiante lié.</li>}
-                                  {selectedMODOP.mesures_prevention?.amiante === 'SS3' && <li className="text-red-600 text-sm uppercase"><strong>AMIANTE SS3 (Retrait) : DANGER / HAUTE SURVEILLANCE.</strong> Le présent document vient en complément du Plan de Retrait validé par l'Inspection du Travail. Confinement total, dépression contrôlée, sas 5 compartiments obligatoires.</li>}
+                                  {selectedMODOP.mesures_prevention?.atex && <li><strong>ZONE ATEX :</strong> Matériel certifié ATEX (EX) obligatoire, explosimètre permanent, interdiction de source d'ignition. Permis de feu indispensable.</li>}
+                                  {selectedMODOP.mesures_prevention?.plomb && <li><strong>RISQUE PLOMB :</strong> Délimitation Zone Rouge, sas de décontamination hygiène, aspiration filtre THE, masque P3 obligatoire.</li>}
+                                  {selectedMODOP.mesures_prevention?.amiante === 'SS4' && <li><strong>AMIANTE SS4 :</strong> Respect strict du mode opératoire SS4. Confinement localisé, humidification, masque FFP3/Ventilé. Gestion des déchets spécifique.</li>}
+                                  {selectedMODOP.mesures_prevention?.amiante === 'SS3' && <li className="text-red-600 text-sm uppercase"><strong>AMIANTE SS3 (Retrait) : DANGER.</strong> Respect du Plan de Retrait. Confinement total, dépression contrôlée, sas 5 compartiments.</li>}
                               </ul>
                           </div>
                       )}
@@ -352,15 +359,15 @@ function MODOPContent() {
                       <table className="w-full text-[10px]">
                           <thead><tr><th className="w-[20%] text-left">Opération / Produit</th><th className="w-[30%] text-left text-red-700">Risques Majeurs</th><th className="w-[50%] text-left text-green-800">Mesures de Prévention & Équipements</th></tr></thead>
                           <tbody>
-                              {/* Affichage des risques chimiques extraits des FDS */}
+                              {/* Affichage des risques chimiques issus du catalogue / manuel */}
                               {selectedMODOP.risques_chimiques && selectedMODOP.risques_chimiques.map((chem: any, i: number) => (
-                                  <tr key={`chem-${i}`} className="bg-yellow-50 border-yellow-200">
-                                      <td className="font-bold uppercase text-yellow-900"><Beaker size={12} className="inline mr-1"/> PRODUIT CHIMIQUE:<br/>{chem.produit}</td>
-                                      <td className="text-red-800"><ul className="list-disc pl-3 font-bold">{chem.dangers.map((d: string, j: number) => <li key={j}>{d}</li>)}</ul></td>
-                                      <td className="text-green-900"><ul className="list-disc pl-3 font-bold">{chem.mesures.map((m: string, j: number) => <li key={j}>{m}</li>)}</ul></td>
+                                  <tr key={`chem-${i}`} className="bg-yellow-50/50">
+                                      <td className="font-bold uppercase text-yellow-900 border-yellow-200"><Beaker size={12} className="inline mr-1"/> Chimique: {chem.produit}</td>
+                                      <td className="border-yellow-200"><ul className="list-disc pl-3 text-red-800 font-bold">{chem.dangers.map((d: string, j: number) => <li key={j}>{d}</li>)}</ul></td>
+                                      <td className="border-yellow-200"><ul className="list-disc pl-3 text-green-800 font-bold">{chem.mesures.map((m: string, j: number) => <li key={j}>{m}</li>)}</ul></td>
                                   </tr>
                               ))}
-                              {/* Affichage des risques techniques classiques */}
+                              {/* Affichage des risques techniques */}
                               {dbRisks.map((r: any) => (
                                   <tr key={r.id}>
                                       <td className="font-bold uppercase bg-gray-50">{r.task}</td>
@@ -371,6 +378,25 @@ function MODOPContent() {
                           </tbody>
                       </table>
                   </div>
+
+                  {/* Section des annexes officielles (FDS jointes) */}
+                  {attachedFds.length > 0 && (
+                      <div className="mb-6 page-break-inside-avoid border-2 border-gray-300 bg-gray-50 p-4">
+                          <h4 className="font-black text-sm uppercase mb-2 flex items-center gap-2"><Paperclip size={16}/> Documents Annexés (FDS)</h4>
+                          <ul className="list-disc pl-5 text-xs font-bold text-gray-700">
+                              {attachedFds.map((c:any, i:number) => (
+                                  <li key={i}>Fiche de Données de Sécurité : <span className="text-blue-600">{c.produit}</span> <span className="italic text-gray-400">({c.fds_filename})</span></li>
+                              ))}
+                          </ul>
+                          <div className="no-print mt-4 flex gap-2">
+                              {attachedFds.map((c:any, i:number) => (
+                                  <a key={i} href={c.fds_data} download={c.fds_filename} className="bg-white border border-gray-300 text-xs px-3 py-1.5 rounded flex items-center gap-2 hover:bg-gray-100 font-bold">
+                                      <Download size={14}/> Télécharger {c.produit}
+                                  </a>
+                              ))}
+                          </div>
+                      </div>
+                  )}
 
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">5. Procédures d'urgence</h3>
@@ -396,7 +422,9 @@ function MODOPContent() {
       );
   }
 
-  // WIZARD
+  // ==========================================================================
+  // VUE 3 : WIZARD DE CREATION
+  // ==========================================================================
   return (
     <div className="min-h-screen bg-[#2d3436] p-4 md:p-8 font-['Fredoka'] flex items-center justify-center text-gray-800">
         <Toaster position="top-center" />
@@ -420,7 +448,6 @@ function MODOPContent() {
                 {step === 1 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">1. Cadre et Intervenants</h3>
-                        
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100">
                             <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">N° OTP</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100 uppercase" placeholder="P-XXXXXX" value={formData.otp} onChange={e=>setFormData({...formData, otp: e.target.value})} /></div>
                             <div className="col-span-1 md:col-span-3"><label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-2 block mb-2 flex items-center gap-1"><MapPin size={14}/> Adresse exacte du chantier</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border-2 border-blue-200 focus:border-blue-500" placeholder="Ex: Centrale EDF de Bugey, Bâtiment Réacteur 2..." value={formData.localisation} onChange={e=>setFormData({...formData, localisation: e.target.value})} /></div>
@@ -431,6 +458,7 @@ function MODOPContent() {
 
                         <div>
                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-4 flex items-center gap-2"><Users size={14}/> Sélection de l'équipe (Vérification des habilitations)</label>
+                            
                             {formData.equipe.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mb-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
                                     <span className="text-xs font-black text-blue-800 w-full mb-1">Équipe affectée :</span>
@@ -474,52 +502,76 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 2 : NOUVEAU : GESTION FDS ET PRODUITS CHIMIQUES --- */}
+                {/* --- ETAPE 2 : RISQUES CHIMIQUES ET FDS --- */}
                 {step === 2 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
-                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-yellow-500 inline-block pb-1">2. Analyse des Produits Chimiques (FDS)</h3>
-                        <p className="text-xs font-bold text-gray-500 bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-start gap-3">
-                            <Info size={24} className="text-yellow-600 shrink-0"/>
-                            Déposez les Fiches de Données de Sécurité (Colles, Résines, Solvants, Peintures...). L'intelligence artificielle analysera le document pour extraire automatiquement les risques sanitaires et les EPI obligatoires qui seront injectés dans l'Analyse de Risques finale.
+                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-yellow-500 inline-block pb-1">2. Produits Chimiques & FDS</h3>
+                        <p className="text-xs font-bold text-gray-500 bg-yellow-50 p-4 rounded-xl border border-yellow-200">
+                            Sélectionnez les produits utilisés. Les risques et EPI seront automatiquement inscrits dans le document. Vous pouvez également joindre la Fiche de Données de Sécurité (FDS) au format PDF.
                         </p>
 
-                        <div className="border-4 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors rounded-[30px] p-10 flex flex-col items-center justify-center text-center relative">
-                            {isScanningFDS ? (
-                                <div className="flex flex-col items-center gap-4">
-                                    <ScanLine size={48} className="text-blue-500 animate-pulse"/>
-                                    <span className="font-black text-blue-800 uppercase tracking-widest text-sm">Lecture IA en cours...</span>
-                                    <span className="text-xs font-bold text-gray-500">Extraction des mentions de danger (CMR, Corrosif, Inflammable)</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Colonne 1 : Bibliothèque Métier */}
+                            <div className="bg-gray-50 p-6 rounded-3xl border border-gray-200">
+                                <h4 className="text-sm font-black uppercase mb-4 flex items-center gap-2"><ListChecks size={18} className="text-blue-600"/> Depuis la bibliothèque</h4>
+                                <select className="w-full p-4 rounded-xl text-sm font-bold border-none outline-none mb-3 shadow-sm cursor-pointer" onChange={addChemicalFromCatalog} defaultValue="">
+                                    <option value="" disabled>-- Choisir un produit courant --</option>
+                                    {CHEMICAL_CATALOG.map(c => <option key={c.id} value={c.id}>{c.produit}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Colonne 2 : Création Manuelle Guidée */}
+                            <div className="bg-gray-50 p-6 rounded-3xl border border-gray-200">
+                                <h4 className="text-sm font-black uppercase mb-4 flex items-center gap-2"><Plus size={18} className="text-orange-500"/> Saisie manuelle d'un nouveau produit</h4>
+                                <input type="text" placeholder="Nom exact du produit..." className="w-full p-3 rounded-xl text-xs font-bold border-none outline-none mb-4 shadow-sm" value={customChem.nom} onChange={e=>setCustomChem({...customChem, nom: e.target.value})} />
+                                <label className="text-[10px] font-black text-gray-500 uppercase block mb-2">Sélectionnez les dangers inscrits sur l'étiquette :</label>
+                                <div className="grid grid-cols-3 gap-2 mb-4">
+                                    {PICTOGRAMS.map(pic => {
+                                        const isSel = customChem.pictos.includes(pic.id);
+                                        return (
+                                            <div key={pic.id} onClick={() => setCustomChem(prev => ({...prev, pictos: isSel ? prev.pictos.filter(i=>i!==pic.id) : [...prev.pictos, pic.id]}))} className={`p-2 rounded-lg border-2 cursor-pointer flex flex-col items-center text-center transition-colors ${isSel ? 'bg-orange-100 border-orange-500 text-orange-900' : 'bg-white border-transparent text-gray-400'}`}>
+                                                <pic.icon size={24} className="mb-1"/>
+                                                <span className="text-[9px] font-black uppercase leading-tight">{pic.label}</span>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                            ) : (
-                                <>
-                                    <UploadCloud size={48} className="text-gray-400 mb-4"/>
-                                    <span className="font-black text-gray-600 uppercase mb-2">Importer une FDS (PDF)</span>
-                                    <span className="text-xs font-bold text-gray-400">Cliquez ou glissez-déposez le document ici</span>
-                                    <input type="file" accept=".pdf" onChange={handleFDSUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                </>
-                            )}
+                                <button onClick={addCustomChemical} className="w-full bg-orange-500 text-white font-bold text-xs py-3 rounded-xl uppercase hover:bg-orange-600">Ajouter ce produit</button>
+                            </div>
                         </div>
 
+                        {/* Liste des produits validés et Upload FDS */}
                         {formData.risques_chimiques.length > 0 && (
-                            <div className="space-y-4 mt-8">
-                                <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest">Produits analysés et validés</h4>
-                                {formData.risques_chimiques.map((chem, idx) => (
+                            <div className="space-y-4 mt-6">
+                                <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest border-b pb-2">Produits chimiques intégrés au MODOP ({formData.risques_chimiques.length})</h4>
+                                {formData.risques_chimiques.map((chem:any, idx:number) => (
                                     <div key={idx} className="bg-white border-2 border-yellow-300 rounded-2xl p-5 relative shadow-sm">
-                                        <button onClick={() => removeFDS(idx)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><Trash2 size={18}/></button>
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <div className="w-10 h-10 bg-yellow-100 text-yellow-700 rounded-xl flex items-center justify-center"><Beaker size={20}/></div>
-                                            <div>
-                                                <h5 className="font-black text-gray-800 uppercase">{chem.produit}</h5>
-                                                <span className="text-[10px] font-bold text-gray-400">Source : {chem.fichier}</span>
+                                        <button onClick={() => removeChemical(idx)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><Trash2 size={18}/></button>
+                                        <div className="flex items-center justify-between mb-4 pr-8">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-yellow-100 text-yellow-700 rounded-xl flex items-center justify-center"><Beaker size={20}/></div>
+                                                <h5 className="font-black text-gray-800 uppercase text-sm">{chem.produit}</h5>
                                             </div>
+                                            
+                                            {/* UPLOAD FDS POUR CE PRODUIT */}
+                                            {chem.fds_filename ? (
+                                                <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg text-xs font-bold">
+                                                    <Paperclip size={14}/> FDS: {chem.fds_filename}
+                                                </div>
+                                            ) : (
+                                                <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors">
+                                                    <UploadCloud size={14}/> Joindre la FDS (PDF)
+                                                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => handleFDSUpload(idx, e)} />
+                                                </label>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="bg-red-50 p-3 rounded-xl border border-red-100">
-                                                <span className="text-[10px] font-black text-red-800 uppercase block mb-1">Dangers détectés</span>
+                                                <span className="text-[10px] font-black text-red-800 uppercase block mb-1">Dangers déclarés</span>
                                                 <ul className="list-disc pl-4 text-xs font-bold text-red-900">{chem.dangers.map((d:string, i:number) => <li key={i}>{d}</li>)}</ul>
                                             </div>
                                             <div className="bg-green-50 p-3 rounded-xl border border-green-100">
-                                                <span className="text-[10px] font-black text-green-800 uppercase block mb-1">Prévention & EPI requis</span>
+                                                <span className="text-[10px] font-black text-green-800 uppercase block mb-1">Prévention / EPI</span>
                                                 <ul className="list-disc pl-4 text-xs font-bold text-green-900">{chem.mesures.map((m:string, i:number) => <li key={i}>{m}</li>)}</ul>
                                             </div>
                                         </div>
@@ -530,7 +582,7 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 3 : ENVIRONNEMENT --- */}
+                {/* --- ETAPE 3 : ENVIRONNEMENT (Ex Etape 2) --- */}
                 {step === 3 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">3. Spécificités Environnementales</h3>
@@ -565,7 +617,7 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 4 : ETAPES DE MISE EN OEUVRE --- */}
+                {/* --- ETAPE 4 : ETAPES DE MISE EN OEUVRE (Ex Etape 3) --- */}
                 {step === 4 && (
                     <div className="space-y-6 animate-in slide-in-from-right-10">
                         <div className="flex justify-between items-center">
@@ -592,10 +644,15 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 5 : ADR INTELLIGENTE --- */}
+                {/* --- ETAPE 5 : ADR INTELLIGENTE (Ex Etape 4) --- */}
                 {step === 5 && (
                     <div className="space-y-6 animate-in slide-in-from-right-10">
-                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">5. Opérations et Analyse de Risques</h3>
+                        <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">5. Opérations Techniques (ADR)</h3>
+                        <p className="text-xs font-bold text-gray-500 bg-orange-50 p-4 rounded-2xl border border-orange-100 flex items-center gap-2">
+                            <Info size={20} className="text-orange-500 shrink-0"/>
+                            Cochez les tâches prévues. L'analyse des risques (ADR) sera fusionnée avec les risques chimiques sélectionnés à l'étape 2.
+                        </p>
+
                         <div className="space-y-6">
                             {Array.from(new Set(RISK_DATABASE.map(r => r.category))).map(category => {
                                 const risquesDansCategorie = RISK_DATABASE.filter(r => r.category === category);
@@ -620,7 +677,7 @@ function MODOPContent() {
                     </div>
                 )}
 
-                {/* --- ETAPE 6 : VALIDATION --- */}
+                {/* --- ETAPE 6 : VALIDATION (Ex Etape 5) --- */}
                 {step === 6 && (
                     <div className="space-y-8 animate-in slide-in-from-right-10">
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">6. Signatures et Validation</h3>
@@ -644,8 +701,10 @@ function MODOPContent() {
                         </div>
                     </div>
                 )}
+
             </div>
 
+            {/* --- FOOTER NAVIGATION --- */}
             <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center rounded-b-[40px]">
                 {step > 1 ? (
                     <button onClick={() => {
