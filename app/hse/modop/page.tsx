@@ -6,8 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   FileText, X, Save, Eye, CheckCircle2, ChevronRight, 
   Plus, Loader2, ArrowLeft, Printer, ShieldAlert, 
-  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin,
-  Check
+  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
@@ -39,7 +38,7 @@ function MODOPContent() {
     redacteur: '',
     validateur_sup: '',
     version: 'A',
-    localisation: '', // C'est ici que l'adresse exacte sera stockée
+    localisation: '', 
     description_travaux: '',
     equipe: [] as any[],
     mesures_prevention: { atex: false, plomb: false, amiante: 'non' },
@@ -49,6 +48,9 @@ function MODOPContent() {
     signature_redacteur: '',
     signature_validateur: ''
   });
+
+  // Gestion des sous-traitants / externes
+  const [extWorker, setExtWorker] = useState({ nom: '', role: 'Sous-traitant', habs: '' });
 
   const sigPadRedacteur = useRef<any>(null);
   const sigPadValidateur = useRef<any>(null);
@@ -75,7 +77,7 @@ function MODOPContent() {
             if (cData.data) setChantierInfo(cData.data);
             if (eData.data) setEmployesDB(eData.data);
             if (aData.data) setArchives(aData.data);
-        } catch (error) { toast.error("Erreur de chargement"); } 
+        } catch (error) { toast.error("Erreur de chargement des données"); } 
         finally { setLoading(false); }
     };
     loadData();
@@ -85,6 +87,19 @@ function MODOPContent() {
       const exists = formData.equipe.find(e => e.id === emp.id);
       if (exists) setFormData({ ...formData, equipe: formData.equipe.filter(e => e.id !== emp.id) });
       else setFormData({ ...formData, equipe: [...formData.equipe, { id: emp.id, nom: emp.nom, prenom: emp.prenom, role: emp.role, habilitations: emp.habilitations || [] }] });
+  };
+
+  const addExtWorker = () => {
+      if (!extWorker.nom) return toast.error("Le nom est obligatoire.");
+      const newEmp = {
+          id: 'ext-' + Date.now(),
+          nom: extWorker.nom,
+          prenom: '',
+          role: extWorker.role,
+          habilitations: extWorker.habs ? extWorker.habs.split(',').map(h => h.trim()) : []
+      };
+      setFormData({ ...formData, equipe: [...formData.equipe, newEmp] });
+      setExtWorker({ nom: '', role: 'Sous-traitant', habs: '' });
   };
 
   const toggleTechnique = (id: string) => {
@@ -214,7 +229,6 @@ function MODOPContent() {
 
               <div className="print-container max-w-4xl mx-auto bg-white p-10 shadow-2xl border border-gray-100">
                   
-                  {/* Cartouche Document avec l'adresse physique visible */}
                   <div className="border-4 border-blue-900 mb-8 flex flex-col">
                       <div className="bg-blue-900 text-white p-4 text-center">
                           <h1 className="text-2xl font-black uppercase tracking-widest">MODE OPÉRATOIRE & SÉCURITÉ</h1>
@@ -232,7 +246,6 @@ function MODOPContent() {
                       </div>
                   </div>
 
-                  {/* 1. Equipe & Habilitations */}
                   <div className="mb-6">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">1. Équipe d'Intervention & Habilitations</h3>
                       {selectedMODOP.equipe?.length > 0 ? (
@@ -251,7 +264,6 @@ function MODOPContent() {
                       ) : <p className="text-xs italic text-gray-500">Aucune équipe spécifiée dans le document.</p>}
                   </div>
 
-                  {/* 2. Nature des travaux et Spécificités */}
                   <div className="mb-6">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">2. Description des travaux et Spécificités Environnementales</h3>
                       <p className="text-sm"><span className="font-bold uppercase text-gray-600 mr-2">Travaux prévus :</span> {selectedMODOP.description_travaux}</p>
@@ -269,7 +281,6 @@ function MODOPContent() {
                       )}
                   </div>
 
-                  {/* 3. Etapes de Mise en Oeuvre */}
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">3. Étapes de la mise en œuvre et points de contrôle</h3>
                       {selectedMODOP.controles?.length > 0 ? (
@@ -288,7 +299,6 @@ function MODOPContent() {
                       ) : <p className="text-xs italic text-gray-500">Aucun suivi des étapes défini.</p>}
                   </div>
 
-                  {/* 4. ADR */}
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">4. Analyse des Risques et Prévention (ADR)</h3>
                       <table className="w-full text-[10px]">
@@ -305,13 +315,11 @@ function MODOPContent() {
                       </table>
                   </div>
 
-                  {/* 5. Urgence */}
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">5. Procédures d'urgence</h3>
                       <p className="text-xs font-bold p-3 border border-red-200 bg-red-50 text-red-800 italic">{selectedMODOP.procedures_urgence}</p>
                   </div>
 
-                  {/* 6. Signatures */}
                   <div className="border border-black flex page-break-inside-avoid">
                       <div className="w-1/2 border-r border-black">
                           <div className="bg-gray-100 border-b border-black p-2 font-black uppercase text-xs">Rédacteur : {selectedMODOP.redacteur}</div>
@@ -365,11 +373,25 @@ function MODOPContent() {
 
                         <div>
                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-4 flex items-center gap-2"><Users size={14}/> Sélection de l'équipe (Vérification des habilitations)</label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            
+                            {/* Liste visuelle des sélectionnés */}
+                            {formData.equipe.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                    <span className="text-xs font-black text-blue-800 w-full mb-1">Équipe affectée :</span>
+                                    {formData.equipe.map(e => (
+                                        <div key={e.id} className="bg-white text-blue-900 border border-blue-200 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
+                                            {e.prenom} {e.nom} ({e.role})
+                                            <button onClick={() => setFormData({...formData, equipe: formData.equipe.filter(x => x.id !== e.id)})} className="text-gray-400 hover:text-red-500 ml-1"><X size={14}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
                                 {employesDB.map(emp => {
                                     const isSelected = formData.equipe.find(e => e.id === emp.id);
                                     return (
-                                        <div key={emp.id} onClick={() => toggleEmploye(emp)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${isSelected ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-gray-100'}`}>
+                                        <div key={emp.id} onClick={() => toggleEmploye(emp)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${isSelected ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-gray-100 hover:border-blue-200'}`}>
                                             <div className="flex justify-between items-center">
                                                 <span className="font-bold text-sm uppercase text-gray-800">{emp.prenom} {emp.nom} <span className="text-gray-400 text-xs normal-case">({emp.role})</span></span>
                                                 {isSelected && <CheckCircle2 size={18} className="text-blue-500"/>}
@@ -381,6 +403,17 @@ function MODOPContent() {
                                         </div>
                                     )
                                 })}
+                            </div>
+
+                            {/* Formulaire d'ajout externe / sous-traitant */}
+                            <div className="bg-gray-100 p-4 rounded-2xl border border-gray-200">
+                                <h4 className="text-xs font-black uppercase text-gray-600 mb-3 flex items-center gap-2"><HardHat size={16}/> Ajouter un Sous-Traitant / Intérimaire</h4>
+                                <div className="flex flex-col md:flex-row gap-3">
+                                    <input type="text" placeholder="Nom complet..." className="flex-1 p-3 rounded-xl text-xs font-bold border-none outline-none" value={extWorker.nom} onChange={e => setExtWorker({...extWorker, nom: e.target.value})} />
+                                    <input type="text" placeholder="Rôle (ex: Échafaudeur)" className="w-32 p-3 rounded-xl text-xs font-bold border-none outline-none" value={extWorker.role} onChange={e => setExtWorker({...extWorker, role: e.target.value})} />
+                                    <input type="text" placeholder="Habilitations (ex: N1, SS4)..." className="flex-1 p-3 rounded-xl text-xs font-bold border-none outline-none" value={extWorker.habs} onChange={e => setExtWorker({...extWorker, habs: e.target.value})} />
+                                    <button onClick={addExtWorker} className="bg-blue-600 text-white px-4 py-3 rounded-xl text-xs font-black uppercase hover:bg-blue-700 transition-colors"><Plus size={16}/></button>
+                                </div>
                             </div>
                         </div>
                     </div>
