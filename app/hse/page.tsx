@@ -52,7 +52,7 @@ export default function HSEDashboardPage() {
   useEffect(() => { fetchData(); }, []);
 
   // CORRECTION ICI : On a ajouté 'vmt' aux options permises par TypeScript
-  const navigateToTool = (tool: 'prejob' | 'accueil' | 'vmt') => {
+  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit') => {
     if (!activeChantierId) return toast.error("Sélectionnez un chantier d'abord");
     router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
@@ -94,7 +94,7 @@ export default function HSEDashboardPage() {
           <button onClick={() => navigateToTool('accueil')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-green-500 group">
             <UserPlus size={22} className="text-green-500 group-hover:text-white" /> Réaliser Accueil
           </button>
-          <button onClick={() => navigateToTool('vmt')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-500 group">
+          <button onClick={() => navigateToTool('audit')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-500 group">
             <Camera size={22} className="text-blue-500 group-hover:text-white" /> Visite VMT / Q3SRE
           </button>
           
