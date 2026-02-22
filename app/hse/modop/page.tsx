@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { 
   FileText, X, Save, Eye, CheckCircle2, ChevronRight, 
   Plus, Loader2, ArrowLeft, Printer, ShieldAlert, 
-  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat
+  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin, HardHat,
+  Check
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
