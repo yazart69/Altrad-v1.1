@@ -44,6 +44,7 @@ function PreJobContent() {
     animateur_mode: 'list', 
     animateur_selectionne: '',
     animateur_manuel: '',
+    signature_animateur: '', // SAUVEGARDE EN MÉMOIRE
     taches_principales: [] as string[],
     risques_selectionnes: [] as string[],
     epi_specifiques: [] as string[],
@@ -52,6 +53,15 @@ function PreJobContent() {
   });
   
   const sigPad = useRef<any>(null);
+
+  // Recharge la signature de l'animateur si on revient à l'étape 3
+  useEffect(() => {
+      if (step === 3 && formData.signature_animateur && sigPad.current) {
+          setTimeout(() => {
+              sigPad.current?.fromDataURL(formData.signature_animateur);
+          }, 50);
+      }
+  }, [step]);
 
   // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
@@ -109,6 +119,7 @@ function PreJobContent() {
         animateur_mode: isAnimateurInList ? 'list' : 'manual',
         animateur_selectionne: isAnimateurInList ? a.animateur : '',
         animateur_manuel: !isAnimateurInList ? a.animateur : '',
+        signature_animateur: a.signatures?.animateur || '',
         taches_principales: a.tache_principale ? a.tache_principale.split(', ') : [],
         risques_selectionnes: a.risques_id || [],
         epi_specifiques: (a.epi_ids || []).filter((e: string) => !EPI_DATABASE.base.includes(e)),
@@ -118,13 +129,6 @@ function PreJobContent() {
     
     setView('create');
     setStep(1);
-    
-    // Astuce pour recharger la signature de l'animateur si elle existe
-    setTimeout(() => {
-        if (sigPad.current && a.signatures?.animateur) {
-            sigPad.current.fromDataURL(a.signatures.animateur);
-        }
-    }, 500);
   };
 
   const handleDelete = async (id: string) => {
@@ -142,11 +146,10 @@ function PreJobContent() {
   const handleSave = async () => {
     const finalAnimateur = formData.animateur_mode === 'list' ? formData.animateur_selectionne : formData.animateur_manuel;
     
-    if (!finalAnimateur) return toast.error("Veuillez renseigner l'animateur.");
-    if (sigPad.current?.isEmpty()) return toast.error("La signature de l'animateur est obligatoire.");
+    // On utilise la signature sauvegardée en mémoire !
+    if (!formData.signature_animateur) return toast.error("La signature de l'animateur est manquante.");
     
     const toastId = toast.loading("Enregistrement du Pre-Job...");
-    const signatureData = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
 
     const payload = {
         chantier_id: chantierId,
@@ -157,8 +160,8 @@ function PreJobContent() {
         epi_ids: [...EPI_DATABASE.base, ...formData.epi_specifiques],
         mesures_specifiques: formData.mesures_specifiques,
         signatures: { 
-            animateur: signatureData,
-            equipe: formData.participants // On stocke l'équipe et leurs signatures ici
+            animateur: formData.signature_animateur, // Utilisation de la mémoire state
+            equipe: formData.participants
         }
     };
 
@@ -181,7 +184,7 @@ function PreJobContent() {
         setView('list'); 
         setStep(1); 
         setEditingId(null);
-        setFormData({ ...formData, animateur_mode: 'list', animateur_manuel: '', taches_principales: [], risques_selectionnes: [], epi_specifiques: [], mesures_specifiques: '', participants: [] });
+        setFormData({ ...formData, animateur_mode: 'list', animateur_manuel: '', signature_animateur: '', taches_principales: [], risques_selectionnes: [], epi_specifiques: [], mesures_specifiques: '', participants: [] });
     }
   };
 
@@ -269,7 +272,7 @@ function PreJobContent() {
       return (
           <div className="min-h-screen bg-gray-100 font-sans text-gray-900 p-4 md:p-8">
               
-              {/* LE HACK D'IMPRESSION ABSOLU : Masque tout le site, affiche uniquement le conteneur */}
+              {/* LE HACK D'IMPRESSION ABSOLU */}
               <style dangerouslySetInnerHTML={{__html: `
                 @media print {
                   @page { size: A4 portrait; margin: 10mm; }
@@ -283,7 +286,6 @@ function PreJobContent() {
                 }
               `}}/>
 
-              {/* BOUTONS D'ACTION (Cachés à l'impression) */}
               <div className="max-w-4xl mx-auto mb-6 flex flex-col md:flex-row justify-between gap-4 no-print">
                   <button onClick={() => setView('list')} className="flex items-center gap-2 text-gray-500 font-bold hover:text-black bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-200">
                       <ArrowLeft size={18}/> Retour aux archives
@@ -298,7 +300,6 @@ function PreJobContent() {
                   </div>
               </div>
 
-              {/* CONTENEUR DU DOCUMENT (La seule chose visible en print) */}
               <div className="print-container max-w-4xl mx-auto bg-white rounded-xl shadow-2xl p-10">
                   
                   {/* --- LAYOUT : PRE-JOB BRIEFING --- */}
@@ -404,7 +405,7 @@ function PreJobContent() {
   }
 
   // ==========================================================================
-  // VUE 3 : CRÉATION WIZARD (4 ÉTAPPES)
+  // VUE 3 : CRÉATION WIZARD (4 ÉTAPES)
   // ==========================================================================
   return (
     <div className="min-h-screen bg-[#2d3436] p-4 md:p-8 font-['Fredoka'] flex items-center justify-center text-gray-800">
@@ -580,8 +581,13 @@ function PreJobContent() {
                         if (step === 1 && (!finalAnimateur || formData.taches_principales.length === 0)) {
                             return toast.error("Animateur et Tâches requis.");
                         }
-                        if (step === 3 && sigPad.current?.isEmpty()) {
-                            return toast.error("La signature de l'animateur est requise avant de passer à l'équipe.");
+                        if (step === 3) {
+                            if (sigPad.current?.isEmpty() && !formData.signature_animateur) {
+                                return toast.error("La signature de l'animateur est requise avant de passer à l'équipe.");
+                            } else if (sigPad.current && !sigPad.current.isEmpty()) {
+                                // SAUVEGARDE EN MÉMOIRE AVANT DE DEMONTER L'ÉTAPE 3
+                                setFormData({...formData, signature_animateur: sigPad.current.getTrimmedCanvas().toDataURL('image/png')});
+                            }
                         }
                         setStep(step+1);
                     }} className="bg-[#2d3436] text-white px-8 py-4 rounded-2xl font-black uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-black transition-all">
@@ -599,14 +605,16 @@ function PreJobContent() {
 }
 
 // ============================================================================
-// SOUS-COMPOSANT : SIGNATURE INDIVIDUELLE
+// SOUS-COMPOSANT : SIGNATURE INDIVIDUELLE (Avec bouton valider)
 // ============================================================================
 function ParticipantSignatureBox({ participant, onUpdate }: { participant: any, onUpdate: (sig: string | null) => void }) {
     const padRef = useRef<any>(null);
 
     const saveSig = () => {
-        if (!padRef.current?.isEmpty()) {
+        if (padRef.current && !padRef.current.isEmpty()) {
             onUpdate(padRef.current.getTrimmedCanvas().toDataURL('image/png'));
+        } else {
+            toast.error("Veuillez signer avant de valider.");
         }
     };
 
@@ -623,9 +631,15 @@ function ParticipantSignatureBox({ participant, onUpdate }: { participant: any, 
                     <button onClick={() => onUpdate(null)} className="absolute top-2 right-2 text-[10px] bg-white border border-gray-200 px-2 py-1 rounded hover:bg-red-50 hover:text-red-500 font-bold transition-colors">Refaire</button>
                 </div>
             ) : (
-                <div className="h-24 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 relative overflow-hidden">
-                    <SignatureCanvas ref={padRef} onEnd={saveSig} penColor="blue" canvasProps={{className: 'absolute inset-0 w-full h-full cursor-crosshair'}} />
-                    <div className="absolute bottom-2 w-full text-center text-[10px] font-bold text-gray-300 pointer-events-none">Signer ici</div>
+                <div className="flex flex-col gap-2">
+                    <div className="h-24 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 relative overflow-hidden">
+                        <SignatureCanvas ref={padRef} penColor="blue" canvasProps={{className: 'absolute inset-0 w-full h-full cursor-crosshair'}} />
+                        <div className="absolute bottom-2 w-full text-center text-[10px] font-bold text-gray-300 pointer-events-none">Signer ici</div>
+                        <button onClick={() => padRef.current?.clear()} className="absolute top-2 right-2 text-[10px] bg-white border border-gray-200 px-2 py-1 rounded hover:bg-gray-100 transition-colors z-10">Effacer</button>
+                    </div>
+                    <button onClick={saveSig} className="w-full bg-emerald-500 text-white font-bold text-xs py-2 rounded-xl hover:bg-emerald-600 transition-colors">
+                        Valider la signature
+                    </button>
                 </div>
             )}
         </div>
