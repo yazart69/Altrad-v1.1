@@ -103,7 +103,8 @@ function usePointageData() {
 
     if (plan) {
         const enrichedPlan = plan.map((task: any) => {
-            if (task.heures > 0) return task; 
+            // S'il y a déjà des heures ou si c'est verrouillé, on n'y touche pas
+            if (task.heures > 0 || task.valide) return task; 
             if (['maladie', 'conge', 'formation', 'absence', 'intemperie'].includes(task.type)) return task;
 
             // Pré-remplissage UI (Grisé tant que non validé par l'utilisateur)
@@ -120,30 +121,27 @@ function usePointageData() {
 
   useEffect(() => { fetchData(); }, [currentDate]);
 
-  // LA SYNCHRONISATION CRUCIALE : Met à jour la table chantiers
+  // LA SYNCHRONISATION ROBUSTE : Met à jour la table chantiers de manière sécurisée
   const syncChantierHours = async (chantierId: string) => {
       if (!chantierId) return;
-      // 1. Récupérer TOUTES les heures de ce chantier validées ou saisies
-      const { data, error } = await supabase
-          .from('planning')
-          .select('heures')
-          .eq('chantier_id', chantierId);
-
-      if (!error && data) {
+      try {
+          const { data, error } = await supabase.from('planning').select('heures').eq('chantier_id', chantierId);
+          if (error) throw error;
+          
           const totalHeures = data.reduce((sum: number, item: any) => sum + (Number(item.heures) || 0), 0);
           
-          // 2. Mettre à jour les heures consommées du chantier
-          await supabase
-              .from('chantiers')
-              .update({ heures_consommees: totalHeures })
-              .eq('id', chantierId);
+          const { error: updateError } = await supabase.from('chantiers').update({ heures_consommees: totalHeures }).eq('id', chantierId);
+          if (updateError) throw updateError;
+      } catch (err: any) {
+          console.error(`Erreur sync chantier ${chantierId}:`, err);
+          toast.error("Erreur de synchronisation chantier : " + err.message);
       }
   };
 
   const actions = {
     updateHours: async (id: string, value: string | number, chantierId: string | null) => {
         if (isWeekLocked) return;
-        const numValue = parseFloat(value as string) || 0;
+        const numValue = value === '' ? 0 : parseFloat(value as string) || 0;
         
         // Optimistic UI Update
         setAssignments((prev: IAssignment[]) => prev.map((a: IAssignment) => a.id === id ? { ...a, heures: numValue, isAuto: false } : a));
@@ -153,32 +151,39 @@ function usePointageData() {
         
         if (error) {
             toast.error("Erreur d'enregistrement");
-            fetchData(); // Rollback
+            fetchData(); // Rollback en cas d'erreur
         } else if (chantierId) {
-            // Synchro avec le chantier
+            // Synchro individuelle
             await syncChantierHours(chantierId);
         }
     },
     toggleLockWeek: async () => {
         const newState = !isWeekLocked;
         const ids = assignments.map((a: IAssignment) => a.id);
-        const toastId = toast.loading(newState ? "Verrouillage..." : "Déverrouillage...");
         
-        if (ids.length > 0) {
-            // Si on verrouille, on s'assure que les heures "Auto" deviennent de vraies heures en BDD
+        if (ids.length === 0) return;
+        const toastId = toast.loading(newState ? "Verrouillage et calculs en cours..." : "Déverrouillage...");
+        
+        try {
             if (newState) {
+                // 1. On fige les heures automatiques en vraies heures dans la BDD
                 const autoTasks = assignments.filter(a => a.isAuto);
-                for (const t of autoTasks) {
-                    await supabase.from('planning').update({ heures: t.heures }).eq('id', t.id);
-                    if (t.chantier_id) await syncChantierHours(t.chantier_id);
-                }
+                const updatePromises = autoTasks.map(t => supabase.from('planning').update({ heures: t.heures }).eq('id', t.id));
+                await Promise.all(updatePromises);
             }
             
+            // 2. On verrouille/déverrouille la semaine
             const { error } = await supabase.from('planning').update({ valide: newState }).in('id', ids);
-            if (error) toast.error("Erreur : " + error.message, { id: toastId });
-            else { toast.success(newState ? "Semaine validée et verrouillée" : "Semaine déverrouillée", { id: toastId }); fetchData(); }
-        } else {
-            toast.dismiss(toastId);
+            if (error) throw error;
+
+            // 3. SYNCHRO GLOBALE SÉCURISÉE (Batching) : On met à jour les chantiers 1 par 1 pour éviter l'erreur 400
+            const uniqueChantierIds = Array.from(new Set(assignments.map(a => a.chantier_id).filter(Boolean)));
+            await Promise.all(uniqueChantierIds.map(cid => syncChantierHours(cid as string)));
+
+            toast.success(newState ? "Semaine validée et chantiers mis à jour !" : "Semaine déverrouillée", { id: toastId });
+            fetchData();
+        } catch (err: any) {
+            toast.error("Erreur critique : " + err.message, { id: toastId });
         }
     },
     copyPreviousWeek: async () => {
@@ -190,11 +195,7 @@ function usePointageData() {
         const prevStart = new Date(currentDate); prevStart.setDate(prevStart.getDate() - 7);
         const prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + 6);
         
-        const { data: prevData } = await supabase.from('planning')
-            .select('*')
-            .gte('date_debut', toLocalISOString(prevStart))
-            .lte('date_debut', toLocalISOString(prevEnd));
-
+        const { data: prevData } = await supabase.from('planning').select('*').gte('date_debut', toLocalISOString(prevStart)).lte('date_debut', toLocalISOString(prevEnd));
         if (!prevData?.length) { toast.error("Aucune donnée trouvée en S-1", { id: toastId }); return; }
 
         const newEntries = prevData.map((item: any) => {
@@ -220,10 +221,8 @@ function usePointageData() {
         
         if (error) toast.error("Erreur: " + error.message, { id: toastId });
         else {
-            // Remettre à jour les totaux des chantiers impactés
-            const chantierIds = [...new Set(assignments.map(a => a.chantier_id).filter(id => id))];
-            for (const cid of chantierIds) await syncChantierHours(cid as string);
-            
+            const uniqueChantierIds = Array.from(new Set(assignments.map(a => a.chantier_id).filter(Boolean)));
+            await Promise.all(uniqueChantierIds.map(cid => syncChantierHours(cid as string)));
             toast.success("Heures effacées", { id: toastId }); 
             fetchData();
         }
@@ -235,9 +234,9 @@ function usePointageData() {
       const visibleDates = weekDays.map(d => toLocalISOString(d));
 
       assignments.forEach((a: IAssignment) => {
-          if (['maladie', 'conge', 'formation', 'intemperie'].includes(a.type)) return;
+          if (['maladie', 'conge', 'formation', 'intemperie', 'absence'].includes(a.type)) return;
           if (!visibleDates.includes(a.date_debut)) return;
-          stats[a.employe_id] = (stats[a.employe_id] || 0) + (parseFloat(a.heures as unknown as string) || 0);
+          stats[a.employe_id] = (stats[a.employe_id] || 0) + (Number(a.heures) || 0);
       });
       return stats;
   }, [assignments, weekDays]);
@@ -246,8 +245,8 @@ function usePointageData() {
       const data: any = {};
       assignments.forEach((a: IAssignment) => {
           if (!a.chantiers?.nom || !a.heures) return;
-          if (['maladie', 'conge', 'formation', 'intemperie'].includes(a.type)) return;
-          data[a.chantiers.nom] = (data[a.chantiers.nom] || 0) + parseFloat(a.heures as unknown as string);
+          if (['maladie', 'conge', 'formation', 'intemperie', 'absence'].includes(a.type)) return;
+          data[a.chantiers.nom] = (data[a.chantiers.nom] || 0) + (Number(a.heures) || 0);
       });
       return Object.keys(data).map(key => ({ name: key, heures: data[key] }));
   }, [assignments]);
@@ -261,7 +260,7 @@ function usePointageData() {
 function HourInput({ task, isWeekLocked, dayNum, onSave }: { task: IAssignment, isWeekLocked: boolean, dayNum: number, onSave: (id: string, val: string, chantierId: string | null) => void }) {
     const [localVal, setLocalVal] = useState(task.heures.toString());
 
-    // Synchronise la valeur locale si la data change (ex: reset)
+    // Resynchronise si la BDD change depuis le parent (ex: Bouton RAZ)
     useEffect(() => { setLocalVal(task.heures.toString()); }, [task.heures]);
 
     const handleBlur = () => {
