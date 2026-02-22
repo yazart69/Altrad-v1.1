@@ -7,7 +7,8 @@ import {
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, ShieldCheck, AlertTriangle, 
   CheckCircle2, HardHat, FileCheck, X, ChevronRight, ClipboardCheck, Factory, 
   Truck, QrCode, ExternalLink, UserPlus, Paperclip, Loader2, Printer, AlertOctagon, 
-  Siren, Activity, ArrowRight, Plus, Eye, ArrowLeft, Users
+  Siren, Activity, ArrowRight, Plus, Eye, ArrowLeft, Users,
+  Trophy
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -52,7 +53,7 @@ export default function HSEDashboardPage() {
   useEffect(() => { fetchData(); }, []);
 
   // CORRECTION ICI : On a ajouté 'vmt' aux options permises par TypeScript
-  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit' | 'causerie') => {
+  const navigateToTool = (tool: 'prejob' | 'accueil' | 'audit' | 'causerie' | 'rex') => {
     if (!activeChantierId) return toast.error("Sélectionnez un chantier d'abord");
     router.push(`/hse/${tool}?cid=${activeChantierId}`);
   };
@@ -103,6 +104,9 @@ export default function HSEDashboardPage() {
           <NavButton id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} />
           <button onClick={() => navigateToTool('causerie')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-orange-500 group">
     <Megaphone size={22} className="text-orange-500 group-hover:text-white" /> Minute Sécurité
+</button>
+          <button onClick={() => navigateToTool('rex')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-purple-500 group">
+    <Trophy size={22} className="text-purple-500 group-hover:text-white" /> REX
 </button>
         </nav>
       </aside>
