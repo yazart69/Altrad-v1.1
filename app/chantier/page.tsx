@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   Search, MapPin, Plus, ArrowRight, Building2, HardHat, 
-  CalendarClock, CheckCircle2, Loader2, Trash2, TrendingUp, Clock, Euro
+  CalendarClock, CheckCircle2, Loader2, Trash2, Clock
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
-// --- INTERFACES ---
+// --- INTERFACES CORRIGÉE ---
 interface IChantier {
   id: string;
   nom: string;
@@ -18,6 +18,7 @@ interface IChantier {
   adresse: string;
   statut: string;
   type: string;
+  numero_otp: string; // Ajouté ici
   heures_budget: number;
   heures_consommees: number;
   montant_marche: number;
@@ -53,7 +54,7 @@ export default function ChantiersList() {
     if (error) {
       toast.error("Erreur de chargement des chantiers");
     } else if (data) {
-      setChantiers(data);
+      setChantiers(data as IChantier[]);
     }
     setLoading(false);
   }
@@ -111,7 +112,6 @@ export default function ChantiersList() {
       const matchesStatus = statusFilter === 'tous' || c.statut === statusFilter;
       return matchesSearch && matchesStatus;
     }).sort((a, b) => {
-        // Priorité aux chantiers "en cours"
         if (a.statut === 'en_cours' && b.statut !== 'en_cours') return -1;
         if (a.statut !== 'en_cours' && b.statut === 'en_cours') return 1;
         return 0;
@@ -204,24 +204,22 @@ export default function ChantiersList() {
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filtered.map((chantier) => {
-                    // CALCULS RAPIDES POUR KPI
                     const percentHours = chantier.heures_budget > 0 
                         ? Math.min(100, Math.round((chantier.heures_consommees / chantier.heures_budget) * 100)) 
                         : 0;
                     
                     const isAlert = percentHours >= 90;
 
-                    let statusCfg = { bg: 'bg-gray-500', tx: 'Inconnu', ic: Building2, light: 'bg-gray-50' };
-                    if (chantier.statut === 'en_cours') statusCfg = { bg: 'bg-[#00b894]', tx: 'En Cours', ic: HardHat, light: 'bg-emerald-50' };
-                    if (chantier.statut === 'planifie') statusCfg = { bg: 'bg-[#0984e3]', tx: 'Planifié', ic: CalendarClock, light: 'bg-blue-50' };
-                    if (chantier.statut === 'termine') statusCfg = { bg: 'bg-gray-400', tx: 'Terminé', ic: CheckCircle2, light: 'bg-gray-50' };
+                    let statusCfg = { bg: 'bg-gray-500', tx: 'Inconnu', ic: Building2 };
+                    if (chantier.statut === 'en_cours') statusCfg = { bg: 'bg-[#00b894]', tx: 'En Cours', ic: HardHat };
+                    if (chantier.statut === 'planifie') statusCfg = { bg: 'bg-[#0984e3]', tx: 'Planifié', ic: CalendarClock };
+                    if (chantier.statut === 'termine') statusCfg = { bg: 'bg-gray-400', tx: 'Terminé', ic: CheckCircle2 };
 
                     return (
                         <Link href={`/chantier/${chantier.id}`} key={chantier.id} className="group">
                             <div className="bg-white rounded-[35px] p-6 shadow-sm border border-gray-100 hover:shadow-2xl hover:shadow-emerald-100/50 hover:-translate-y-1.5 transition-all duration-300 h-full flex flex-col relative overflow-hidden">
                                 
-                                {/* HEADER CARTE */}
-                                <div className="flex justify-between items-start mb-6">
+                                <div className="flex justify-between items-start mb-6 relative z-10">
                                     <div className={`${statusCfg.bg} p-3.5 rounded-2xl text-white shadow-lg`}>
                                         <statusCfg.ic size={22} />
                                     </div>
@@ -238,8 +236,7 @@ export default function ChantiersList() {
                                     </div>
                                 </div>
                                 
-                                {/* INFOS PRINCIPALES */}
-                                <div className="flex-1">
+                                <div className="flex-1 relative z-10">
                                     <h3 className="text-xl font-black uppercase text-[#2d3436] leading-tight mb-1 group-hover:text-[#00b894] transition-colors line-clamp-2">
                                         {chantier.nom}
                                     </h3>
@@ -254,12 +251,11 @@ export default function ChantiersList() {
                                         </div>
                                     </div>
 
-                                    {/* JAUGE DE BUDGET HEURES */}
                                     <div className="bg-gray-50 p-4 rounded-[25px] border border-gray-100">
                                         <div className="flex justify-between items-end mb-2">
                                             <div className="flex items-center gap-1.5 text-gray-400">
                                                 <Clock size={12} />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Avancement Heures</span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Heures</span>
                                             </div>
                                             <span className={`text-xs font-black ${isAlert ? 'text-red-500' : 'text-gray-700'}`}>
                                                 {chantier.heures_consommees}h / {chantier.heures_budget}h
@@ -274,7 +270,6 @@ export default function ChantiersList() {
                                     </div>
                                 </div>
 
-                                {/* FOOTER CARTE */}
                                 <div className="mt-6 pt-4 border-t border-gray-50 flex justify-between items-center relative z-10">
                                     <div className="flex items-center gap-4">
                                         <div className="flex flex-col">
@@ -292,7 +287,6 @@ export default function ChantiersList() {
                                     </div>
                                 </div>
 
-                                {/* DÉCORATION DE FOND (ICÔNE GÉANTE) */}
                                 <statusCfg.ic size={140} className="absolute -right-8 -bottom-8 text-gray-50/50 -rotate-12 group-hover:rotate-0 group-hover:scale-110 transition-all duration-700 pointer-events-none" />
                             </div>
                         </Link>
