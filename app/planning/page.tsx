@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, 
   X, Loader2, Eraser, CalendarDays, Save, Check,
-  Crown, UserCog, UserCheck, UserX, Users
+  Crown, UserCog, UserCheck, UserX, Users, Lock, AlertCircle, CheckCircle2, CloudRain
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -26,6 +26,9 @@ interface IChantier {
   nom: string;
   adresse: string;
   statut: string;
+  numero_otp?: string;
+  horaires?: string;
+  taches_hebdo?: string;
 }
 
 interface IAssignment {
@@ -37,8 +40,8 @@ interface IAssignment {
   type: string;
   heures: number;
   odm_envoye: boolean;
-  users?: IEmploye; // Relation Supabase
-  chantiers?: { nom: string }; // Relation Supabase
+  users?: IEmploye;
+  chantiers?: { nom: string };
 }
 
 interface IModalConfig {
@@ -110,7 +113,7 @@ function usePlanningData() {
     try {
         const [empRes, chanRes, planRes] = await Promise.all([
             supabase.from('employes').select('*').order('nom'),
-            supabase.from('chantiers').select('id, nom, adresse, statut').neq('statut', 'termine').order('nom'),
+            supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires, taches_hebdo').neq('statut', 'termine').order('nom'),
             supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)')
         ]);
 
@@ -129,6 +132,18 @@ function usePlanningData() {
   };
 
   useEffect(() => { fetchData(); }, [currentDate]);
+
+  // TRI INTELLIGENT : Les chantiers avec des affectations cette semaine remontent en haut
+  const sortedChantiers = useMemo(() => {
+    return [...chantiers].sort((a, b) => {
+        const aHasAssign = assignments.some(ass => ass.chantier_id === a.id && weekDays.some(day => toLocalISOString(day) === ass.date_debut));
+        const bHasAssign = assignments.some(ass => ass.chantier_id === b.id && weekDays.some(day => toLocalISOString(day) === ass.date_debut));
+        
+        if (aHasAssign && !bHasAssign) return -1;
+        if (!aHasAssign && bHasAssign) return 1;
+        return a.nom.localeCompare(b.nom);
+    });
+  }, [chantiers, assignments, weekDays]);
 
   const actions = {
     deleteAssignment: async (id: string) => {
@@ -156,7 +171,7 @@ function usePlanningData() {
     }
   };
 
-  return { currentDate, setCurrentDate, weekDays, employes, chantiers, assignments, loading, actions };
+  return { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, loading, actions };
 }
 
 // ============================================================================
@@ -164,9 +179,29 @@ function usePlanningData() {
 // ============================================================================
 
 export default function PlanningPage() {
-  const { currentDate, setCurrentDate, weekDays, employes, chantiers, assignments, loading, actions } = usePlanningData();
+  const { currentDate, setCurrentDate, weekDays, employes, sortedChantiers, assignments, loading, actions } = usePlanningData();
   const [modePointage, setModePointage] = useState(false); 
   const [modalConfig, setModalConfig] = useState<IModalConfig>({ isOpen: false, chantierId: null, date: null, typeContext: 'chantier' });
+
+  // CALCUL DE DISPONIBILITÉ GOLBALE
+  const { totalAssigned, totalRequired, missingEmployes } = useMemo(() => {
+    const totalReq = employes.length * 5; // 5 jours par semaine
+    let totalAss = 0;
+    const missing = new Set<string>();
+
+    employes.forEach(emp => {
+        let empAssignedDays = 0;
+        weekDays.forEach(day => {
+            if (assignments.some(a => a.employe_id === emp.id && a.date_debut === toLocalISOString(day))) {
+                totalAss++;
+                empAssignedDays++;
+            }
+        });
+        if (empAssignedDays === 0) missing.add(emp.id); // N'a aucune affectation
+    });
+
+    return { totalAssigned: totalAss, totalRequired: totalReq, missingEmployes: missing.size };
+  }, [employes, assignments, weekDays]);
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00b894]" size={40} /></div>;
 
@@ -190,9 +225,26 @@ export default function PlanningPage() {
           <h1 className="text-3xl font-black uppercase text-[#2d3436] tracking-tight">
               <span>Planning <span className="text-[#00b894]">Chantiers</span></span>
           </h1>
-          <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">
-              Vue Équipes & Affectations
-          </p>
+          
+          {/* INDICATEUR DE DISPONIBILITÉ */}
+          <div className="mt-2 flex items-center gap-3">
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-1 flex items-center gap-2 shadow-sm">
+                  <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, (totalAssigned/totalRequired)*100)}%` }}></div>
+                  </div>
+                  <span className="text-[10px] font-black text-gray-500">{totalAssigned} / {totalRequired} Jours planifiés</span>
+              </div>
+              
+              {missingEmployes === 0 && totalAssigned > 0 ? (
+                  <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1">
+                      <CheckCircle2 size={12}/> Équipe 100% assignée
+                  </span>
+              ) : (
+                  <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-1 rounded text-[10px] font-black uppercase flex items-center gap-1">
+                      <AlertCircle size={12}/> {missingEmployes} gars dispo
+                  </span>
+              )}
+          </div>
         </div>
         
         <div className="flex flex-wrap gap-3 items-center">
@@ -226,15 +278,15 @@ export default function PlanningPage() {
 
       {/* TABLEAU */}
       <PlanningTable 
-        chantiers={chantiers} 
+        chantiers={sortedChantiers} 
         weekDays={weekDays} 
         assignments={assignments} 
         modePointage={modePointage}
         onDelete={actions.deleteAssignment}
-        onOpenModal={(chantierId, date, typeContext) => setModalConfig({ isOpen: true, chantierId, date, typeContext })}
+        onOpenModal={(chantierId: string | null, date: Date, typeContext: 'chantier' | 'hors_chantier') => setModalConfig({ isOpen: true, chantierId, date, typeContext })}
       />
 
-      {/* MODALE D'AFFECTATION (Isolée pour éviter les re-renders du tableau) */}
+      {/* MODALE D'AFFECTATION */}
       {modalConfig.isOpen && modalConfig.date && (
         <AssignmentModal 
             config={modalConfig}
@@ -252,13 +304,13 @@ export default function PlanningPage() {
 // SOUS-COMPOSANT : GRILLE DU PLANNING
 // ============================================================================
 
-function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelete, onOpenModal }: any) {
+function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelete, onOpenModal }: { chantiers: IChantier[], weekDays: Date[], assignments: IAssignment[], modePointage: boolean, onDelete: (id: string) => void, onOpenModal: (chantierId: string | null, date: Date, typeContext: 'chantier' | 'hors_chantier') => void }) {
   return (
     <div className="bg-white rounded-[20px] shadow-sm overflow-hidden border border-gray-200 overflow-x-auto print:border-none print:shadow-none print:overflow-visible print:rounded-none">
-        <table className="w-full min-w-[900px] border-collapse text-left print:min-w-0 print:w-full print:table-fixed">
+        <table className="w-full min-w-[1000px] border-collapse text-left print:min-w-0 print:w-full print:table-fixed">
           <thead>
             <tr className="bg-gray-100 border-b border-gray-200 print:bg-white print:border-black print:border-b-2">
-              <th className="p-4 w-[250px] sticky left-0 bg-gray-100 z-20 font-black uppercase text-xs text-gray-500 border-r border-gray-200 print:static print:bg-white print:text-black print:border print:border-black print:w-[200px]">
+              <th className="p-4 w-[280px] sticky left-0 bg-gray-100 z-20 font-black uppercase text-xs text-gray-500 border-r border-gray-200 print:static print:bg-white print:text-black print:border print:border-black print:w-[220px]">
                 Chantiers / Projets
               </th>
               {weekDays.map((day: Date, i: number) => (
@@ -277,14 +329,31 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
 
               return (
               <tr key={chantier.id} className={`group hover:bg-gray-50 transition-colors print:break-inside-avoid ${hasAssignments ? '' : 'print:hidden'}`}>
-                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2">
+                <td className="p-4 sticky left-0 bg-white z-10 border-r border-gray-200 group-hover:bg-gray-50 transition-colors print:static print:bg-white print:border print:border-black print:p-2 align-top">
+                  
+                  {/* NOUVEAU DESIGN COLONNE GAUCHE (OTP, Horaires, Tâches) */}
                   <div className="flex items-start gap-3">
-                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1"><HardHat size={18} /></div>
-                      <div>
-                          <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs">{chantier.nom}</p>
-                          <p className="text-[10px] text-gray-400 uppercase mt-0.5 max-w-[150px] truncate print:text-gray-600 print:whitespace-normal" title={chantier.adresse}>{chantier.adresse || 'Localisation non définie'}</p>
+                      <div className="bg-[#00b894] p-2 rounded-lg text-white mt-1 shrink-0"><HardHat size={18} /></div>
+                      <div className="flex-1 min-w-0">
+                          <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs truncate" title={chantier.nom}>{chantier.nom}</p>
+                          
+                          {/* OTP & Horaires */}
+                          <div className="flex flex-col gap-0.5 mt-1">
+                              {chantier.numero_otp && <p className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit uppercase">OTP: {chantier.numero_otp}</p>}
+                              <p className="text-[10px] text-gray-500 uppercase truncate" title={chantier.adresse}>{chantier.adresse || 'Localisation non définie'}</p>
+                              {chantier.horaires && <p className="text-[9px] text-gray-400 font-bold mt-0.5">🕒 {chantier.horaires}</p>}
+                          </div>
+
+                          {/* Zone "Tâches à réaliser" intégrée à gauche */}
+                          <div className="mt-3 bg-gray-50 border border-gray-100 p-2 rounded-lg print:border-dashed print:bg-transparent">
+                              <p className="text-[8px] font-black uppercase text-gray-400 mb-1 border-b border-gray-200 pb-0.5">Tâches de la semaine</p>
+                              <p className="text-[10px] text-gray-600 leading-snug whitespace-pre-wrap line-clamp-3 hover:line-clamp-none transition-all print:line-clamp-none">
+                                  {chantier.taches_hebdo || 'Aucune tâche spécifiée...'}
+                              </p>
+                          </div>
                       </div>
                   </div>
+
                 </td>
                 
                 {weekDays.map((day: Date, i: number) => {
@@ -292,7 +361,7 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
                   const dailyMissions = assignments.filter((a: IAssignment) => a.chantier_id === chantier.id && a.date_debut === dateStr);
                   
                   return (
-                    <td key={i} className="p-2 border-l border-gray-100 align-top h-28 relative print:border print:border-black print:h-auto print:p-1">
+                    <td key={i} className="p-2 border-l border-gray-100 align-top h-32 relative print:border print:border-black print:h-auto print:p-1">
                       <div className="flex flex-col gap-1.5 h-full">
                           {dailyMissions.map((mission: IAssignment) => {
                               const roleConfig = getRoleConfig(mission.users?.role);
@@ -312,9 +381,9 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
                                       </div>
                                   </div>
                                   {!modePointage && (
-                                      <div className="hidden group-hover/card:flex gap-1 print:hidden">
-                                          <button onClick={(e) => {e.stopPropagation(); onDelete(mission.id)}} className="p-1 rounded bg-white/50 hover:bg-white text-red-500 transition-colors">
-                                              <Trash2 size={10} />
+                                      <div className="hidden group-hover/card:flex gap-1 print:hidden absolute right-1 top-1">
+                                          <button onClick={(e) => {e.stopPropagation(); onDelete(mission.id)}} className="p-1 rounded-md bg-white/80 hover:bg-red-50 text-red-500 transition-colors shadow-sm">
+                                              <Trash2 size={12} />
                                           </button>
                                       </div>
                                   )}
@@ -340,12 +409,12 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
 
             {/* SECTION HORS CHANTIER */}
             <tr className="bg-gray-50 border-t-4 border-white print:border-black print:border-t-2 print:bg-white print:break-inside-avoid">
-                <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:static print:bg-white print:border print:border-black print:p-2">
+                <td className="p-4 sticky left-0 bg-gray-50 z-10 border-r border-gray-200 print:static print:bg-white print:border print:border-black print:p-2 align-top">
                     <div className="flex items-center gap-3">
                         <div className="bg-gray-400 p-2 rounded-lg text-white"><Activity size={18} /></div>
                         <div>
                             <p className="font-black text-gray-600 text-xs uppercase leading-tight print:text-black">Hors Chantier</p>
-                            <p className="text-[9px] text-gray-400 uppercase mt-0.5 print:text-gray-600">Absences / Formations</p>
+                            <p className="text-[9px] text-gray-400 uppercase mt-0.5 print:text-gray-600">Absences / Formations / Intempéries</p>
                         </div>
                     </div>
                 </td>
@@ -357,13 +426,18 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
                             <div className="flex flex-col gap-1.5">
                                 {dailyOffs.map((mission: IAssignment) => {
                                     let color = "bg-gray-400";
+                                    let icon = null;
                                     if(mission.type === 'conge') color = "bg-[#e17055]";
                                     if(mission.type === 'maladie') color = "bg-[#d63031]";
+                                    if(mission.type === 'intemperie') { color = "bg-[#0984e3]"; icon = <CloudRain size={10} className="mr-1 inline"/>; }
+                                    
                                     return (
-                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card print:shadow-none print:p-1`}>
+                                        <div key={mission.id} className={`${color} text-white p-2 rounded-lg shadow-sm flex items-center justify-between group/card relative print:shadow-none print:p-1`}>
                                             <span className="text-[11px] font-bold uppercase truncate print:text-[11px] print:whitespace-normal">{mission.users?.nom || 'Inconnu'}</span>
-                                            <span className="text-[8px] opacity-80 uppercase px-1 bg-black/10 rounded ml-1 print:border print:border-black print:opacity-100">{mission.type}</span>
-                                            {!modePointage && <button onClick={() => onDelete(mission.id)} className="hidden group-hover/card:block text-white/80 hover:text-white print:hidden"><X size={12} /></button>}
+                                            <span className="text-[8px] font-black opacity-90 uppercase px-1 bg-black/20 rounded ml-1 print:border print:border-black print:opacity-100 flex items-center">
+                                                {icon}{mission.type}
+                                            </span>
+                                            {!modePointage && <button onClick={() => onDelete(mission.id)} className="hidden group-hover/card:flex absolute -top-1 -right-1 bg-white text-red-500 rounded-full p-0.5 shadow-md print:hidden"><X size={12} /></button>}
                                         </div>
                                     )
                                 })}
@@ -384,10 +458,11 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
 // ============================================================================
 
 function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }: { config: IModalConfig, employes: IEmploye[], assignments: IAssignment[], onClose: () => void, onSaveBulk: (data: any[]) => Promise<boolean> }) {
-    // États locaux à la modale : empêchent le re-render du grand tableau en arrière plan
     const initialDateStr = config.date ? toLocalISOString(config.date) : '';
     const [dateRange, setDateRange] = useState({ start: initialDateStr, end: initialDateStr });
     const [selectedEmployes, setSelectedEmployes] = useState<string[]>([]);
+    
+    // Ajout de 'intemperie' dans la liste par défaut
     const [type, setType] = useState(config.typeContext === 'hors_chantier' ? 'conge' : 'chantier');
 
     const handleSave = async () => {
@@ -453,11 +528,13 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                     </div>
                 </div>
 
-                {/* 2. SÉLECTION MULTIPLE EMPLOYÉS */}
+                {/* 2. SÉLECTION MULTIPLE EMPLOYÉS AVEC GESTION DES CONFLITS */}
                 <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Sélectionner Collaborateurs ({selectedEmployes.length})</label>
                     <div className="max-h-[300px] overflow-y-auto border border-gray-200 rounded-xl custom-scrollbar shadow-inner bg-gray-50">
                         {employes.map(e => {
+                            // Vérifie si l'employé est DÉJÀ affecté sur n'importe quel chantier/absence sur la plage de date sélectionnée
+                            const isConflict = assignments.some(a => a.employe_id === e.id && a.date_debut >= dateRange.start && a.date_debut <= dateRange.end);
                             const isSelected = selectedEmployes.includes(e.id);
                             const roleConfig = getRoleConfig(e.role);
 
@@ -465,17 +542,20 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                                 <div 
                                     key={e.id} 
                                     onClick={() => {
-                                        if(isSelected) setSelectedEmployes(prev => prev.filter(id => id !== e.id));
+                                        if (isConflict) return; // Désactive le clic si conflit
+                                        if (isSelected) setSelectedEmployes(prev => prev.filter(id => id !== e.id));
                                         else setSelectedEmployes(prev => [...prev, e.id]);
                                     }}
-                                    className={`flex items-center justify-between p-3 border-b border-gray-100 cursor-pointer transition-all ${isSelected ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
+                                    className={`flex items-center justify-between p-3 border-b border-gray-100 transition-all 
+                                        ${isConflict ? 'opacity-40 bg-gray-100 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}
+                                        ${isSelected ? 'bg-blue-50' : 'bg-white'}`}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors ${isSelected ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors ${isSelected ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>
                                             {e.prenom.charAt(0)}{e.nom.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className={`font-bold text-sm ${isSelected ? 'text-blue-800' : 'text-gray-700'}`}>{e.nom} {e.prenom}</p>
+                                            <p className={`font-bold text-sm ${isSelected ? 'text-blue-800' : 'text-gray-700'} ${isConflict ? 'line-through' : ''}`}>{e.nom} {e.prenom}</p>
                                             <div className={`flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase w-fit ${roleConfig.badgeClass}`}>
                                                 {roleConfig.icon}
                                                 <span>{roleConfig.label}</span>
@@ -483,7 +563,13 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {isSelected && <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"><Check className="text-white" size={12} /></div>}
+                                        {isConflict ? (
+                                            <div className="flex items-center gap-1 text-[9px] font-black text-red-500 bg-red-50 px-2 py-1 rounded">
+                                                <Lock size={10} /> Occupé
+                                            </div>
+                                        ) : isSelected ? (
+                                            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"><Check className="text-white" size={12} /></div>
+                                        ) : null}
                                     </div>
                                 </div>
                             )
@@ -495,8 +581,8 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
                 {!config.chantierId && (
                     <div>
                         <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Type d'absence</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {['conge', 'maladie', 'formation'].map(t => (
+                        <div className="grid grid-cols-2 gap-2">
+                            {['conge', 'maladie', 'formation', 'intemperie'].map(t => (
                                 <button key={t} onClick={() => setType(t)} className={`py-2 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${type === t ? 'border-[#2d3436] bg-[#2d3436] text-white shadow-md scale-105' : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                                     {t}
                                 </button>
