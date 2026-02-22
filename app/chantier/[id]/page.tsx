@@ -22,7 +22,7 @@ const EPI_OPTIONS = ['Casque', 'Harnais', 'Chaussures de sécurité', 'Combinais
 // --- INTERFACES ---
 interface IChantier {
   id?: string; nom: string; client: string; adresse: string; client_email: string; client_telephone: string;
-  numero_otp: string; responsable: string; chef_chantier_id: string; equipe_ids: string[];
+  numero_otp: string; responsable: string; chef_chantier_id: string; equipe_ids: string[]; horaires?: string;
   date_debut: string; date_fin: string; type: string; statut: string;
   heures_budget: number; heures_consommees: number; effectif_prevu: number; taux_reussite: number; 
   montant_marche: number; taux_horaire_moyen: number; cpi: number;
@@ -35,7 +35,7 @@ interface IChantier {
 function useChantierData(id: string) {
   const [loading, setLoading] = useState(true);
   const [chantier, setChantier] = useState<IChantier>({
-    nom: '', client: '', adresse: '', client_email: '', client_telephone: '', numero_otp: '', responsable: '', chef_chantier_id: '', equipe_ids: [],
+    nom: '', client: '', adresse: '', client_email: '', client_telephone: '', numero_otp: '', responsable: '', chef_chantier_id: '', equipe_ids: [], horaires: '',
     date_debut: '', date_fin: '', type: 'Industriel', statut: 'en_cours', heures_budget: 0, heures_consommees: 0, effectif_prevu: 0, taux_reussite: 100, 
     montant_marche: 0, taux_horaire_moyen: 24, cpi: 19, cout_fournitures_prevu: 0, cout_sous_traitance_prevu: 0, cout_location_prevu: 0, frais_generaux: 0,
     cout_fournitures_reel: 0, cout_sous_traitance_reel: 0, cout_location_reel: 0, frais_generaux_reel: 0, risques: [], epi: [], mesures_obligatoires: false
@@ -73,7 +73,7 @@ function useChantierData(id: string) {
             setChantier({
                 ...c, date_debut: c.date_debut || '', date_fin: c.date_fin || '', effectif_prevu: c.effectif_prevu || 0, taux_reussite: c.taux_reussite ?? 100,
                 montant_marche: c.montant_marche || 0, taux_horaire_moyen: c.taux_horaire_moyen || 24, cpi: c.cpi || 19,
-                risques: c.risques || [], epi: c.epi || [], mesures_obligatoires: c.mesures_obligatoires || false
+                risques: c.risques || [], epi: c.epi || [], mesures_obligatoires: c.mesures_obligatoires || false, horaires: c.horaires || ''
             });
             const currentAcqpa = c.mesures_acqpa || {};
             if (!currentAcqpa.couches) currentAcqpa.couches = [{ type: '', lot: '', methode: '', dilution: '' }];
@@ -345,7 +345,14 @@ function InfosTab({ data }: { data: any }) {
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Début Prévu</label><div className="flex items-center bg-gray-50 rounded-xl px-3 border border-transparent focus-within:border-[#00b894] transition-colors"><Calendar size={14} className="text-gray-400 mr-2" /><input type="date" className="w-full bg-transparent p-3 font-bold outline-none" value={chantier.date_debut || ''} onChange={e => setChantier({...chantier, date_debut: e.target.value})} /></div></div>
                             <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fin Prévue</label><div className="flex items-center bg-gray-50 rounded-xl px-3 border border-transparent focus-within:border-[#00b894] transition-colors"><Calendar size={14} className="text-gray-400 mr-2" /><input type="date" className="w-full bg-transparent p-3 font-bold outline-none" value={chantier.date_fin || ''} onChange={e => setChantier({...chantier, date_fin: e.target.value})} /></div></div>
                         </div>
-                        <div className="col-span-2 p-4 bg-gray-50 rounded-2xl border border-gray-100 grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label><input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label><input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Phone size={10}/> Tel</label><input value={chantier.client_telephone || ''} onChange={e => setChantier({...chantier, client_telephone: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div><div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Mail size={10}/> Email</label><input value={chantier.client_email || ''} onChange={e => setChantier({...chantier, client_email: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div></div>
+                        <div className="col-span-2 p-4 bg-gray-50 rounded-2xl border border-gray-100 grid grid-cols-2 gap-4">
+                            <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client</label><input value={chantier.client || ''} onChange={e => setChantier({...chantier, client: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div>
+                            <div className="col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Adresse</label><input value={chantier.adresse || ''} onChange={e => setChantier({...chantier, adresse: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div>
+                            <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Phone size={10}/> Tel</label><input value={chantier.client_telephone || ''} onChange={e => setChantier({...chantier, client_telephone: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div>
+                            <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Mail size={10}/> Email</label><input value={chantier.client_email || ''} onChange={e => setChantier({...chantier, client_email: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none" /></div>
+                            {/* NOUVEAU CHAMP HORAIRES */}
+                            <div className="col-span-2 mt-2 pt-2 border-t border-gray-200"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={10}/> Horaires de travail</label><input value={chantier.horaires || ''} onChange={e => setChantier({...chantier, horaires: e.target.value})} className="w-full bg-white p-2 rounded-lg font-bold outline-none focus:border-[#00b894] border border-transparent transition-colors mt-1" placeholder="ex: De 08h00 à 16h30" /></div>
+                        </div>
                     </div>
                 </div>
             </div>
