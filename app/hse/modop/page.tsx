@@ -76,14 +76,26 @@ function MODOPContent() {
   const handleSave = async () => {
     if (!formData.signature_redacteur) return toast.error("Signature requise.");
     const toastId = toast.loading("Génération du Mode Opératoire...");
-    const { error } = await supabase.from('chantier_modop').insert([{ chantier_id: chantierId, ...formData, signatures: { redacteur: formData.signature_redacteur } }]);
-    if (error) toast.error("Erreur de sauvegarde");
-    else {
+    
+    // On extrait la signature pour ne pas l'envoyer comme une colonne à part entière
+    const { signature_redacteur, ...dataToSend } = formData;
+
+    const payload = {
+        chantier_id: chantierId,
+        ...dataToSend, // Toutes les données sauf la variable temporaire
+        signatures: { redacteur: signature_redacteur } // On la range proprement dans le JSON
+    };
+
+    const { error } = await supabase.from('chantier_modop').insert([payload]);
+    
+    if (error) {
+        toast.error("Erreur de sauvegarde : " + error.message);
+    } else {
         toast.success("✅ MODOP validé !");
-        setView('list'); setStep(1);
+        setView('list'); 
+        setStep(1);
     }
   };
-
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-700"/></div>;
 
   if (view === 'list') {
