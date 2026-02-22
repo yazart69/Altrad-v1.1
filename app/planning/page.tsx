@@ -113,7 +113,8 @@ function usePlanningData() {
     try {
         const [empRes, chanRes, planRes] = await Promise.all([
             supabase.from('employes').select('*').order('nom'),
-            supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires, taches_hebdo').neq('statut', 'termine').order('nom'),
+            // CORRECTION ICI : On a retiré horaires et taches_hebdo car ils n'existent pas encore dans la BDD
+            supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp').neq('statut', 'termine').order('nom'),
             supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)')
         ]);
 
@@ -337,7 +338,7 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
                       <div className="flex-1 min-w-0">
                           <p className="font-black text-gray-800 text-sm uppercase leading-tight print:text-xs truncate" title={chantier.nom}>{chantier.nom}</p>
                           
-                          {/* OTP & Horaires */}
+                          {/* OTP & Horaires (Affichés s'ils existent) */}
                           <div className="flex flex-col gap-0.5 mt-1">
                               {chantier.numero_otp && <p className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit uppercase">OTP: {chantier.numero_otp}</p>}
                               <p className="text-[10px] text-gray-500 uppercase truncate" title={chantier.adresse}>{chantier.adresse || 'Localisation non définie'}</p>
@@ -345,12 +346,14 @@ function PlanningTable({ chantiers, weekDays, assignments, modePointage, onDelet
                           </div>
 
                           {/* Zone "Tâches à réaliser" intégrée à gauche */}
-                          <div className="mt-3 bg-gray-50 border border-gray-100 p-2 rounded-lg print:border-dashed print:bg-transparent">
-                              <p className="text-[8px] font-black uppercase text-gray-400 mb-1 border-b border-gray-200 pb-0.5">Tâches de la semaine</p>
-                              <p className="text-[10px] text-gray-600 leading-snug whitespace-pre-wrap line-clamp-3 hover:line-clamp-none transition-all print:line-clamp-none">
-                                  {chantier.taches_hebdo || 'Aucune tâche spécifiée...'}
-                              </p>
-                          </div>
+                          {(chantier.taches_hebdo) && (
+                            <div className="mt-3 bg-gray-50 border border-gray-100 p-2 rounded-lg print:border-dashed print:bg-transparent">
+                                <p className="text-[8px] font-black uppercase text-gray-400 mb-1 border-b border-gray-200 pb-0.5">Tâches de la semaine</p>
+                                <p className="text-[10px] text-gray-600 leading-snug whitespace-pre-wrap line-clamp-3 hover:line-clamp-none transition-all print:line-clamp-none">
+                                    {chantier.taches_hebdo}
+                                </p>
+                            </div>
+                          )}
                       </div>
                   </div>
 
@@ -461,8 +464,6 @@ function AssignmentModal({ config, employes, assignments, onClose, onSaveBulk }:
     const initialDateStr = config.date ? toLocalISOString(config.date) : '';
     const [dateRange, setDateRange] = useState({ start: initialDateStr, end: initialDateStr });
     const [selectedEmployes, setSelectedEmployes] = useState<string[]>([]);
-    
-    // Ajout de 'intemperie' dans la liste par défaut
     const [type, setType] = useState(config.typeContext === 'hors_chantier' ? 'conge' : 'chantier');
 
     const handleSave = async () => {
