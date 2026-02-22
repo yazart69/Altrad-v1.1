@@ -15,12 +15,103 @@ import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
 import { RISK_DATABASE } from '../data'; 
 
-// --- CATALOGUE CHIMIQUE METIER ---
+// --- CATALOGUE CHIMIQUE METIER (Mise à jour selon FDS Altrad) ---
 const CHEMICAL_CATALOG = [
-    { id: 'C1', produit: 'Peinture Epoxy (Bi-composant)', dangers: ['Irritation cutanée', 'Sensibilisation allergique', 'Toxique pour l\'environnement'], mesures: ['Gants Nitrile', 'Lunettes de sécurité étanches', 'Masque respiratoire A2P3'] },
-    { id: 'C2', produit: 'Diluant Solvanté / Nettoyant', dangers: ['Liquide et vapeurs très inflammables', 'Provoque une sévère irritation des yeux', 'Vapeurs toxiques (somnolence)'], mesures: ['Ventilation renforcée', 'Gants de protection solvants', 'Masque cartouche A2', 'Élimination des sources d\'ignition'] },
-    { id: 'C3', produit: 'Acide Chlorhydrique / Décapant chimique', dangers: ['Provoque des brûlures de la peau et des lésions oculaires graves', 'Corrosif pour les voies respiratoires'], mesures: ['Gants anti-acides (Néoprène/Butyl)', 'Écran facial (visière)', 'Tablier de protection chimique'] },
-    { id: 'C4', produit: 'Résine Polyuréthane', dangers: ['Nocif par inhalation', 'Irritant pour les voies respiratoires et la peau', 'Risque suspecté de cancer (Isocyanates)'], mesures: ['Port combinaison jetable type 5/6', 'Gants étanches', 'Masque complet à ventilation assistée ou cartouche A2B2P3'] }
+    { 
+        id: 'C1', 
+        produit: 'SIGMADUR 520 BASE (Finition Polyuréthane)', 
+        dangers: [
+            'Liquide et vapeurs inflammables', 
+            'Corrosion / Irritation cutanée sévère', 
+            'Risque présumé pour la reproduction (Cat 2)', 
+            'Toxicité organes cibles - Inhalation (STOT RE/SE)'
+        ], 
+        mesures: [
+            'Masque respiratoire (vapeurs/aérosols) type A2P3', 
+            'Gants de protection chimique (Nitrile)', 
+            'Lunettes de sécurité étanches / Visière', 
+            'Éloigner de toute source d\'ignition'
+        ] 
+    },
+    { 
+        id: 'C2', 
+        produit: 'FREITAPOX SR 213 BASE (Primaire Epoxy)', 
+        dangers: [
+            'Liquide et vapeurs inflammables', 
+            'Sensibilisation cutanée (Allergie)', 
+            'Risque grave pour les organes cibles (STOT RE 1)'
+        ], 
+        mesures: [
+            'Gants étanches et combinaison de travail', 
+            'Masque respiratoire (cartouche A/P) lors de la pulvérisation', 
+            'Ventilation mécanique de la zone'
+        ] 
+    },
+    { 
+        id: 'C3', 
+        produit: 'CARBOGUARD 193 P (Base + Durcisseur)', 
+        dangers: [
+            'Irritation des voies respiratoires', 
+            'Effets narcotiques (somnolence, vertiges)', 
+            'Lésions oculaires et cutanées'
+        ], 
+        mesures: [
+            'Port d\'un masque respiratoire en milieu confiné', 
+            'Gants en Nitrile ou Néoprène', 
+            'Lunettes avec protections latérales'
+        ] 
+    },
+    { 
+        id: 'C4', 
+        produit: 'DILUANT 61-161 / 67-232 (Maestria)', 
+        dangers: [
+            'Très inflammable (GHS02)', 
+            'Danger grave pour la santé (GHS07 / GHS08)', 
+            'Toxique pour l\'environnement aquatique (GHS09)'
+        ], 
+        mesures: [
+            'Interdiction formelle de source de chaleur / Outils anti-étincelles', 
+            'Masque pour vapeurs organiques', 
+            'Bac de rétention obligatoire lors des transvasements'
+        ] 
+    },
+    { 
+        id: 'C5', 
+        produit: 'EPODUX IM 209 (Epoxy Haut Extrait Sec)', 
+        dangers: [
+            'Irritation oculaire et cutanée', 
+            'Sensibilisation cutanée (Allergie)'
+        ], 
+        mesures: [
+            'Port de gants de protection adaptés', 
+            'Lunettes étanches pour éviter les projections'
+        ] 
+    },
+    { 
+        id: 'C6', 
+        produit: 'STRIAFORM (Mastic Époxydique sans solvant)', 
+        dangers: [
+            'Sensibilisation cutanée (Bi-composant)', 
+            'Irritation cutanée'
+        ], 
+        mesures: [
+            'Port de gants', 
+            'Lunettes de sécurité'
+        ] 
+    },
+    { 
+        id: 'C7', 
+        produit: 'STRIASOL VPU 10-90 (Vernis Polyurée)', 
+        dangers: [
+            'Irritant pour la peau', 
+            'Risque de sensibilisation'
+        ], 
+        mesures: [
+            'Gants de protection', 
+            'Lunettes de sécurité', 
+            'Ventilation des locaux'
+        ] 
+    }
 ];
 
 const PICTOGRAMS = [
