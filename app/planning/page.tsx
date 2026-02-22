@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, HardHat, Plus, 
   Printer, Trash2, Activity, 
   X, Loader2, Eraser, CalendarDays, Save, Check,
-  Crown, UserCog, UserCheck, UserX, Users, Lock, AlertCircle, CheckCircle2, CloudRain
+  Crown, UserCog, UserCheck, UserX, Users, Lock, AlertCircle, CheckCircle2, CloudRain, Clock
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -89,7 +89,7 @@ function usePlanningData() {
   const [employes, setEmployes] = useState<IEmploye[]>([]);
   const [chantiers, setChantiers] = useState<IChantier[]>([]);
   const [assignments, setAssignments] = useState<IAssignment[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]); // NOUVEAU: Stockage des tâches globales
+  const [tasks, setTasks] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
 
   const [currentDate, setCurrentDate] = useState(() => {
@@ -115,7 +115,7 @@ function usePlanningData() {
             supabase.from('employes').select('*').order('nom'),
             supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires').neq('statut', 'termine').order('nom'),
             supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)'),
-            supabase.from('chantier_tasks').select('chantier_id, label, subtasks') // NOUVEAU : Récupération auto des tâches
+            supabase.from('chantier_tasks').select('chantier_id, label, subtasks') 
         ]);
 
         if (empRes.data) setEmployes(empRes.data);
