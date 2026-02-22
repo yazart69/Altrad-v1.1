@@ -98,7 +98,9 @@ export default function HSEDashboardPage() {
           <div className="pt-8 pb-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Registres & Audits</div>
           <NavButton id="accueils" icon={Users} label="Registre Accueils" active={view} set={setView} />
           <NavButton id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} />
-          <NavButton id="terrain" icon={Camera} label="Visite VMT / Q3SRE" active={view} set={setView} />
+          <button onClick={() => navigateToTool('vmt')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-blue-500 group">
+    <Camera size={22} className="text-blue-500 group-hover:text-white" /> Visite VMT / Q3SRE
+</button>
           <NavButton id="causerie" icon={Megaphone} label="Minute Sécurité" active={view} set={setView} />
         </nav>
       </aside>
