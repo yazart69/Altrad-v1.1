@@ -3,9 +3,8 @@
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  ShieldCheck, User, Camera, ArrowRight, CheckCircle2, 
-  AlertTriangle, Siren, HardHat, FileCheck, X, Save, 
-  Printer, QrCode, Loader2 
+  ShieldCheck, ArrowRight, CheckCircle2, 
+  FileCheck, X, Save, Printer, QrCode, Loader2, Check
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -100,7 +99,7 @@ function AccueilSecuriteContent() {
         setStep(5);
         toast.success("Accueil validé et tracé !");
     } else {
-        toast.error("Erreur de sauvegarde");
+        toast.error("Erreur de sauvegarde : " + error.message);
     }
     setLoading(false);
   };
