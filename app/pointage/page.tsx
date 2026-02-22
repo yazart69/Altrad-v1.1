@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, ChevronRight, Printer, 
   Lock, Unlock, Copy, RotateCcw, AlertTriangle, 
-  FileSpreadsheet, HardHat, Clock
+  FileSpreadsheet, HardHat, Clock, Loader2
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
