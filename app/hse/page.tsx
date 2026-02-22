@@ -7,7 +7,7 @@ import {
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, ShieldCheck, AlertTriangle, 
   CheckCircle2, HardHat, FileCheck, X, ChevronRight, ClipboardCheck, Factory, 
   Truck, QrCode, ExternalLink, UserPlus, Paperclip, Loader2, Printer, AlertOctagon, 
-  Siren, Activity, ArrowRight, Plus 
+  Siren, Activity, ArrowRight, Plus, Eye, ArrowLeft, Users
 } from 'lucide-react';
 import { RISK_DATABASE, VGP_RULES } from './data';
 import toast, { Toaster } from 'react-hot-toast';
@@ -18,7 +18,7 @@ import toast, { Toaster } from 'react-hot-toast';
 
 export default function HSEDashboardPage() {
   const router = useRouter();
-  const [view, setView] = useState<'dashboard'|'vgp'|'terrain'|'causerie'>('dashboard');
+  const [view, setView] = useState<'dashboard'|'vgp'|'terrain'|'causerie'|'accueils'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [activeChantierId, setActiveChantierId] = useState<string>("");
 
@@ -38,7 +38,6 @@ export default function HSEDashboardPage() {
         if (chanRes.data) setChantiers(chanRes.data);
         if (matRes.data) setMateriel(matRes.data);
         
-        // Calcul alertes VGP (plus de 12 mois sans contrôle)
         const limitDate = new Date();
         limitDate.setFullYear(limitDate.getFullYear() - 1);
         const alerts = (matRes.data || []).filter((m:any) => new Date(m.derniere_vgp) < limitDate).length;
@@ -61,7 +60,7 @@ export default function HSEDashboardPage() {
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={40}/></div>;
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fa] font-['Fredoka']">
+    <div className="flex min-h-screen bg-[#f8f9fa] font-['Fredoka'] text-gray-800">
       <Toaster position="bottom-right" />
       
       {/* SIDEBAR HSE */}
@@ -93,10 +92,11 @@ export default function HSEDashboardPage() {
             <ClipboardCheck size={22} className="text-red-500 group-hover:text-white" /> Pre-Job Briefing
           </button>
           <button onClick={() => navigateToTool('accueil')} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase transition-all hover:bg-green-500 group">
-            <UserPlus size={22} className="text-green-500 group-hover:text-white" /> Accueil Sécurité
+            <UserPlus size={22} className="text-green-500 group-hover:text-white" /> Réaliser Accueil
           </button>
           
-          <div className="pt-8 pb-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Contrôles & Audits</div>
+          <div className="pt-8 pb-2 px-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Registres & Audits</div>
+          <NavButton id="accueils" icon={Users} label="Registre Accueils" active={view} set={setView} />
           <NavButton id="vgp" icon={Wrench} label="Suivi VGP / Matériel" active={view} set={setView} />
           <NavButton id="terrain" icon={Camera} label="Visite VMT / Q3SRE" active={view} set={setView} />
           <NavButton id="causerie" icon={Megaphone} label="Minute Sécurité" active={view} set={setView} />
@@ -106,7 +106,8 @@ export default function HSEDashboardPage() {
       {/* CONTENU PRINCIPAL */}
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
-            {view === 'dashboard' && <HSECockpit stats={stats} chantiers={chantiers} />}
+            {view === 'dashboard' && <HSECockpit stats={stats} chantiers={chantiers} setView={setView} />}
+            {view === 'accueils' && <RegistreAccueils />}
             {view === 'vgp' && <VGPModule materiel={materiel} />}
             {view === 'terrain' && <div className="p-20 text-center text-gray-300 font-black uppercase border-4 border-dashed rounded-[40px]">Module Audit VMT en cours de déploiement</div>}
             {view === 'causerie' && <div className="p-20 text-center text-gray-300 font-black uppercase border-4 border-dashed rounded-[40px]">Module Causerie en cours de déploiement</div>}
@@ -120,7 +121,7 @@ export default function HSEDashboardPage() {
 // SOUS-COMPOSANTS
 // ============================================================================
 
-function HSECockpit({ stats, chantiers }: any) {
+function HSECockpit({ stats, chantiers, setView }: any) {
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 space-y-8">
             <div className="flex justify-between items-end">
@@ -137,8 +138,12 @@ function HSECockpit({ stats, chantiers }: any) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard label="Accueils Sécurité" val={stats.activeInductions} sub="Total validés" icon={UserPlus} color="blue" />
-                <StatCard label="Alertes VGP" val={stats.vgpAlerts} sub="Matériel à contrôler" icon={AlertOctagon} color={stats.vgpAlerts > 0 ? "red" : "green"} />
+                <div onClick={() => setView('accueils')} className="cursor-pointer">
+                    <StatCard label="Accueils Sécurité" val={stats.activeInductions} sub="Total validés (Cliquez pour voir)" icon={UserPlus} color="blue" />
+                </div>
+                <div onClick={() => setView('vgp')} className="cursor-pointer">
+                    <StatCard label="Alertes VGP" val={stats.vgpAlerts} sub="Matériel à contrôler" icon={AlertOctagon} color={stats.vgpAlerts > 0 ? "red" : "green"} />
+                </div>
                 <StatCard label="Pre-Jobs" val="12" sub="Cette semaine" icon={ClipboardCheck} color="orange" />
             </div>
 
@@ -166,6 +171,190 @@ function HSECockpit({ stats, chantiers }: any) {
     );
 }
 
+// ============================================================================
+// MODULE : REGISTRE DES ACCUEILS (NOUVEAU)
+// ============================================================================
+function RegistreAccueils() {
+    const [accueils, setAccueils] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedAccueil, setSelectedAccueil] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchAccueils = async () => {
+            const { data } = await supabase.from('hse_accueils_securite').select('*, chantiers(nom)').order('created_at', { ascending: false });
+            setAccueils(data || []);
+            setLoading(false);
+        };
+        fetchAccueils();
+    }, []);
+
+    // --- VUE DÉTAILLÉE (VISIONNEUSE / IMPRESSION) ---
+    if (selectedAccueil) {
+        return (
+            <div className="animate-in fade-in">
+                {/* HACK CSS POUR IMPRESSION (Même que Pre-Job) */}
+                <style dangerouslySetInnerHTML={{__html: `
+                    @media print {
+                        @page { size: A4 portrait; margin: 10mm; }
+                        body * { visibility: hidden; }
+                        .print-container, .print-container * { visibility: visible; }
+                        .print-container { position: absolute; left: 0; top: 0; width: 100%; max-width: 100%; margin: 0; padding: 0; box-shadow: none; border: none; }
+                        .no-print { display: none !important; }
+                    }
+                `}}/>
+
+                <div className="flex justify-between items-center mb-6 no-print">
+                    <button onClick={() => setSelectedAccueil(null)} className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-200 text-gray-500 hover:text-black font-bold transition-all">
+                        <ArrowLeft size={18}/> Retour à la liste
+                    </button>
+                    <button onClick={() => window.print()} className="bg-[#2d3436] hover:bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs flex items-center gap-2 shadow-lg transition-all">
+                        <Printer size={16}/> Imprimer la fiche d'accueil
+                    </button>
+                </div>
+
+                <div className="print-container bg-white p-10 rounded-[35px] shadow-2xl border border-gray-100 max-w-3xl mx-auto text-sm">
+                    {/* Header Document */}
+                    <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-end">
+                        <div>
+                            <h1 className="text-2xl font-black uppercase tracking-tight">FICHE D'ACCUEIL SÉCURITÉ</h1>
+                            <p className="text-sm font-bold text-gray-500 uppercase mt-1">Nouveau personnel / Sous-traitant</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="border border-black px-3 py-1 font-bold uppercase text-xs">Date : {new Date(selectedAccueil.created_at).toLocaleDateString()}</p>
+                            <p className="text-xs font-bold text-gray-500 mt-2">Réf. Chantier : {selectedAccueil.chantiers?.nom}</p>
+                        </div>
+                    </div>
+
+                    {/* Bloc Identité */}
+                    <div className="bg-gray-50 border border-gray-300 p-4 mb-6">
+                        <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">1. Identification de l'arrivant</h2>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><span className="text-gray-500 uppercase text-xs mr-2">Nom :</span> <span className="font-bold">{selectedAccueil.nom}</span></div>
+                            <div><span className="text-gray-500 uppercase text-xs mr-2">Prénom :</span> <span className="font-bold">{selectedAccueil.prenom}</span></div>
+                            <div><span className="text-gray-500 uppercase text-xs mr-2">Entreprise :</span> <span className="font-bold">{selectedAccueil.entreprise}</span></div>
+                            <div><span className="text-gray-500 uppercase text-xs mr-2">Statut :</span> <span className="font-bold uppercase">{selectedAccueil.type_personnel}</span></div>
+                        </div>
+                    </div>
+
+                    {/* Bloc Documents Cadres */}
+                    <div className="mb-6">
+                        <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">2. Documents Supports Présentés</h2>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                            <p><span className="text-gray-500 mr-2">PPSPS / PDP :</span> <span className="font-bold">{selectedAccueil.documents_cadres?.ppsps || 'N/A'}</span></p>
+                            <p><span className="text-gray-500 mr-2">PHSE :</span> <span className="font-bold">{selectedAccueil.documents_cadres?.phse || 'N/A'}</span></p>
+                            <p><span className="text-gray-500 mr-2">Plan Qualité (PQC) :</span> <span className="font-bold">{selectedAccueil.documents_cadres?.pqc || 'N/A'}</span></p>
+                        </div>
+                    </div>
+
+                    {/* Bloc Checklist Sensibilisation */}
+                    <div className="mb-6">
+                        <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">3. Points abordés lors de la sensibilisation</h2>
+                        <ul className="list-disc pl-5 space-y-1 text-xs font-bold text-gray-800">
+                            {(selectedAccueil.checklist_validee || []).map((item: string, idx: number) => (
+                                <li key={idx}>{item}</li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* Bloc Contrôles préalables */}
+                    <div className="mb-8">
+                        <h2 className="font-black uppercase border-b border-gray-300 pb-1 mb-3 text-sm">4. Contrôles préalables (Aptitudes)</h2>
+                        <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-1">
+                                <span className="font-bold">Aptitude Médicale à jour</span>
+                                <span className={`font-black uppercase ${selectedAccueil.controles_prealables?.aptitude_medicale ? 'text-green-600' : 'text-red-600'}`}>
+                                    {selectedAccueil.controles_prealables?.aptitude_medicale ? 'Oui' : 'Non'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-1">
+                                <span className="font-bold">Carte BTP (ou pièce d'identité)</span>
+                                <span className={`font-black uppercase ${selectedAccueil.controles_prealables?.carte_btp ? 'text-green-600' : 'text-red-600'}`}>
+                                    {selectedAccueil.controles_prealables?.carte_btp ? 'Oui' : 'Non'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-1">
+                                <span className="font-bold">Habilitations spécifiques (Hauteur, Élec...)</span>
+                                <span className={`font-black uppercase ${selectedAccueil.controles_prealables?.habilitations_specifiques ? 'text-green-600' : 'text-red-600'}`}>
+                                    {selectedAccueil.controles_prealables?.habilitations_specifiques ? 'Oui' : 'Non'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Signature */}
+                    <div className="border border-black">
+                        <div className="bg-gray-100 border-b border-black p-2 font-black uppercase text-xs">Engagement et Émargement de l'arrivant</div>
+                        <p className="p-2 text-[10px] italic text-gray-600 text-justify">
+                            "Je soussigné(e) atteste avoir suivi la sensibilisation au démarrage du chantier. J'ai pris connaissance des documents cadres et je m'engage à respecter les consignes QHSE applicables. J'atteste disposer des aptitudes médicales requises pour mon poste."
+                        </p>
+                        <div className="p-4 flex items-center justify-center min-h-[120px]">
+                            {selectedAccueil.signature_url ? (
+                                <img src={selectedAccueil.signature_url} alt="Signature" className="max-h-20" />
+                            ) : (
+                                <span className="text-gray-300 italic">Aucune signature</span>
+                            )}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        );
+    }
+
+    // --- VUE LISTE ---
+    return (
+        <div className="animate-in fade-in space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black uppercase text-gray-800 flex items-center gap-3">
+                    <Users className="text-blue-500" /> Registre des Accueils Sécurité
+                </h2>
+            </div>
+
+            {loading ? (
+                <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-gray-400" size={40} /></div>
+            ) : (
+                <div className="bg-white rounded-[35px] border border-gray-100 shadow-sm overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
+                                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Arrivant</th>
+                                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Entreprise / Statut</th>
+                                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Chantier d'accueil</th>
+                                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {accueils.length === 0 && <tr><td colSpan={5} className="p-10 text-center font-bold text-gray-400">Aucun accueil enregistré.</td></tr>}
+                            {accueils.map((acc:any) => (
+                                <tr key={acc.id} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="p-6 text-sm font-bold text-gray-500">{new Date(acc.created_at).toLocaleDateString()}</td>
+                                    <td className="p-6 font-black text-gray-800 uppercase">{acc.nom} {acc.prenom}</td>
+                                    <td className="p-6">
+                                        <div className="text-sm font-bold text-gray-600">{acc.entreprise}</div>
+                                        <div className="text-[9px] font-black text-blue-500 uppercase mt-1">{acc.type_personnel}</div>
+                                    </td>
+                                    <td className="p-6 text-sm font-bold text-[#0984e3] flex items-center gap-2 mt-2">
+                                        <ShieldCheck size={14}/> {acc.chantiers?.nom || 'Inconnu'}
+                                    </td>
+                                    <td className="p-6 text-right">
+                                        <button onClick={() => setSelectedAccueil(acc)} className="p-3 bg-white rounded-xl text-gray-400 hover:text-blue-500 border border-gray-200 shadow-sm transition-all" title="Consulter la fiche">
+                                            <Eye size={18}/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================================================
+// VGP MODULE
+// ============================================================================
 function VGPModule({ materiel }: any) {
     return (
         <div className="animate-in fade-in space-y-6">
