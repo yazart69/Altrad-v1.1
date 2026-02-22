@@ -8,7 +8,7 @@ import {
   CheckSquare, Square, BarChart3, AlertCircle, Activity
 } from 'lucide-react';
 
-// IMPORT RECHARTS
+// IMPORT RECHARTS (Nécessite: npm install recharts)
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   ReferenceLine, Cell, ComposedChart, Line 
@@ -56,7 +56,6 @@ export default function PlanningChargePage() {
 
   const fetchData = async () => {
     setLoading(true);
-    // On ignore 'termine' et 'stand_by' pour le planning de charge actif
     const { data: chan } = await supabase.from('chantiers').select('*').not('statut', 'in', '("termine", "stand_by")').order('nom');
     const { data: plan } = await supabase.from('planning').select('*').not('chantier_id', 'is', null);
     const { data: emp } = await supabase.from('employes').select('id, nom, prenom, role').eq('statut_actuel', 'disponible').order('nom');
@@ -70,7 +69,7 @@ export default function PlanningChargePage() {
   const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
   const totalCapacity = employes.length || 1; // Capacité totale de l'entreprise
 
-  // 3. LOGIQUE CALCUL CHARGE (UNIQUES & PONDÉRATION)
+  // 3. LOGIQUE CALCUL CHARGE AVEC PONDÉRATION MÉTIER
   const calculateLoad = (chantier: any, weekNum: number) => {
     const { start: weekStart, end: weekEnd } = getWeekDates(weekNum, year);
     if (!chantier.date_debut || !chantier.date_fin) return null;
@@ -79,14 +78,23 @@ export default function PlanningChargePage() {
     const cE = new Date(chantier.date_fin);
     if (!(cS <= weekEnd && cE >= weekStart)) return null;
 
-    // --- PONDÉRATION MÉTIER ICI ---
-    let need = chantier.effectif_prevu || 0; 
-    if (chantier.statut === 'probable' && chantier.taux_reussite) {
-        // Ex: 4 pers avec 50% de réussite = 2 pers. Utilisation de Math.ceil pour être prudent sur la charge
-        need = Math.round(need * (chantier.taux_reussite / 100));
+    // --- CALCUL DU BESOIN THÉORIQUE ---
+    // Soit le champ effectif_prevu, soit on déduit le besoin depuis l'équipe type du chantier (Multisélection + Chef)
+    let baseNeed = chantier.effectif_prevu || 0;
+    if (baseNeed === 0) {
+        const teamSize = Array.isArray(chantier.equipe_ids) ? chantier.equipe_ids.length : 0;
+        const hasChef = chantier.chef_chantier_id ? 1 : 0;
+        baseNeed = teamSize + hasChef;
     }
 
-    // Filtrer les affectations pour ce chantier et cette semaine
+    let need = baseNeed;
+
+    // --- PONDÉRATION POUR CHANTIERS PROBABLES ---
+    if (chantier.statut === 'probable' && chantier.taux_reussite) {
+        need = Math.round(baseNeed * (chantier.taux_reussite / 100));
+    }
+
+    // Filtrer les affectations pour ce chantier et cette semaine (LE RÉEL)
     const relevant = assignments.filter(a => {
         if (a.chantier_id !== chantier.id) return false;
         const aS = new Date(a.date_debut);
@@ -122,8 +130,7 @@ export default function PlanningChargePage() {
 
         chantiers.forEach(c => {
             const load = calculateLoad(c, w);
-            // On compte les besoins pondérés (need) dans le graphe, pas seulement les gens staffés
-            // pour visualiser la charge prévisionnelle totale (affectée ou non)
+            // On affiche le "Besoin pondéré" dans le graphique de charge, pour voir ce qu'il FAUT staffer
             if (load && load.need > 0) {
                 totalStaffed += load.need;
                 chantierData[c.nom] = load.need;
@@ -187,7 +194,6 @@ export default function PlanningChargePage() {
       fetchData();
   };
 
-  // Groupement mis à jour avec tes nouveaux statuts
   const groupedChantiers = {
       en_cours: chantiers.filter(c => c.statut === 'en_cours'),
       planifie: chantiers.filter(c => c.statut === 'planifie'),
@@ -278,8 +284,8 @@ export default function PlanningChargePage() {
                 <div className="bg-white rounded-[25px] p-6 shadow-sm border border-gray-200 print:border-gray-300">
                     <div className="flex justify-between items-center mb-4">
                         <div>
-                            <h3 className="font-black text-lg uppercase text-gray-800">Charge Prévisionnelle</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Capacité vs Besoins globaux (En cours + Probables)</p>
+                            <h3 className="font-black text-lg uppercase text-gray-800">Charge Globale</h3>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Capacité vs Besoins (Pondérés)</p>
                         </div>
                         <div className="text-right">
                              <span className="text-xs font-bold text-red-500 flex items-center gap-1 justify-end"><Activity size={12}/> Capacité: {totalCapacity}</span>
@@ -395,30 +401,35 @@ export default function PlanningChargePage() {
 }
 
 // --- SOUS-COMPOSANT LIGNE ---
-const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any) => (
-    <tr className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
-        <td className="p-3 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
-            <div className="flex flex-col">
-                <span className="font-black text-xs text-gray-800 uppercase truncate max-w-[200px]">{chantier.nom}</span>
-                <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${chantier.statut === 'probable' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>{chantier.statut === 'probable' ? 'Probable' : (chantier.type || 'Indus.')}</span>
-                    {chantier.effectif_prevu && <span className="text-[8px] text-gray-400 font-bold flex items-center gap-1"><Users size={8}/> {chantier.effectif_prevu}</span>}
+const RowChantier = ({ chantier, weeks, year, calculateLoad, onCellClick }: any) => {
+    // Le besoin affiché dans la colonne de gauche (non pondéré pour information)
+    const baseNeed = chantier.effectif_prevu || ((Array.isArray(chantier.equipe_ids) ? chantier.equipe_ids.length : 0) + (chantier.chef_chantier_id ? 1 : 0));
+
+    return (
+        <tr className="group hover:bg-gray-50 transition-colors border-b border-gray-50">
+            <td className="p-3 sticky left-0 bg-white group-hover:bg-gray-50 z-20 border-r border-gray-200">
+                <div className="flex flex-col">
+                    <span className="font-black text-xs text-gray-800 uppercase truncate max-w-[200px]">{chantier.nom}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${chantier.statut === 'probable' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>{chantier.statut === 'probable' ? 'Probable' : (chantier.type || 'Indus.')}</span>
+                        {baseNeed > 0 && <span className="text-[8px] text-gray-400 font-bold flex items-center gap-1"><Users size={8}/> {baseNeed} pers.</span>}
+                    </div>
                 </div>
-            </div>
-        </td>
-        {weeks.map((w: number) => {
-            const data = calculateLoad(chantier, w);
-            const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
-            return (
-                <td key={w} className={`p-0.5 border-r border-gray-100 h-14 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`} onClick={() => data && onCellClick(chantier, w)}>
-                    {data ? (
-                        <div className={`w-full h-full rounded border ${data.statusClass} p-0.5 flex flex-col justify-center items-center cursor-pointer hover:brightness-95 transition-all relative group/cell`}>
-                            <div className="text-[10px] font-black flex items-center gap-0.5">{data.staffed} <span className="text-[7px] opacity-60">/{data.need}</span></div>
-                            {data.missing > 0 && <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full text-[6px] text-white flex items-center justify-center font-bold shadow-sm">!</div>}
-                        </div>
-                    ) : <div className="w-full h-full group-hover:bg-gray-100/50 transition-colors"></div>}
-                </td>
-            );
-        })}
-    </tr>
-);
+            </td>
+            {weeks.map((w: number) => {
+                const data = calculateLoad(chantier, w);
+                const isCurrentWeek = getWeekNumber(new Date()) === w && new Date().getFullYear() === year;
+                return (
+                    <td key={w} className={`p-0.5 border-r border-gray-100 h-14 relative ${isCurrentWeek ? 'bg-blue-50/30' : ''}`} onClick={() => data && onCellClick(chantier, w)}>
+                        {data ? (
+                            <div className={`w-full h-full rounded border ${data.statusClass} p-0.5 flex flex-col justify-center items-center cursor-pointer hover:brightness-95 transition-all relative group/cell`}>
+                                <div className="text-[10px] font-black flex items-center gap-0.5">{data.staffed} <span className="text-[7px] opacity-60">/{data.need}</span></div>
+                                {data.missing > 0 && <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full text-[6px] text-white flex items-center justify-center font-bold shadow-sm">!</div>}
+                            </div>
+                        ) : <div className="w-full h-full group-hover:bg-gray-100/50 transition-colors"></div>}
+                    </td>
+                );
+            })}
+        </tr>
+    );
+}
