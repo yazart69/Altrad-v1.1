@@ -112,11 +112,10 @@ function usePlanningData() {
     setLoading(true);
     try {
         const [empRes, chanRes, planRes] = await Promise.all([
-            supabase.from('employes').select('*').order('nom'),
-            // CORRECTION ICI : On a retiré horaires et taches_hebdo car ils n'existent pas encore dans la BDD
-            supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp').neq('statut', 'termine').order('nom'),
-            supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)')
-        ]);
+    supabase.from('employes').select('*').order('nom'),
+    supabase.from('chantiers').select('id, nom, adresse, statut, numero_otp, horaires, taches_hebdo').neq('statut', 'termine').order('nom'),
+    supabase.from('planning').select('*, employes (id, nom, prenom, role), chantiers (nom)')
+]);
 
         if (empRes.data) setEmployes(empRes.data);
         if (chanRes.data) setChantiers(chanRes.data);
