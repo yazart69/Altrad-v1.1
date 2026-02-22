@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { 
   LayoutDashboard, FileText, Wrench, Camera, Megaphone, ShieldCheck, AlertTriangle, 
   CheckCircle2, HardHat, FileCheck, X, ChevronRight, ClipboardCheck, Factory, 
-  Truck, QrCode, ExternalLink, UserPlus, Paperclip, Loader2, Printer, AlertOctagon, Siren
+  Truck, QrCode, ExternalLink, UserPlus, Paperclip, Loader2, Printer, AlertOctagon, 
+  Siren, Activity, ArrowRight, Plus 
 } from 'lucide-react';
 import { RISK_DATABASE, VGP_RULES } from './data';
 import toast, { Toaster } from 'react-hot-toast';
@@ -27,22 +28,27 @@ export default function HSEDashboardPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [chanRes, matRes, hseRes] = await Promise.all([
-        supabase.from('chantiers').select('*').neq('statut', 'termine'),
-        supabase.from('materiel').select('*'),
-        supabase.from('hse_accueils_securite').select('id', { count: 'exact', head: true })
-    ]);
+    try {
+        const [chanRes, matRes, hseRes] = await Promise.all([
+            supabase.from('chantiers').select('*').neq('statut', 'termine'),
+            supabase.from('materiel').select('*'),
+            supabase.from('hse_accueils_securite').select('id', { count: 'exact', head: true })
+        ]);
 
-    if (chanRes.data) setChantiers(chanRes.data);
-    if (matRes.data) setMateriel(matRes.data);
-    
-    // Calcul alertes VGP (plus de 12 mois sans contrôle)
-    const limitDate = new Date();
-    limitDate.setFullYear(limitDate.getFullYear() - 1);
-    const alerts = (matRes.data || []).filter((m:any) => new Date(m.derniere_vgp) < limitDate).length;
+        if (chanRes.data) setChantiers(chanRes.data);
+        if (matRes.data) setMateriel(matRes.data);
+        
+        // Calcul alertes VGP (plus de 12 mois sans contrôle)
+        const limitDate = new Date();
+        limitDate.setFullYear(limitDate.getFullYear() - 1);
+        const alerts = (matRes.data || []).filter((m:any) => new Date(m.derniere_vgp) < limitDate).length;
 
-    setStats({ vgpAlerts: alerts, activeInductions: hseRes.count || 0 });
-    setLoading(false);
+        setStats({ vgpAlerts: alerts, activeInductions: hseRes.count || 0 });
+    } catch (error) {
+        toast.error("Erreur de synchronisation des données");
+    } finally {
+        setLoading(false);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -137,7 +143,10 @@ function HSECockpit({ stats, chantiers }: any) {
             </div>
 
             <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100">
-                <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2"><Activity size={20} className="text-red-500"/> Chantiers sous surveillance</h3>
+                <h3 className="font-black uppercase text-gray-700 mb-6 flex items-center gap-2">
+                    <Activity size={20} className="text-red-500"/> 
+                    Chantiers sous surveillance
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {chantiers.map((c:any) => (
                         <div key={c.id} className="p-5 rounded-[25px] bg-gray-50 border border-gray-100 flex justify-between items-center group hover:bg-white hover:shadow-lg transition-all">
@@ -162,7 +171,9 @@ function VGPModule({ materiel }: any) {
         <div className="animate-in fade-in space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-black uppercase text-gray-800">Registre de Sécurité Matériel</h2>
-                <button className="bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs shadow-lg hover:scale-105 transition-all flex items-center gap-2"><Plus size={16}/> Ajouter Équipement</button>
+                <button className="bg-black text-white px-6 py-2.5 rounded-xl font-black uppercase text-xs shadow-lg hover:scale-105 transition-all flex items-center gap-2">
+                    <Plus size={16}/> Ajouter Équipement
+                </button>
             </div>
             <div className="bg-white rounded-[35px] border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left">
@@ -176,12 +187,12 @@ function VGPModule({ materiel }: any) {
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                         {materiel.map((m:any) => {
-                            const isExpired = new Date(m.derniere_vgp) < new Date(new Date().setFullYear(new Date().getFullYear() - 1));
+                            const isExpired = m.derniere_vgp ? (new Date(m.derniere_vgp) < new Date(new Date().setFullYear(new Date().getFullYear() - 1))) : true;
                             return (
                                 <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="p-6 font-bold text-gray-800">{m.nom}</td>
                                     <td className="p-6 text-sm font-mono text-gray-500">{m.id.slice(0,8).toUpperCase()}</td>
-                                    <td className="p-6 text-sm font-bold text-gray-600">{new Date(m.derniere_vgp || Date.now()).toLocaleDateString()}</td>
+                                    <td className="p-6 text-sm font-bold text-gray-600">{m.derniere_vgp ? new Date(m.derniere_vgp).toLocaleDateString() : 'Non vérifié'}</td>
                                     <td className="p-6">
                                         <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border ${isExpired ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
                                             {isExpired ? 'À CONTRÔLER' : 'OPÉRATIONNEL'}
@@ -215,7 +226,7 @@ const StatCard = ({ label, val, sub, icon: Icon, color }: any) => {
         orange: "bg-orange-50 text-orange-600 border-orange-100" 
     };
     return (
-        <div className={`p-8 rounded-[35px] border bg-white shadow-sm flex justify-between items-start group hover:shadow-xl transition-all`}>
+        <div className="p-8 rounded-[35px] border bg-white shadow-sm flex justify-between items-start group hover:shadow-xl transition-all">
             <div>
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-3">{label}</p>
                 <p className="text-4xl font-black text-gray-800 tracking-tighter leading-none">{val}</p>
