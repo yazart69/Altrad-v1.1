@@ -5,10 +5,12 @@ import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   ArrowLeft, Save, FileText, UploadCloud, X, Eye, Trash2, AlertTriangle, Shield, CheckSquare, 
-  Thermometer, Droplets, Layers, Ruler, ClipboardCheck, Calendar, CheckCircle2, Circle, Clock, 
-  Plus, Minus, Users, Percent, Truck, Package, Mail, Phone, BarChart2, CornerDownRight, 
-  AlertCircle, UserPlus, AlertOctagon, Search, TrendingUp, UserCheck, Scale, Printer, PieChart, 
-  Euro, HardHat, Briefcase, Hash, Check, LayoutDashboard, CreditCard, FileCheck, Pencil, Receipt, Wallet
+  Thermometer, Droplets, Layers, Ruler, ClipboardCheck, FolderOpen, Calendar, MonitorPlay, 
+  CheckCircle2, Circle, Clock, Plus, Minus, Users, Percent, Truck, Package, Wrench, Mail, 
+  Phone, BarChart2, CornerDownRight, AlertCircle, UserPlus, Palette, Box, AlertOctagon, 
+  Search, TrendingUp, TrendingDown, UserCheck, Scale, Printer, PieChart, Target, 
+  Euro, HardHat, Briefcase, Zap, MapPin, Calculator, Wallet, Receipt, Hash, Check, LayoutDashboard,
+  CreditCard, FileCheck, CalendarClock, BellRing, Pencil
 } from 'lucide-react';
 import Link from 'next/link';
 
