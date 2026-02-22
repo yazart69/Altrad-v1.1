@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   FileText, X, Save, Eye, CheckCircle2, ChevronRight, 
   Plus, Loader2, ArrowLeft, Printer, ShieldAlert, 
-  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, Briefcase,
+  Trash2, Info, ListChecks, Wind, Flame, Skull, Users, MapPin,
   Check
 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
@@ -33,17 +33,16 @@ function MODOPContent() {
   const [employesDB, setEmployesDB] = useState<any[]>([]);
   const [selectedMODOP, setSelectedMODOP] = useState<any>(null);
 
-  // --- ÉTAT DU FORMULAIRE WIZARD V3 (Niveau Direction QHSE) ---
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     otp: '',
     redacteur: '',
     validateur_sup: '',
     version: 'A',
-    localisation: '',
+    localisation: '', // C'est ici que l'adresse exacte sera stockée
     description_travaux: '',
-    equipe: [] as any[], // Stocke les employés + habilitations
-    mesures_prevention: { atex: false, plomb: false, amiante: 'non' }, // 'non', 'SS3', 'SS4'
+    equipe: [] as any[],
+    mesures_prevention: { atex: false, plomb: false, amiante: 'non' },
     techniques: [] as string[], 
     etapes_mise_en_oeuvre: [] as { etape: string, controle_requis: boolean, validateur: string }[],
     procedures_urgence: "Alerter le SST le plus proche. Dégager la victime de la zone dangereuse (< 3 min) si cela ne présente pas de risque de sur-accident. Contacter le 15 (SAMU) ou le 112.",
@@ -54,7 +53,15 @@ function MODOPContent() {
   const sigPadRedacteur = useRef<any>(null);
   const sigPadValidateur = useRef<any>(null);
 
-  // --- CHARGEMENT ---
+  useEffect(() => {
+    if (step === 5 && formData.signature_redacteur && sigPadRedacteur.current) {
+        setTimeout(() => { sigPadRedacteur.current?.fromDataURL(formData.signature_redacteur); }, 50);
+    }
+    if (step === 5 && formData.signature_validateur && sigPadValidateur.current) {
+        setTimeout(() => { sigPadValidateur.current?.fromDataURL(formData.signature_validateur); }, 50);
+    }
+  }, [step]);
+
   useEffect(() => {
     if (!chantierId) return;
     const loadData = async () => {
@@ -74,7 +81,6 @@ function MODOPContent() {
     loadData();
   }, [chantierId]);
 
-  // --- HELPERS METIER ---
   const toggleEmploye = (emp: any) => {
       const exists = formData.equipe.find(e => e.id === emp.id);
       if (exists) setFormData({ ...formData, equipe: formData.equipe.filter(e => e.id !== emp.id) });
@@ -104,14 +110,12 @@ function MODOPContent() {
       setFormData({ ...formData, etapes_mise_en_oeuvre: formData.etapes_mise_en_oeuvre.filter((_, i) => i !== idx) });
   };
 
-  // --- SAUVEGARDE ---
   const handleSave = async () => {
     if (!formData.signature_redacteur) return toast.error("La signature du rédacteur est requise.");
     const toastId = toast.loading("Enregistrement du Mode Opératoire...");
     
     const { signature_redacteur, signature_validateur, etapes_mise_en_oeuvre, ...dataToSend } = formData;
     
-    // On mappe "etapes_mise_en_oeuvre" dans "controles" pour garder la rétrocompatibilité
     const payload = { 
         chantier_id: chantierId, 
         ...dataToSend, 
@@ -133,9 +137,6 @@ function MODOPContent() {
   if (!chantierId) return <div className="p-10 text-center font-black uppercase text-red-500">Erreur : Aucun chantier sélectionné.</div>;
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-700 size-10"/></div>;
 
-  // ==========================================================================
-  // VUE 1 : LISTE DES ARCHIVES
-  // ==========================================================================
   if (view === 'list') {
     return (
       <div className="min-h-screen bg-[#f8f9fa] p-4 md:p-8 font-['Fredoka'] text-gray-800">
@@ -146,10 +147,13 @@ function MODOPContent() {
                     <h2 className="text-3xl font-black uppercase text-[#2d3436] tracking-tighter flex items-center gap-3">
                         <FileText className="text-blue-700" size={36}/> Modes Opératoires (MODOP)
                     </h2>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Chantier : <span className="text-blue-600">{chantierInfo?.nom}</span></p>
+                    <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Dossier : <span className="text-blue-600">{chantierInfo?.nom}</span></p>
                     <button onClick={() => router.push('/hse')} className="text-xs font-bold text-gray-400 hover:text-black mt-3 flex items-center gap-1 transition-colors">← Retour au Dashboard</button>
                 </div>
-                <button onClick={() => { setView('create'); setStep(1); }} className="bg-blue-700 hover:bg-black text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95">
+                <button onClick={() => { 
+                    setFormData({...formData, localisation: '', description_travaux: ''}); 
+                    setView('create'); setStep(1); 
+                }} className="bg-blue-700 hover:bg-black text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95">
                     <Plus size={20}/> Nouveau MODOP
                 </button>
             </div>
@@ -164,8 +168,10 @@ function MODOPContent() {
                 {archives.map(a => (
                     <div key={a.id} className="flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-lg transition-all">
                         <div>
-                            <p className="font-black text-gray-800 text-lg uppercase leading-tight mb-1">INDICE {a.version} - {a.localisation || 'Zone générale'}</p>
-                            <div className="flex items-center gap-3 text-xs font-bold text-gray-500">
+                            <p className="font-black text-gray-800 text-lg uppercase leading-tight mb-1 flex items-center gap-2">
+                                INDICE {a.version} - {a.localisation || 'Adresse non renseignée'}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500 mt-2">
                                 {a.otp && <span className="bg-gray-800 text-white px-2 py-1 rounded font-mono uppercase">OTP: {a.otp}</span>}
                                 <span className="bg-white px-2 py-1 rounded border border-gray-200">Créé le {new Date(a.created_at).toLocaleDateString()}</span>
                                 <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">Rédigé par: {a.redacteur}</span>
@@ -182,9 +188,6 @@ function MODOPContent() {
     );
   }
 
-  // ==========================================================================
-  // VUE 2 : VISIONNEUSE PDF (Format Qualité ISO)
-  // ==========================================================================
   if (view === 'view' && selectedMODOP) {
       const dbRisks = (selectedMODOP.techniques || []).map((id: string) => RISK_DATABASE.find(r => r.id === id)).filter(Boolean);
 
@@ -211,17 +214,21 @@ function MODOPContent() {
 
               <div className="print-container max-w-4xl mx-auto bg-white p-10 shadow-2xl border border-gray-100">
                   
-                  {/* Cartouche Document (Qualité) */}
+                  {/* Cartouche Document avec l'adresse physique visible */}
                   <div className="border-4 border-blue-900 mb-8 flex flex-col">
                       <div className="bg-blue-900 text-white p-4 text-center">
                           <h1 className="text-2xl font-black uppercase tracking-widest">MODE OPÉRATOIRE & SÉCURITÉ</h1>
                       </div>
-                      <div className="grid grid-cols-5 divide-x-2 divide-blue-900 text-center font-bold text-xs bg-gray-50">
-                          <div className="p-2 text-blue-900 uppercase">Chantier<br/><span className="text-black">{chantierInfo?.nom}</span></div>
+                      <div className="grid grid-cols-5 divide-x-2 divide-blue-900 text-center font-bold text-xs bg-gray-50 border-b-2 border-blue-900">
+                          <div className="p-2 text-blue-900 uppercase">Dossier<br/><span className="text-black">{chantierInfo?.nom}</span></div>
                           <div className="p-2 text-blue-900 uppercase">OTP<br/><span className="text-black">{selectedMODOP.otp || 'N/A'}</span></div>
                           <div className="p-2 text-blue-900 uppercase">Version<br/><span className="text-black text-lg">{selectedMODOP.version}</span></div>
                           <div className="p-2 text-blue-900 uppercase">Date<br/><span className="text-black">{new Date(selectedMODOP.created_at).toLocaleDateString()}</span></div>
                           <div className="p-2 text-blue-900 uppercase">Rédacteur<br/><span className="text-black">{selectedMODOP.redacteur}</span></div>
+                      </div>
+                      <div className="p-3 text-center bg-blue-50">
+                          <span className="text-blue-900 font-black uppercase text-xs mr-2">📍 Adresse exacte de l'intervention :</span>
+                          <span className="text-black font-bold uppercase">{selectedMODOP.localisation}</span>
                       </div>
                   </div>
 
@@ -244,13 +251,11 @@ function MODOPContent() {
                       ) : <p className="text-xs italic text-gray-500">Aucune équipe spécifiée dans le document.</p>}
                   </div>
 
-                  {/* 2. Cadre & Spécificités */}
+                  {/* 2. Nature des travaux et Spécificités */}
                   <div className="mb-6">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">2. Description des travaux et Spécificités Environnementales</h3>
-                      <p className="text-sm mb-2"><span className="font-bold uppercase text-gray-600 mr-2">Localisation :</span> {selectedMODOP.localisation}</p>
                       <p className="text-sm"><span className="font-bold uppercase text-gray-600 mr-2">Travaux prévus :</span> {selectedMODOP.description_travaux}</p>
                       
-                      {/* Affichage intelligent des spécificités environnementales */}
                       {(selectedMODOP.mesures_prevention?.atex || selectedMODOP.mesures_prevention?.plomb || selectedMODOP.mesures_prevention?.amiante !== 'non') && (
                           <div className="mt-4 border-2 border-red-500 p-3 bg-red-50">
                               <h4 className="font-black text-red-700 uppercase text-xs mb-2 flex items-center gap-2"><ShieldAlert size={16}/> EXIGENCES LÉGALES ET ENVIRONNEMENTALES</h4>
@@ -264,7 +269,7 @@ function MODOPContent() {
                       )}
                   </div>
 
-                  {/* 3. Etapes de Mise en Oeuvre (Contrôles) */}
+                  {/* 3. Etapes de Mise en Oeuvre */}
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">3. Étapes de la mise en œuvre et points de contrôle</h3>
                       {selectedMODOP.controles?.length > 0 ? (
@@ -283,7 +288,7 @@ function MODOPContent() {
                       ) : <p className="text-xs italic text-gray-500">Aucun suivi des étapes défini.</p>}
                   </div>
 
-                  {/* 4. ADR Intelligente (Sans codes) */}
+                  {/* 4. ADR */}
                   <div className="mb-6 page-break-inside-avoid">
                       <h3 className="bg-gray-100 border-b-2 border-black p-2 font-black uppercase text-sm mb-3">4. Analyse des Risques et Prévention (ADR)</h3>
                       <table className="w-full text-[10px]">
@@ -306,7 +311,7 @@ function MODOPContent() {
                       <p className="text-xs font-bold p-3 border border-red-200 bg-red-50 text-red-800 italic">{selectedMODOP.procedures_urgence}</p>
                   </div>
 
-                  {/* 6. Signatures (Double) */}
+                  {/* 6. Signatures */}
                   <div className="border border-black flex page-break-inside-avoid">
                       <div className="w-1/2 border-r border-black">
                           <div className="bg-gray-100 border-b border-black p-2 font-black uppercase text-xs">Rédacteur : {selectedMODOP.redacteur}</div>
@@ -326,9 +331,6 @@ function MODOPContent() {
       );
   }
 
-  // ==========================================================================
-  // VUE 3 : WIZARD DE CRÉATION
-  // ==========================================================================
   return (
     <div className="min-h-screen bg-[#2d3436] p-4 md:p-8 font-['Fredoka'] flex items-center justify-center text-gray-800">
         <Toaster position="top-center" />
@@ -355,9 +357,10 @@ function MODOPContent() {
                         
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100">
                             <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">N° OTP</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100 uppercase" placeholder="P-XXXXXX" value={formData.otp} onChange={e=>setFormData({...formData, otp: e.target.value})} /></div>
+                            <div className="col-span-1 md:col-span-3"><label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-2 block mb-2 flex items-center gap-1"><MapPin size={14}/> Adresse exacte du chantier</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border-2 border-blue-200 focus:border-blue-500" placeholder="Ex: Centrale EDF de Bugey, Bâtiment Réacteur 2..." value={formData.localisation} onChange={e=>setFormData({...formData, localisation: e.target.value})} /></div>
                             <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Version</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" value={formData.version} onChange={e=>setFormData({...formData, version: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Rédacteur</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" placeholder="Nom..." value={formData.redacteur} onChange={e=>setFormData({...formData, redacteur: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Validateur Supérieur</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" placeholder="Ex: Client, Dir. Agence..." value={formData.validateur_sup} onChange={e=>setFormData({...formData, validateur_sup: e.target.value})} /></div>
+                            <div className="col-span-1 md:col-span-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Rédacteur</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" placeholder="Nom..." value={formData.redacteur} onChange={e=>setFormData({...formData, redacteur: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Validateur Supérieur</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" placeholder="Ex: Client, Dir..." value={formData.validateur_sup} onChange={e=>setFormData({...formData, validateur_sup: e.target.value})} /></div>
                         </div>
 
                         <div>
@@ -389,8 +392,7 @@ function MODOPContent() {
                         <h3 className="text-xl font-black uppercase text-gray-800 border-b-4 border-blue-700 inline-block pb-1">2. Spécificités Environnementales</h3>
                         
                         <div className="grid grid-cols-1 gap-6 bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Localisation précise</label><input type="text" className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100" value={formData.localisation} onChange={e=>setFormData({...formData, localisation: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Description des travaux</label><textarea className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100 h-24" value={formData.description_travaux} onChange={e=>setFormData({...formData, description_travaux: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 block mb-2">Description des travaux à réaliser</label><textarea className="w-full p-4 bg-white rounded-2xl font-bold text-sm outline-none border border-gray-100 h-32" placeholder="Ex: Décapage UHP des capacités 220, puis application d'un système anticorrosion..." value={formData.description_travaux} onChange={e=>setFormData({...formData, description_travaux: e.target.value})} /></div>
                         </div>
 
                         <div>
@@ -533,7 +535,7 @@ function MODOPContent() {
                 
                 {step < 5 ? (
                     <button onClick={() => {
-                        if (step === 1 && (!formData.otp || !formData.redacteur)) return toast.error("Veuillez renseigner l'OTP et le Rédacteur.");
+                        if (step === 1 && (!formData.otp || !formData.redacteur || !formData.localisation)) return toast.error("Veuillez renseigner l'OTP, le Rédacteur et l'Adresse.");
                         if (step === 4 && formData.techniques.length === 0) return toast.error("Sélectionnez au moins une technique pour générer l'ADR.");
                         setStep(step+1);
                     }} className="bg-[#2d3436] text-white px-8 py-4 rounded-2xl font-black uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-black transition-all">
